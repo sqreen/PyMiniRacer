@@ -33,3 +33,20 @@ Tools used in rendering this package:
 
 .. _Cookiecutter: https://github.com/audreyr/cookiecutter
 .. _`cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
+
+Build
+--------
+
+You need to build v8 first by hand, go to "py_mini_racer/ffi" first, then launch
+the "v8_build.py" python script:
+
+.. code:: bash
+
+  python v8_build.py
+
+
+Then from the root directory of this repository, create a wheel with:
+
+.. code:: bash
+
+    python setup.py bdist_wheel
