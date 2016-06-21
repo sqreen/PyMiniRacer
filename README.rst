@@ -37,8 +37,10 @@ Tools used in rendering this package:
 Build
 --------
 
-You need to build v8 first by hand, go to "py_mini_racer/ffi" first, then launch
-the "v8_build.py" python script:
+You need to build v8 first by hand. You'll need to have
+http://www.chromium.org/developers/how-tos/install-depot-tools installed.
+
+Then go to "py_mini_racer/ffi" first and launch the "v8_build.py" python script:
 
 .. code:: bash
 
