@@ -52,3 +52,12 @@ Then from the root directory of this repository, create a wheel with:
 .. code:: bash
 
     python setup.py bdist_wheel
+
+Tests
+--------
+
+If you want to run the tests, you need to build V8 first, then launch:
+
+.. code:: bash
+
+    python setup.py test --addopts tests

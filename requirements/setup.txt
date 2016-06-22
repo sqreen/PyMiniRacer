@@ -1,1 +1,2 @@
 cffi>=1.0.0
+pytest-runner

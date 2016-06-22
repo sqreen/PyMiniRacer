@@ -48,6 +48,7 @@ setup(
     url='https://github.com/sqreen/py_mini_racer',
     packages=[
         'py_mini_racer',
+        'py_mini_racer.ffi'
     ],
     package_dir={'py_mini_racer':
                  'py_mini_racer'},
