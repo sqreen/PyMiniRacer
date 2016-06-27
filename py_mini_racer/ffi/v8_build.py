@@ -135,7 +135,7 @@ def make(path, flags):
 
 
 def patch_v8():
-    """ Apply patched on v8
+    """ Apply patch on v8
     """
     path = local_path('v8/v8')
     patches_paths = PATCHES_PATH

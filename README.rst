@@ -37,6 +37,8 @@ Tools used in rendering this package:
 Build
 --------
 
+Just launch ./build.sh. If you prefer the detailed steps, please follow:
+
 You need to build v8 first by hand. Ensure you have cloned the repository with the ``--recursive`` option to fetch the ``depot_tools`` submodule or run these two commands:
 
 .. code:: bash
