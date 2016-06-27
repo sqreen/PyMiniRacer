@@ -17,9 +17,23 @@ LOGGER.setLevel(logging.DEBUG)
 V8_VERSION = "5.1.281.59"
 
 
+def local_path(path):
+    """ Return path relative to this file
+    """
+    current_path = dirname(__file__)
+    return abspath(join(current_path, path))
+
+
+VENDOR_PATH = local_path('../../vendor/depot_tools')
+PATCHES_PATH = local_path('../../patches')
+
+
 def call(cmd):
     LOGGER.debug("Calling: '%s' from working directory %s", cmd, os.getcwd())
-    return subprocess.check_call(cmd, shell=True)
+    current_env = os.environ
+    depot_tools_env = '{}:{}'.format(VENDOR_PATH, os.environ['PATH'])
+    current_env['PATH'] = depot_tools_env
+    return subprocess.check_call(cmd, shell=True, env=current_env)
 
 
 @contextmanager
@@ -41,21 +55,21 @@ def chdir(new_path, make=False):
 def ensure_v8_src():
     """ Ensure that v8 src are presents and up-to-date
     """
-    path = 'v8'
+    path = local_path('v8')
 
     if not os.path.isdir(path):
         fetch_v8(path)
     else:
         update_v8(path)
 
-    checkout_v8_version("v8/v8", V8_VERSION)
+    checkout_v8_version(local_path("v8/v8"), V8_VERSION)
     dependencies_sync(path)
 
 
 def fetch_v8(path):
     """ Fetch v8
     """
-    with chdir(os.path.abspath(path), make=True):
+    with chdir(abspath(path), make=True):
         call("fetch v8")
 
 
@@ -123,8 +137,8 @@ def make(path, flags):
 def patch_v8():
     """ Apply patched on v8
     """
-    path = 'v8/v8'
-    patches_paths = abspath(join(dirname(__file__), '../../patches'))
+    path = local_path('v8/v8')
+    patches_paths = PATCHES_PATH
     apply_patches(path, patches_paths)
 
 
@@ -148,4 +162,4 @@ if __name__ == '__main__':
     ensure_v8_src()
     patch_v8()
     flags = make_flags()
-    make('v8/v8', flags)
+    make(local_path('v8/v8'), flags)
