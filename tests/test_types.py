@@ -6,15 +6,19 @@
 import unittest
 import json
 
-import py_mini_racer
+from py_mini_racer import py_mini_racer
 
 class Test(unittest.TestCase):
     """ Test basic types """
 
-    def valid(self, py_val):
+    def valid(self, py_val, **kwargs):
+        if 'testee' in kwargs:
+            testee = kwargs['testee']
+        else:
+            testee = py_val
         js_str = json.dumps(py_val)
-        parsed = self.mr.eval(js_str)
-        self.assertEqual(py_val, parsed)
+        parsed = self.mr.execute(js_str)
+        self.assertEqual(testee, parsed)
 
     def setUp(self):
 
@@ -42,7 +46,7 @@ class Test(unittest.TestCase):
         self.valid([1,2,['a', 1]])
 
     def test_none(self):
-        self.valid(None)
+        self.valid(None, testee='null')
 
     def test_hash(self):
         self.valid({})

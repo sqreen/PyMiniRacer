@@ -1,8 +1,11 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 """ Basic JS types tests """
 
 import unittest
 
-import py_mini_racer
+from py_mini_racer import py_mini_racer
 
 class Test(unittest.TestCase):
     """ Test basic types """
@@ -42,7 +45,6 @@ class Test(unittest.TestCase):
         self.assertEqual(c3.eval('(x)'), 3)
 
 
-
-
 if __name__ == '__main__':
-    unittest.main()
+    import sys
+    sys.exit(unittest.main())

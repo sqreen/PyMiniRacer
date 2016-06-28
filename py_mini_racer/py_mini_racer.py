@@ -51,11 +51,16 @@ class MiniRacer(object):
 
         self.ext.pmr_free_value(res)
 
+    def execute(self, js_str):
+        """ Exec the given JS value """
+
+        return self.eval("(function(){return (%s)})()" % js_str)
+
     def eval(self, js_str):
         """ Eval the JavaScript string """
 
         self.lock.acquire()
-        res = self.ext.pmr_eval_context(self.ctx, '(' + js_str + ')')
+        res = self.ext.pmr_eval_context(self.ctx, js_str)
         self.lock.release()
         python_value = res.contents.to_python()
         self.free(res)
@@ -138,5 +143,3 @@ class PythonValue(ctypes.Structure):
         else:
             raise WrongReturnTypeException("unknown type %d" % self.type)
         return result
-
-
