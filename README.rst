@@ -37,28 +37,11 @@ Tools used in rendering this package:
 Build
 --------
 
-Just launch ./build.sh. If you prefer the detailed steps, please follow:
+You can build v8 with the command "python setup.py build_v8".
 
-You need to build v8 first by hand. Ensure you have cloned the repository with the ``--recursive`` option to fetch the ``depot_tools`` submodule or run these two commands:
+You can also build the ctype extension with "python setup.py build_ext" which automatically build v8.
 
-.. code:: bash
-
-  git submodule init
-  git submodule update
-
-
-Then go to "py_mini_racer/ffi" first and launch the "v8_build.py" python script:
-
-.. code:: bash
-
-  python v8_build.py
-
-
-Then from the root directory of this repository, create a wheel with:
-
-.. code:: bash
-
-    python setup.py bdist_wheel
+You can generate a wheel with the command "python setup.py bdist_wheel" which build the extension and v8.
 
 Tests
 --------

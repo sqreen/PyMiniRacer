@@ -4,8 +4,11 @@
 
 import ctypes
 import threading
+import pkg_resources
 
 import enum
+
+EXTENSION_PATH = pkg_resources.resource_filename('py_mini_racer', '_v8.so')
 
 
 class MiniRacerBaseException(Exception):
@@ -30,7 +33,7 @@ class MiniRacer(object):
     def __init__(self):
         """ Init a JS context """
 
-        self.ext = ctypes.CDLL("mini_racer_extension.bundle")
+        self.ext = ctypes.CDLL(EXTENSION_PATH)
 
         self.ext.pmr_init_context.restype = ctypes.c_void_p
         self.ext.pmr_eval_context.argtypes = [

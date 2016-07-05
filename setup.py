@@ -5,16 +5,19 @@ import pip
 import shlex
 
 from os import mkdir
+from os.path import dirname, abspath, join, isfile
 from pip.req import parse_requirements
 
 try:
-    from setuptools import setup, Extension
+    from setuptools import setup, Extension, Command
     from setuptools.command.build_ext import build_ext
 except ImportError:
-    from distutils.core import setup, Extension
+    from distutils.core import setup, Extension, Command
     from distutils.command.build_ext import build_ext
 
 from distutils.spawn import spawn
+
+from py_mini_racer.extension.v8_build import build_v8
 
 
 with open('README.rst') as readme_file:
@@ -44,23 +47,44 @@ setup_requires = [str(sr.req) for sr in parsed_setup_requirements]
 test_requirements = [str(tr.req) for tr in parsed_test_requirements]
 
 
-COMPILE_CMD = "clang++ -c src/mini_racer_extension.cc -I py_mini_racer/ffi/v8/v8 \
+def local_path(path):
+    """ Return path relative to this file
+    """
+    current_path = dirname(__file__)
+    return abspath(join(current_path, path))
+
+
+V8_LIB_DIRECTORY = local_path('py_mini_racer/extension/v8/v8')
+V8_STATIC_LIBRARIES = ['libv8_base.a', 'libv8_libbase.a', 'libv8_libplatform.a',
+                       'libv8_nosnapshot.a']
+
+
+COMPILE_CMD = "clang++ -c py_mini_racer/extension/mini_racer_extension.cc -I {v8_lib_dir} \
         -D_XOPEN_SOURCE -D_DARWIN_C_SOURCE                     \
         -D_DARWIN_UNLIMITED_SELECT -D_REENTRANT                \
         -Wall -g -rdynamic -std=c++0x -fpermissive -fno-common \
         -o {output_dir}/mini_racer.o"
 
-LINK_CMD = "clang++ -dynamic -bundle src/mini_racer.o          \
+LINK_CMD = "clang++ -dynamic -bundle {output_dir}/mini_racer.o \
     -stdlib=libstdc++                                          \
     -fstack-protector                                          \
     -Wl,-undefined,dynamic_lookup                              \
     -Wl,-multiply_defined,suppress                             \
     -lobjc -lpthread  -lpthread -ldl -lobjc                    \
-    ./py_mini_racer/ffi/v8/v8/out/native/libv8_base.a          \
-    ./py_mini_racer/ffi/v8/v8/out/native/libv8_libbase.a       \
-    ./py_mini_racer/ffi/v8/v8/out/native/libv8_libplatform.a   \
-    ./py_mini_racer/ffi/v8/v8/out/native/libv8_nosnapshot.a    \
+    {v8_static_libraries} \
     -o {ext_path}"
+
+
+def is_v8_build():
+    """ Check if v8 has been built
+    """
+    return all(isfile(static_filepath) for static_filepath in get_static_lib_paths())
+
+
+def get_static_lib_paths():
+    """ Return the required static libraries path
+    """
+    return [join(V8_LIB_DIRECTORY, "out/native/", static_file) for static_file in V8_STATIC_LIBRARIES]
 
 
 class MiniRacerBuildExt(build_ext):
@@ -68,12 +92,40 @@ class MiniRacerBuildExt(build_ext):
     def build_extension(self, ext):
         """ Compile manually the py_mini_racer extension, bypass setuptools
         """
+        self.run_command('build_v8')
+
         output_dir = self.build_temp
         ext_path = self.get_ext_fullpath(ext.name)
-        mkdir(output_dir)
-        spawn(shlex.split(COMPILE_CMD.format(output_dir=output_dir)))
-        spawn(shlex.split(LINK_CMD.format(ext_path=ext_path)))
+        try:
+            mkdir(output_dir)
+        except OSError:
+            pass
 
+        compile_cmd = COMPILE_CMD.format(output_dir=output_dir, v8_lib_dir=V8_LIB_DIRECTORY)
+        spawn(shlex.split(compile_cmd))
+
+        link_cmd = LINK_CMD.format(ext_path=ext_path,
+                                   v8_static_libraries=" ".join(get_static_lib_paths()),
+                                   output_dir=output_dir)
+        spawn(shlex.split(link_cmd))
+
+
+class MiniRacerBuildV8(Command):
+
+    description = 'Compile vendored v8'
+    user_options = []
+
+    def initialize_options(self):
+        """Set default values for options."""
+        pass
+
+    def finalize_options(self):
+        """Post-process options."""
+        pass
+
+    def run(self):
+        if not is_v8_build():
+            build_v8()
 
 setup(
     name='py_mini_racer',
@@ -85,10 +137,11 @@ setup(
     url='https://github.com/sqreen/py_mini_racer',
     packages=[
         'py_mini_racer',
-        'py_mini_racer.ffi'
+        'py_mini_racer.extension'
     ],
     ext_modules=[
-        Extension('mini_racer', sources=['src/mini_racer_extension.cc']),
+        Extension('py_mini_racer._v8',
+                  sources=['py_mini_racer/extension/mini_racer_extension.cc']),
     ],
     package_dir={'py_mini_racer':
                  'py_mini_racer'},
@@ -114,6 +167,7 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     cmdclass={
-        'build_ext': MiniRacerBuildExt
+        'build_ext': MiniRacerBuildExt,
+        'build_v8': MiniRacerBuildV8
     }
 )
