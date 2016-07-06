@@ -65,14 +65,22 @@ COMPILE_CMD = "clang++ -c py_mini_racer/extension/mini_racer_extension.cc -I {v8
         -Wall -g -rdynamic -std=c++0x -fpermissive -fno-common \
         -o {output_dir}/mini_racer.o"
 
+# MAC  =         -D_XOPEN_SOURCE -D_DARWIN_C_SOURCE                     \
+#         -D_DARWIN_UNLIMITED_SELECT -D_REENTRANT                \
+#         -Wall -std=c++0x
+
+# -g debug
+
 LINK_CMD = "clang++ -dynamic -bundle {output_dir}/mini_racer.o \
     -stdlib=libstdc++                                          \
     -fstack-protector                                          \
     -Wl,-undefined,dynamic_lookup                              \
     -Wl,-multiply_defined,suppress                             \
-    -lobjc -lpthread  -lpthread -ldl -lobjc                    \
+    -lobjc -lpthread -ldl                    \
     {v8_static_libraries} \
     -o {ext_path}"
+
+# MAC -bundle -lobjc
 
 
 def is_v8_build():
@@ -87,6 +95,16 @@ def get_static_lib_paths():
     return [join(V8_LIB_DIRECTORY, "out/native/", static_file) for static_file in V8_STATIC_LIBRARIES]
 
 
+PY_MINI_RACER_EXTENSION = Extension(
+    name="py_mini_racer._v8",
+    sources=['py_mini_racer/extension/mini_racer_extension.cc'],
+    include_dirs=[V8_LIB_DIRECTORY],
+    extra_objects=get_static_lib_paths(),
+    extra_compile_args=['-std=c++0x', '-rdynamic', '-fpermissive', '-fno-common'],
+    extra_link_args=['-lobjc', '-lpthread', '-ldl', '-stdlib=libstdc++', '-fstack-protector']
+)
+
+
 class MiniRacerBuildExt(build_ext):
 
     def build_extension(self, ext):
@@ -94,20 +112,24 @@ class MiniRacerBuildExt(build_ext):
         """
         self.run_command('build_v8')
 
-        output_dir = self.build_temp
-        ext_path = self.get_ext_fullpath(ext.name)
-        try:
-            mkdir(output_dir)
-        except OSError:
-            pass
+        self.debug = True
 
-        compile_cmd = COMPILE_CMD.format(output_dir=output_dir, v8_lib_dir=V8_LIB_DIRECTORY)
-        spawn(shlex.split(compile_cmd))
+        build_ext.build_extension(self, ext)
 
-        link_cmd = LINK_CMD.format(ext_path=ext_path,
-                                   v8_static_libraries=" ".join(get_static_lib_paths()),
-                                   output_dir=output_dir)
-        spawn(shlex.split(link_cmd))
+        # output_dir = self.build_temp
+        # ext_path = self.get_ext_fullpath(ext.name)
+        # try:
+        #     mkdir(output_dir)
+        # except OSError:
+        #     pass
+
+        # compile_cmd = COMPILE_CMD.format(output_dir=output_dir, v8_lib_dir=V8_LIB_DIRECTORY)
+        # spawn(shlex.split(compile_cmd))
+
+        # link_cmd = LINK_CMD.format(ext_path=ext_path,
+        #                            v8_static_libraries=" ".join(get_static_lib_paths()),
+        #                            output_dir=output_dir)
+        # spawn(shlex.split(link_cmd))
 
 
 class MiniRacerBuildV8(Command):
@@ -139,10 +161,7 @@ setup(
         'py_mini_racer',
         'py_mini_racer.extension'
     ],
-    ext_modules=[
-        Extension('py_mini_racer._v8',
-                  sources=['py_mini_racer/extension/mini_racer_extension.cc']),
-    ],
+    ext_modules=[PY_MINI_RACER_EXTENSION],
     package_dir={'py_mini_racer':
                  'py_mini_racer'},
     include_package_data=True,
