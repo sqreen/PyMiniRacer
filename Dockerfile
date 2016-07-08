@@ -9,4 +9,6 @@ COPY . /code/
 
 RUN git submodule update
 
+RUN python setup.py build_v8
+
 CMD bash

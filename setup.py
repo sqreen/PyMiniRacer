@@ -2,9 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import pip
-import shlex
 
-from os import mkdir
 from os.path import dirname, abspath, join, isfile
 from pip.req import parse_requirements
 
@@ -14,8 +12,6 @@ try:
 except ImportError:
     from distutils.core import setup, Extension, Command
     from distutils.command.build_ext import build_ext
-
-from distutils.spawn import spawn
 
 from py_mini_racer.extension.v8_build import build_v8
 
@@ -98,10 +94,10 @@ def get_static_lib_paths():
 PY_MINI_RACER_EXTENSION = Extension(
     name="py_mini_racer._v8",
     sources=['py_mini_racer/extension/mini_racer_extension.cc'],
-    include_dirs=[V8_LIB_DIRECTORY],
+    include_dirs=[V8_LIB_DIRECTORY, join(V8_LIB_DIRECTORY, 'include')],
     extra_objects=get_static_lib_paths(),
     extra_compile_args=['-std=c++0x', '-rdynamic', '-fpermissive', '-fno-common'],
-    extra_link_args=['-lobjc', '-lpthread', '-ldl', '-stdlib=libstdc++', '-fstack-protector']
+    extra_link_args=['-lpthread', '-ldl', '-stdlib=libstdc++', '-fstack-protector']
 )
 
 
