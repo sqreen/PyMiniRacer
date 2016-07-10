@@ -3,10 +3,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <pthread.h>
+
 #include <include/v8.h>
 #include <include/libplatform/libplatform.h>
-#include <pthread.h>
-#include <unistd.h>
 
 static void * xalloc(size_t x) {
     void *tmp = malloc(x);

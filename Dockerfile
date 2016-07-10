@@ -1,7 +1,14 @@
 FROM ubuntu
 
-RUN apt-get update
-RUN apt-get install -y git build-essential python-pip git curl
+RUN apt-get update &&       \
+    apt-get install -qy     \
+            git             \
+            build-essential \
+            python-pip      \
+            git             \
+            curl            \
+            vim             \
+            man
 
 WORKDIR /code
 
