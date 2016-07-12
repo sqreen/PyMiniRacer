@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import pip
+import sys
 
 from os.path import dirname, abspath, join, isfile
 from pip.req import parse_requirements
