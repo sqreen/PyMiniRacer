@@ -207,6 +207,7 @@ nogvl_context_eval(void* arg) {
 
 
 PythonValue *convert_v8_to_python(Isolate* isolate, Handle<Value> &value) {
+
     HandleScope scope(isolate);
 
     PythonValue *res = ALLOC(PythonValue);
@@ -304,8 +305,9 @@ PythonValue *convert_v8_to_python(Isolate* isolate, Handle<Value> &value) {
             }
             for(uint32_t i=0; i < hash_len; i++) {
                 Local<Value> key = props->Get(i);
-                PythonValue *py_key = convert_v8_to_python(isolate, key);
                 Local<Value> value = object->Get(key);
+
+                PythonValue *py_key = convert_v8_to_python(isolate, key);
                 PythonValue *py_value = convert_v8_to_python(isolate, value);
                 // r_hash_aset(rb_hash, rb_key, rb_value);
                 ((PythonValue **) res->value)[i*2]   = py_key;

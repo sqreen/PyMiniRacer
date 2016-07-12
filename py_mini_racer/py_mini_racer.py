@@ -110,7 +110,10 @@ class PythonValue(ctypes.Structure):
         elif self.type == PythonTypes.bool.value:
             result = self.value == 1
         elif self.type == PythonTypes.integer.value:
-            result = ctypes.c_int32(self.value).value
+            if self.value is None:
+                result = 0
+            else:
+                result = ctypes.c_int32(self.value).value
         elif self.type == PythonTypes.double.value:
             result = ctypes.c_double(self.value).value
         elif self.type == PythonTypes.float.value:
