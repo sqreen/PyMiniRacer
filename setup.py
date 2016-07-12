@@ -91,13 +91,26 @@ def get_static_lib_paths():
     return [join(V8_LIB_DIRECTORY, "out/native/", static_file) for static_file in V8_STATIC_LIBRARIES]
 
 
+EXTRA_LINK_ARGS = [
+    '-ldl',
+    '-fstack-protector'
+]
+
+
+# Per platform customizations
+if sys.platform[:6] == "darwin":
+    EXTRA_LINK_ARGS += ['-stdlib=libstdc++', '-lpthread']
+elif sys.platform.startswith('linux'):
+    EXTRA_LINK_ARGS += ['-static-libgcc', '-static-libstdc++']
+
+
 PY_MINI_RACER_EXTENSION = Extension(
     name="py_mini_racer._v8",
     sources=['py_mini_racer/extension/mini_racer_extension.cc'],
     include_dirs=[V8_LIB_DIRECTORY, join(V8_LIB_DIRECTORY, 'include')],
     extra_objects=get_static_lib_paths(),
     extra_compile_args=['-std=c++0x', '-rdynamic', '-fpermissive', '-fno-common'],
-    extra_link_args=['-lpthread', '-ldl', '-stdlib=libstdc++', '-fstack-protector']
+    extra_link_args=EXTRA_LINK_ARGS
 )
 
 
