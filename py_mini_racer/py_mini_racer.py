@@ -2,6 +2,7 @@
 """ PyMiniRacer main wrappers """
 # pylint: disable=bad-whitespace,too-few-public-methods
 
+import json
 import ctypes
 import threading
 import pkg_resources
@@ -65,9 +66,15 @@ class MiniRacer(object):
         self.lock.acquire()
         res = self.ext.pmr_eval_context(self.ctx, js_str)
         self.lock.release()
+
         python_value = res.contents.to_python()
         self.free(res)
         return python_value
+
+    def call(self, identifier, *args):
+        json_args = json.dumps(args, separators=(',', ':'))
+        js = "{identifier}.apply(this, {json_args})"
+        return self.eval(js.format(identifier=identifier, json_args=json_args))
 
     def __del__(self):
         """ Free the context """
