@@ -44,6 +44,15 @@ class Test(unittest.TestCase):
         self.assertEqual(c2.eval('(x)'), 2)
         self.assertEqual(c3.eval('(x)'), 3)
 
+    @unittest.skip("Support for exception is not yet present")
+    def test_exception(self):
+        context = py_mini_racer.MiniRacer()
+
+        js_source = "var f = function() {throw 'error'};"
+
+        context.eval(js_source)
+        context.eval("f()")
+
 
 if __name__ == '__main__':
     import sys
