@@ -135,7 +135,7 @@ def make(path, flags):
 
 
 def patch_v8():
-    """ Apply patched on v8
+    """ Apply patch on v8
     """
     path = local_path('v8/v8')
     patches_paths = PATCHES_PATH
@@ -158,8 +158,12 @@ def apply_patches(path, patches_path):
                     applied_patches_file.write(patch + "\n")
 
 
-if __name__ == '__main__':
+def build_v8():
     ensure_v8_src()
     patch_v8()
     flags = make_flags()
     make(local_path('v8/v8'), flags)
+
+
+if __name__ == '__main__':
+    build_v8()
