@@ -5,6 +5,7 @@
 
 import unittest
 import json
+import time
 
 from py_mini_racer import py_mini_racer
 
@@ -24,19 +25,24 @@ class Test(unittest.TestCase):
 
         self.mr = py_mini_racer.MiniRacer()
 
+
     def test_str(self):
         self.valid("'a string'")
         self.valid("'a ' + 'string'")
+
+    def test_unicode(self):
+        ustr = u"\N{GREEK CAPITAL LETTER DELTA}"
+        res = self.mr.eval("'" + ustr + "'")
+        self.assertEqual(ustr, res)
+
 
     def test_numbers(self):
         self.valid(1)
         self.valid(1.0)
         self.valid(2**16)
         self.valid(2**31-1)
-        # FIXME:
-        self.skipTest("too big numbers follow")
-        # self.valid(2**31)
-        # self.valid(2**33)
+        self.valid(2**31)
+        self.valid(2**33)
 
     def test_arrays(self):
         self.valid([1])
@@ -46,17 +52,13 @@ class Test(unittest.TestCase):
         self.valid([1,2,['a', 1]])
 
     def test_none(self):
-        self.valid(None, testee='null')
+        self.valid(None)
 
     def test_hash(self):
         self.valid({})
         self.valid('{}')
         self.valid({'a': 1})
-        # FIXME: keys of stringified integers are eval'd as integers
-        # self.valid({'2': 1})
-        # Nested
         self.valid({" ": {'z': 'www'}})
-
 
     def test_complex(self):
 
@@ -74,6 +76,24 @@ class Test(unittest.TestCase):
             ], 'qwe': 1
         })
 
+    def test_function(self):
+        res = self.mr.eval('var a = function(){}; a')
+        self.assertTrue(isinstance(res, py_mini_racer.JSFunction))
+
+    def test_invalid_key(self):
+        
+        fun = """
+            var o = {};
+            o.__defineGetter__("bar", function() { return null(); });
+            o
+        """
+        with self.assertRaises(py_mini_racer.JSConversionException):
+            self.mr.eval(fun)
+
+    def test_date(self):
+        val = int(time.time())
+        res = self.mr.eval("var a = new Date(%d); a" % val)
+        self.assertEqual(res, time.ctime(val))
 
 if __name__ == '__main__':
     import sys

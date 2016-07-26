@@ -2,6 +2,7 @@
 """ PyMiniRacer main wrappers """
 # pylint: disable=bad-whitespace,too-few-public-methods
 
+import time
 import json
 import ctypes
 import threading
@@ -16,8 +17,16 @@ class MiniRacerBaseException(Exception):
     """ base MiniRacer exception class """
     pass
 
+class JSParseException(MiniRacerBaseException):
+    """ JS could not be parsed """
+    pass
+
 class JSEvalException(MiniRacerBaseException):
     """ JS could not be executed """
+    pass
+
+class JSConversionException(MiniRacerBaseException):
+    """ type could not be converted """
     pass
 
 class WrongReturnTypeException(MiniRacerBaseException):
@@ -29,74 +38,86 @@ class JSFunction(object):
     pass
 
 class MiniRacer(object):
-    """ Ctypes wrapper arround binary mini racer """
+    """ Ctypes wrapper arround binary mini racer
+        https://docs.python.org/2/library/ctypes.html
+    """
 
     def __init__(self):
         """ Init a JS context """
 
         self.ext = ctypes.CDLL(EXTENSION_PATH)
 
-        self.ext.pmr_init_context.restype = ctypes.c_void_p
-        self.ext.pmr_eval_context.argtypes = [
+        self.ext.mr_init_context.restype = ctypes.c_void_p
+        self.ext.mr_eval_context.argtypes = [
             ctypes.c_void_p,
-            ctypes.c_char_p]
-        self.ext.pmr_eval_context.restype = ctypes.POINTER(PythonValue)
+            ctypes.c_char_p,
+            ctypes.c_int]
+        self.ext.mr_eval_context.restype = ctypes.POINTER(PythonValue)
 
-        self.ext.pmr_free_value.argtypes = [ctypes.c_void_p]
+        self.ext.mr_free_value.argtypes = [ctypes.c_void_p]
 
-        self.ext.pmr_free_context.argtypes = [ctypes.c_void_p]
+        self.ext.mr_free_context.argtypes = [ctypes.c_void_p]
 
-        self.ctx = self.ext.pmr_init_context()
+        self.ctx = self.ext.mr_init_context()
 
         self.lock = threading.Lock()
 
     def free(self, res):
-        """ Free value returned by pmr_eval_context """
+        """ Free value returned by mr_eval_context """
 
-        self.ext.pmr_free_value(res)
+        self.ext.mr_free_value(res)
 
     def execute(self, js_str):
         """ Exec the given JS value """
 
-        return self.eval("(function(){return (%s)})()" % js_str)
+        wrapped = "(function(){return (%s)})()" % js_str
+        return self.eval(wrapped)
 
     def eval(self, js_str):
         """ Eval the JavaScript string """
 
         self.lock.acquire()
-        res = self.ext.pmr_eval_context(self.ctx, js_str)
+        bytes_val = js_str.encode("utf8")
+        res = self.ext.mr_eval_context(self.ctx, bytes_val, len(bytes_val))
         self.lock.release()
 
+        if bool(res) is False:
+            raise JSConversionException()
         python_value = res.contents.to_python()
         self.free(res)
         return python_value
 
     def call(self, identifier, *args):
+        """ Call the named function with provided arguments """
+
         json_args = json.dumps(args, separators=(',', ':'))
         js = "{identifier}.apply(this, {json_args})"
         return self.eval(js.format(identifier=identifier, json_args=json_args))
 
     def __del__(self):
         """ Free the context """
-        self.ext.pmr_free_context(self.ctx)
+        self.ext.mr_free_context(self.ctx)
 
 
 class PythonTypes(enum.Enum):
     """ Python types identifier - need to be coherent with
     mini_racer_extension.cc """
 
-    null      = 1
-    bool      = 2
-    integer   = 3
-    float     = 4
-    double    = 5
-    str       = 6
-    str_utf8  = 7
-    array     = 8
-    hash      = 9
-    function  = 10
-    exception = 11
-    invalid   = 12
+    null      =   1
+    bool      =   2
+    integer   =   3
+    double    =   4
+    str_utf8  =   5
+    array     =   6
+    hash      =   7
+    date      =   8
+
+    function  = 100
+
+    execute_exception = 200
+    parse_exception = 201
+
+    invalid   = 300
 
 
 class PythonValue(ctypes.Structure):
@@ -107,6 +128,10 @@ class PythonValue(ctypes.Structure):
 
     def __str__(self):
         return str(self.to_python())
+
+    def _double_value(self):
+            ptr = ctypes.c_char_p.from_buffer(self)
+            return ctypes.c_double.from_buffer(ptr).value
 
     def to_python(self):
         """ Return an object as native Python """
@@ -122,11 +147,10 @@ class PythonValue(ctypes.Structure):
             else:
                 result = ctypes.c_int32(self.value).value
         elif self.type == PythonTypes.double.value:
-            result = ctypes.c_double(self.value).value
-        elif self.type == PythonTypes.float.value:
-            result = ctypes.c_float(self.value).value
+            result = self._double_value()
         elif self.type == PythonTypes.str_utf8.value:
-            result = ctypes.c_char_p(self.value).value
+            buf = ctypes.c_char_p(self.value).value
+            result = buf.decode("utf8")
         elif self.type == PythonTypes.array.value:
             if self.len == 0:
                 return []
@@ -150,9 +174,15 @@ class PythonValue(ctypes.Structure):
             result = res
         elif self.type == PythonTypes.function.value:
             result = JSFunction()
-        elif self.type == PythonTypes.exception.value:
+        elif self.type == PythonTypes.parse_exception.value:
+            msg = ctypes.c_char_p(self.value).value
+            raise JSParseException(msg)
+        elif self.type == PythonTypes.execute_exception.value:
             msg = ctypes.c_char_p(self.value).value
             raise JSEvalException(msg)
+        elif self.type == PythonTypes.date.value:
+            timestamp = self._double_value()
+            result = time.ctime(timestamp) 
         else:
             raise WrongReturnTypeException("unknown type %d" % self.type)
         return result

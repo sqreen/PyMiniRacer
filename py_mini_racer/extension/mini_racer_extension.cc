@@ -1,5 +1,4 @@
 
-// https://docs.python.org/2/library/ctypes.html
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,19 +20,22 @@ static void * xalloc(size_t x) {
 #define TYPE(x) x->type
 #define PSTRING_PTR(x) ((char *) x->value)
 
-enum PythonTypes {
-    type_null = 1,
-    type_bool = 2,
-    type_integer = 3,
-    type_float = 4, // unused
-    type_double = 5,
-    type_str = 6, // unused
-    type_str_utf8 = 7,
-    type_array = 8,
-    type_hash = 9,
-    type_function = 10,
-    type_exception = 11,
-    type_invalid = 12,
+enum BinaryTypes {
+    type_null      =   1,
+    type_bool      =   2,
+    type_integer   =   3,
+    type_double    =   4,
+    type_str_utf8  =   5,
+    type_array     =   6,
+    type_hash      =   7,
+    type_date      =   8,
+
+    type_function  = 100,
+
+    type_execute_exception = 200,
+    type_parse_exception   = 201,
+
+    type_invalid   = 300,
 };
 
 #define T_STRING type_str_utf8
@@ -41,39 +43,38 @@ enum PythonTypes {
 /* This is a generic store for arbitrary JSON like values.
  * Non scalar values are:
  *  - Strings: pointer to a string
- *  - Arrays: contiguous map of pointers to PythonValue
- *  - Hash: contiguous map of pair of pointers to PythonTypes (first is key,
+ *  - Arrays: contiguous map of pointers to BinaryValue
+ *  - Hash: contiguous map of pair of pointers to BinaryTypes (first is key,
  *          second is value)
  */
 typedef struct {
     void *value;
-    enum PythonTypes type;
+    enum BinaryTypes type;
     size_t len;
-} PythonValue;
+} BinaryValue;
 
 
-void PythonValueFree(PythonValue *v) {
+void BinaryValueFree(BinaryValue *v) {
     size_t i=0;
     if (!v) {
         return;
     }
     switch(v->type) {
-        case type_str:
         case type_str_utf8:
             free(v->value);
             break;
         case type_array:
             for(i=0; i < v->len; i++) {
-                PythonValue *w = ((PythonValue **) v->value)[i];
-                PythonValueFree(w);
+                BinaryValue *w = ((BinaryValue **) v->value)[i];
+                BinaryValueFree(w);
             }
             break;
         case type_hash:
             for(i=0; i < v->len; i++) {
-                PythonValue *k = ((PythonValue **) v->value)[i*2];
-                PythonValue *w = ((PythonValue **) v->value)[i*2+1];
-                PythonValueFree(k);
-                PythonValueFree(w);
+                BinaryValue *k = ((BinaryValue **) v->value)[i*2];
+                BinaryValue *w = ((BinaryValue **) v->value)[i*2+1];
+                BinaryValueFree(k);
+                BinaryValueFree(w);
             }
             break;
         default:
@@ -123,10 +124,10 @@ static Platform* current_platform = NULL;
 
 static void init_v8() {
     if (current_platform == NULL) {
-	V8::InitializeICU();
-	current_platform = platform::CreateDefaultPlatform();
-	V8::InitializePlatform(current_platform);
-	V8::Initialize();
+        V8::InitializeICU();
+        current_platform = platform::CreateDefaultPlatform();
+        V8::InitializePlatform(current_platform);
+        V8::Initialize();
     }
 }
 
@@ -138,8 +139,7 @@ void* breaker(void *d) {
   return NULL;
 }
 
-void*
-nogvl_context_eval(void* arg) {
+void* nogvl_context_eval(void* arg) {
     EvalParams* eval_params = (EvalParams*)arg;
     EvalResult* result = eval_params->result;
     Isolate* isolate = eval_params->context_info->isolate;
@@ -159,63 +159,63 @@ nogvl_context_eval(void* arg) {
     result->value = NULL;
 
     if (!result->parsed) {
-	result->message = new Persistent<Value>();
-	result->message->Reset(isolate, trycatch.Exception());
+        result->message = new Persistent<Value>();
+        result->message->Reset(isolate, trycatch.Exception());
     } else {
 
-	pthread_t breaker_thread;
+        pthread_t breaker_thread;
 
-	if (eval_params->timeout > 0) {
-	   pthread_create(&breaker_thread, NULL, breaker, (void*)eval_params);
-	}
+        if (eval_params->timeout > 0) {
+            pthread_create(&breaker_thread, NULL, breaker, (void*)eval_params);
+        }
 
-	MaybeLocal<Value> maybe_value = parsed_script.ToLocalChecked()->Run(context);
+        MaybeLocal<Value> maybe_value = parsed_script.ToLocalChecked()->Run(context);
 
-	if (eval_params->timeout > 0) {
-	    pthread_cancel(breaker_thread);
-	    pthread_join(breaker_thread, NULL);
-	}
+        if (eval_params->timeout > 0) {
+            pthread_cancel(breaker_thread);
+            pthread_join(breaker_thread, NULL);
+        }
 
-	result->executed = !maybe_value.IsEmpty();
+        result->executed = !maybe_value.IsEmpty();
 
-	if (!result->executed) {
-	    if (trycatch.HasCaught()) {
-		if (!trycatch.Exception()->IsNull()) {
-		    result->message = new Persistent<Value>();
-		    result->message->Reset(isolate, trycatch.Exception()->ToString());
-		} else if(trycatch.HasTerminated()) {
-		    result->terminated = true;
-		    result->message = new Persistent<Value>();
-		    Local<String> tmp = String::NewFromUtf8(isolate, "JavaScript was terminated (either by timeout or explicitly)");
-		    result->message->Reset(isolate, tmp);
-		}
+        if (!result->executed) {
+            if (trycatch.HasCaught()) {
+                if (!trycatch.Exception()->IsNull()) {
+                    result->message = new Persistent<Value>();
+                    result->message->Reset(isolate, trycatch.Exception()->ToString());
+                } else if(trycatch.HasTerminated()) {
+                    result->terminated = true;
+                    result->message = new Persistent<Value>();
+                    Local<String> tmp = String::NewFromUtf8(isolate, "JavaScript was terminated (either by timeout or explicitly)");
+                    result->message->Reset(isolate, tmp);
+                }
 
-		if (!trycatch.StackTrace().IsEmpty()) {
-		    result->backtrace = new Persistent<Value>();
-		    result->backtrace->Reset(isolate, trycatch.StackTrace()->ToString());
-		}
-	    }
-	} else {
-	    Persistent<Value>* persistent = new Persistent<Value>();
-	    persistent->Reset(isolate, maybe_value.ToLocalChecked());
-	    result->value = persistent;
-	}
+                if (!trycatch.StackTrace().IsEmpty()) {
+                    result->backtrace = new Persistent<Value>();
+                    result->backtrace->Reset(isolate, trycatch.StackTrace()->ToString());
+                }
+            }
+        } else {
+            Persistent<Value>* persistent = new Persistent<Value>();
+            persistent->Reset(isolate, maybe_value.ToLocalChecked());
+            result->value = persistent;
+        }
     }
 
     return NULL;
 }
 
 
-PythonValue *convert_v8_to_python(Isolate* isolate, Handle<Value> &value) {
+BinaryValue *convert_v8_to_binary(Isolate* isolate, Handle<Value> &value) {
 
     HandleScope scope(isolate);
 
-    PythonValue *res = ALLOC(PythonValue);
+    BinaryValue *res = ALLOC(BinaryValue);
     res->len = 0;
     res->value = NULL;
     res->type = type_invalid;
 
-    if (value->IsNull() || value->IsUndefined()){
+    if (value->IsNull() || value->IsUndefined()) {
         res->type = type_null;
         res->value = NULL;
         return res;
@@ -224,7 +224,7 @@ PythonValue *convert_v8_to_python(Isolate* isolate, Handle<Value> &value) {
     if (value->IsInt32()) {
         res->type = type_integer;
         uint32_t val = value->Int32Value();
-        *((uint32_t *) &res->value) = val;
+        *(uint32_t *) &res->value = val;
         return res;
     }
 
@@ -233,25 +233,20 @@ PythonValue *convert_v8_to_python(Isolate* isolate, Handle<Value> &value) {
     if (value->IsNumber()) {
         res->type = type_double;
         double val = value->NumberValue();
-        *((double *) &res->value) = val;
+        *(double *) &res->value = val;
         return res;
     }
 
-    if (value->IsTrue()) {
+    if (value->IsBoolean()) {
         res->type = type_bool;
-        res->value = (void *) 1;
-      return res;
-    }
-
-    if (value->IsFalse()) {
-        res->type = type_bool;
-        res->value = (void *) 0;
+        *(int *) &res->value = (value->IsTrue() ? 1 : 0);
+        return res;
     }
 
     if (value->IsArray()) {
         Local<Array> arr = Local<Array>::Cast(value);
         size_t len = arr->Length();
-        PythonValue **ary = (PythonValue **) malloc(sizeof(PythonValue) * len);
+        BinaryValue **ary = (BinaryValue **) malloc(sizeof(BinaryValue *) * len);
         if (!ary) {
             free(res);
             return NULL;
@@ -259,13 +254,13 @@ PythonValue *convert_v8_to_python(Isolate* isolate, Handle<Value> &value) {
 
         for(uint32_t i=0; i < arr->Length(); i++) {
             Local<Value> element = arr->Get(i);
-            PythonValue *py_value = convert_v8_to_python(isolate, element);
-            if (py_value == NULL) {
+            BinaryValue *bin_value = convert_v8_to_binary(isolate, element);
+            if (bin_value == NULL) {
                 free(res);
                 free(ary);
                 return NULL;
             }
-            ary[i] = py_value;
+            ary[i] = bin_value;
         }
         res->type = type_array;
         res->len = len;
@@ -273,17 +268,27 @@ PythonValue *convert_v8_to_python(Isolate* isolate, Handle<Value> &value) {
         return res;
     }
 
-    // FIXME: function not supported yet
     if (value->IsFunction()){
         res->type = type_function;
         res->value = NULL;
         res->len = 0;
         return res;
-        // return rb_funcall(rb_cJavaScriptFunction, rb_intern("new"), 0);
+    }
+
+    if (value->IsDate()) {
+        res->type = type_date;
+        Local<Date> date = Local<Date>::Cast(value);
+
+        double timestamp = date->ValueOf();
+
+        *(double *) &res->value = timestamp;
+        return res;
     }
 
     if (value->IsObject()) {
         res->type = type_hash;
+
+        TryCatch trycatch(isolate);
 
         Local<Context> context = Context::New(isolate);
         Local<Object> object = value->ToObject();
@@ -293,7 +298,6 @@ PythonValue *convert_v8_to_python(Isolate* isolate, Handle<Value> &value) {
             uint32_t hash_len = props->Length();
 
             res->len = hash_len;
-            // FIXME overflow
             if (hash_len > 0) {
                 res->value = malloc(sizeof(void *) * hash_len * 2);
                 if (!res->value) {
@@ -306,12 +310,21 @@ PythonValue *convert_v8_to_python(Isolate* isolate, Handle<Value> &value) {
             for(uint32_t i=0; i < hash_len; i++) {
                 Local<Value> key = props->Get(i);
                 Local<Value> value = object->Get(key);
+                // this may have failed due to Get raising
 
-                PythonValue *py_key = convert_v8_to_python(isolate, key);
-                PythonValue *py_value = convert_v8_to_python(isolate, value);
-                // r_hash_aset(rb_hash, rb_key, rb_value);
-                ((PythonValue **) res->value)[i*2]   = py_key;
-                ((PythonValue **) res->value)[i*2+1] = py_value;
+                if (trycatch.HasCaught()) {
+                    // TODO isolate code that translates execption
+
+                    free(res->value);
+                    free(res);
+                    return NULL;
+                }
+
+                BinaryValue *bin_key = convert_v8_to_binary(isolate, key);
+                BinaryValue *bin_value = convert_v8_to_binary(isolate, value);
+
+                ((BinaryValue **) res->value)[i*2]   = bin_key;
+                ((BinaryValue **) res->value)[i*2+1] = bin_value;
             }
         } else {
             // empty hash
@@ -324,8 +337,16 @@ PythonValue *convert_v8_to_python(Isolate* isolate, Handle<Value> &value) {
     Local<String> rstr = value->ToString();
 
     res->type = type_str_utf8;
-    res->len = (size_t) rstr->Utf8Length();
-    res->value = (void *) strdup((char *) *v8::String::Utf8Value(rstr));
+
+    int str_len = rstr->Utf8Length();
+    res->len = str_len;
+    str_len++;
+    res->value = (char *) malloc(str_len);
+    if (!res->value) {
+        free(res);
+        return NULL;
+    }
+    rstr->WriteUtf8((char *) res->value, str_len);
     return res;
 }
 
@@ -333,20 +354,20 @@ PythonValue *convert_v8_to_python(Isolate* isolate, Handle<Value> &value) {
 void deallocate(void * data) {
     ContextInfo* context_info = (ContextInfo*)data;
     {
-	Locker lock(context_info->isolate);
+        Locker lock(context_info->isolate);
     }
 
     {
-	context_info->context->Reset();
-	delete context_info->context;
+        context_info->context->Reset();
+        delete context_info->context;
     }
 
     {
-	if (context_info->interrupted) {
-	    fprintf(stderr, "WARNING: V8 isolate was interrupted by Ruby, it can not be disposed and memory will not be reclaimed till the Ruby process exits.");
-	} else {
-	    context_info->isolate->Dispose();
-	}
+        if (context_info->interrupted) {
+            fprintf(stderr, "WARNING: V8 isolate was interrupted by Ruby, it can not be disposed and memory will not be reclaimed till the Ruby process exits.");
+        } else {
+            context_info->isolate->Dispose();
+        }
     }
 
     delete context_info->allocator;
@@ -354,8 +375,7 @@ void deallocate(void * data) {
 }
 
 
-// Python version of allocate()
-ContextInfo *PyMiniRacer_init_context() {
+ContextInfo *MiniRacer_init_context() {
     init_v8();
 
     ContextInfo* context_info = ALLOC(ContextInfo);
@@ -376,130 +396,124 @@ ContextInfo *PyMiniRacer_init_context() {
     context_info->context->Reset(context_info->isolate, context);
 
     return context_info;
-    // return Data_Wrap_Struct(klass, NULL, deallocate, (void*)context_info);
-    
 }
 
-PythonValue* PyMiniRacer_eval_context_unsafe(ContextInfo *context_info, char *str) {
+BinaryValue* MiniRacer_eval_context_unsafe(ContextInfo *context_info,
+                                           char *utf_str,
+                                           int   str_len) {
 
     EvalParams eval_params;
     EvalResult eval_result;
 
-    PythonValue *result = NULL;
+    BinaryValue *result = NULL;
 
-    PythonValue *message = NULL;
-    PythonValue *backtrace = NULL;
+    BinaryValue *message = NULL;
+    BinaryValue *backtrace = NULL;
 
     if (context_info == NULL) {
         return NULL;
     }
 
-    if (str == NULL) {
+    if (utf_str == NULL) {
         return NULL;
     }
 
     {
-	Locker lock(context_info->isolate);
-	Isolate::Scope isolate_scope(context_info->isolate);
-	HandleScope handle_scope(context_info->isolate);
+        Locker lock(context_info->isolate);
+        Isolate::Scope isolate_scope(context_info->isolate);
+        HandleScope handle_scope(context_info->isolate);
 
-    Local<String> eval = String::NewFromUtf8(context_info->isolate, str,
-						  NewStringType::kNormal, (int)strlen(str)).ToLocalChecked();
+        Local<String> eval = String::NewFromUtf8(context_info->isolate,
+                                                 utf_str,
+                                                 NewStringType::kNormal,
+                                                 str_len).ToLocalChecked();
 
-	eval_params.context_info = context_info;
-	eval_params.eval = &eval;
-	eval_params.result = &eval_result;
-	eval_params.timeout = 0;
-    // FIXME - no support for timeout
-	// VALUE timeout = rb_iv_get(self, "@timeout");
-	// if (timeout != Qnil) {
-	//     eval_params.timeout = (useconds_t)NUM2LONG(timeout);
-	// }
+        eval_params.context_info = context_info;
+        eval_params.eval = &eval;
+        eval_params.result = &eval_result;
+        eval_params.timeout = 0;
 
-	eval_result.message = NULL;
-	eval_result.backtrace = NULL;
+        // FIXME - we should allow setting a timeout here
+        //     eval_params.timeout = (useconds_t)NUM2LONG(timeout);
 
-    // Ruby has a convenient way to call execution while releasing the GIL
-    // https://github.com/ruby/ruby/blob/06c57968707ba5a09e6347237fd289673269247b/thread.c#L1313
-	// rb_thread_call_without_gvl(nogvl_context_eval, &eval_params, unblock_eval, &eval_params);
-    nogvl_context_eval(&eval_params);
+        eval_result.message = NULL;
+        eval_result.backtrace = NULL;
 
-	if (eval_result.message != NULL) {
-	    Local<Value> tmp = Local<Value>::New(context_info->isolate, *eval_result.message);
-	    message = convert_v8_to_python(context_info->isolate, tmp);
-	    eval_result.message->Reset();
-	    delete eval_result.message;
-	}
+        nogvl_context_eval(&eval_params);
 
-	if (eval_result.backtrace != NULL) {
-	    Local<Value> tmp = Local<Value>::New(context_info->isolate, *eval_result.backtrace);
-	    backtrace = convert_v8_to_python(context_info->isolate, tmp);
-	    eval_result.backtrace->Reset();
-	    delete eval_result.backtrace;
-	}
+        if (eval_result.message != NULL) {
+            Local<Value> tmp = Local<Value>::New(context_info->isolate,
+                                                 *eval_result.message);
+            message = convert_v8_to_binary(context_info->isolate, tmp);
+            eval_result.message->Reset();
+            delete eval_result.message;
+        }
+
+        if (eval_result.backtrace != NULL) {
+            Local<Value> tmp = Local<Value>::New(context_info->isolate,
+                                                 *eval_result.backtrace);
+            backtrace = convert_v8_to_binary(context_info->isolate, tmp);
+            eval_result.backtrace->Reset();
+            delete eval_result.backtrace;
+        }
     }
 
-    // NOTE: this is very important, we can not do an rb_raise from within
+    // NOTE: this is very important, we can not do an raise from within
     // a v8 scope, if we do the scope is never cleaned up properly and we leak
     if (!eval_result.parsed) {
-        result = ALLOC(PythonValue);
-        result->type = type_exception;
+        result = ALLOC(BinaryValue);
+        result->type = type_parse_exception;
         // FIXME: is the value being freed in all time here?
         if(message && TYPE(message) == T_STRING) {
             result->value = strdup(PSTRING_PTR(message));
         } else {
-            result->value = strdup("Unknown JavaScript Error during parse");
+            result->value = strdup("Unknown JavaScript error during parse");
         }
         return result;
     }
 
     if (!eval_result.executed) {
-        result = ALLOC(PythonValue);
-        result->type = type_exception;
+        result = ALLOC(BinaryValue);
+        result->type = type_execute_exception;
 
-        if(message && TYPE(message) == T_STRING) {
-            result->value = PSTRING_PTR(message);
-        } else {
-            result->value = strdup("Unknown JavaScript Error during parse");
-        }
-
-        if(TYPE(message) == T_STRING && TYPE(backtrace) == T_STRING) {
+        if(message && TYPE(message) == T_STRING && backtrace && TYPE(backtrace) == T_STRING) {
             char *msg_str = PSTRING_PTR(message);
             char *backtrace_str = PSTRING_PTR(backtrace);
             size_t dest_size = strlen(msg_str) + strlen(backtrace_str) + 1;
             char *dest = (char *) malloc(dest_size);
             if (!dest) {
-                PythonValueFree(message);
+                BinaryValueFree(message);
+                free(result);
                 return NULL;
             }
             snprintf(dest, dest_size, "%s\n%s", msg_str, backtrace_str);
 
             result->value = dest;
             result->len = dest_size;
-        } else if(TYPE(message) == T_STRING) {
+        } else if(message && TYPE(message) == T_STRING) {
             result->value = strdup(PSTRING_PTR(message));
         } else {
-            result->value = strdup("Unknown JavaScript Error during execution");
+            result->value = strdup("Unknown JavaScript error during execution");
         }
-        PythonValueFree(message);
-        PythonValueFree(backtrace);
+        BinaryValueFree(message);
+        BinaryValueFree(backtrace);
 
         return result;
     }
-    PythonValueFree(message);
-    PythonValueFree(backtrace);
+    BinaryValueFree(message);
+    BinaryValueFree(backtrace);
 
     // New scope for return value
     {
-	Locker lock(context_info->isolate);
-	Isolate::Scope isolate_scope(context_info->isolate);
-	HandleScope handle_scope(context_info->isolate);
+        Locker lock(context_info->isolate);
+        Isolate::Scope isolate_scope(context_info->isolate);
+        HandleScope handle_scope(context_info->isolate);
 
-	Local<Value> tmp = Local<Value>::New(context_info->isolate, *eval_result.value);
-	result = convert_v8_to_python(context_info->isolate, tmp);
+        Local<Value> tmp = Local<Value>::New(context_info->isolate, *eval_result.value);
+        result = convert_v8_to_binary(context_info->isolate, tmp);
 
-	eval_result.value->Reset();
-	delete eval_result.value;
+        eval_result.value->Reset();
+        delete eval_result.value;
     }
 
     return result;
@@ -507,21 +521,21 @@ PythonValue* PyMiniRacer_eval_context_unsafe(ContextInfo *context_info, char *st
 
 extern "C" {
 
-PythonValue* pmr_eval_context(ContextInfo *context_info, char *str) {
-    PythonValue *res = PyMiniRacer_eval_context_unsafe(context_info, str);
+BinaryValue* mr_eval_context(ContextInfo *context_info, char *str, int len) {
+    BinaryValue *res = MiniRacer_eval_context_unsafe(context_info, str, len);
     return res;
 }
 
-ContextInfo *pmr_init_context() {
-    ContextInfo *res =  PyMiniRacer_init_context();
+ContextInfo *mr_init_context() {
+    ContextInfo *res = MiniRacer_init_context();
     return res;
 }
 
-void pmr_free_value(PythonValue *val) {
-    PythonValueFree(val);
+void mr_free_value(BinaryValue *val) {
+    BinaryValueFree(val);
 }
 
-void pmr_free_context(ContextInfo *context_info) {
+void mr_free_context(ContextInfo *context_info) {
     deallocate(context_info);
 }
 
