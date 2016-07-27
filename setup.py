@@ -55,31 +55,6 @@ V8_LIB_DIRECTORY = local_path('py_mini_racer/extension/v8/v8')
 V8_STATIC_LIBRARIES = ['libv8_base.a', 'libv8_libbase.a', 'libv8_libplatform.a',
                        'libv8_nosnapshot.a']
 
-
-COMPILE_CMD = "clang++ -c py_mini_racer/extension/mini_racer_extension.cc -I {v8_lib_dir} \
-        -D_XOPEN_SOURCE -D_DARWIN_C_SOURCE                     \
-        -D_DARWIN_UNLIMITED_SELECT -D_REENTRANT                \
-        -Wall -g -rdynamic -std=c++0x -fpermissive -fno-common \
-        -o {output_dir}/mini_racer.o"
-
-# MAC  =         -D_XOPEN_SOURCE -D_DARWIN_C_SOURCE                     \
-#         -D_DARWIN_UNLIMITED_SELECT -D_REENTRANT                \
-#         -Wall -std=c++0x
-
-# -g debug
-
-LINK_CMD = "clang++ -dynamic -bundle {output_dir}/mini_racer.o \
-    -stdlib=libstdc++                                          \
-    -fstack-protector                                          \
-    -Wl,-undefined,dynamic_lookup                              \
-    -Wl,-multiply_defined,suppress                             \
-    -lobjc -lpthread -ldl                    \
-    {v8_static_libraries} \
-    -o {ext_path}"
-
-# MAC -bundle -lobjc
-
-
 def is_v8_build():
     """ Check if v8 has been built
     """
@@ -89,12 +64,15 @@ def is_v8_build():
 def get_static_lib_paths():
     """ Return the required static libraries path
     """
-    return [join(V8_LIB_DIRECTORY, "out/native/", static_file) for static_file in V8_STATIC_LIBRARIES]
+    pre = '-Wl,--start-group'
+    libs = [join(V8_LIB_DIRECTORY, "out/native/", static_file) for static_file in V8_STATIC_LIBRARIES]
+    post = '-Wl,--end-group'
+    return [pre] + libs + [post]
 
 
 EXTRA_LINK_ARGS = [
     '-ldl',
-    '-fstack-protector'
+    '-fstack-protector',
 ]
 
 
@@ -126,21 +104,6 @@ class MiniRacerBuildExt(build_ext):
 
         build_ext.build_extension(self, ext)
 
-        # output_dir = self.build_temp
-        # ext_path = self.get_ext_fullpath(ext.name)
-        # try:
-        #     mkdir(output_dir)
-        # except OSError:
-        #     pass
-
-        # compile_cmd = COMPILE_CMD.format(output_dir=output_dir, v8_lib_dir=V8_LIB_DIRECTORY)
-        # spawn(shlex.split(compile_cmd))
-
-        # link_cmd = LINK_CMD.format(ext_path=ext_path,
-        #                            v8_static_libraries=" ".join(get_static_lib_paths()),
-        #                            output_dir=output_dir)
-        # spawn(shlex.split(link_cmd))
-
 
 class MiniRacerBuildV8(Command):
 
@@ -164,8 +127,8 @@ setup(
     version='0.1.0',
     description="Minimal, modern embedded V8 for Python.",
     long_description=readme + '\n\n' + history,
-    author="Boris FELD",
-    author_email='boris@sqreen.io',
+    author="Jean-Baptiste AVIAT, Boris FELD",
+    author_email='jb@sqreen.io, boris@sqreen.io',
     url='https://github.com/sqreen/py_mini_racer',
     packages=[
         'py_mini_racer',
@@ -175,7 +138,6 @@ setup(
     package_dir={'py_mini_racer':
                  'py_mini_racer'},
     include_package_data=True,
-    # package_data={'py_mini_racer': ['mini_racer_extension.bundle']},
     setup_requires=setup_requires,
     install_requires=requirements,
     license="ISCL",
