@@ -55,7 +55,7 @@ V8_LIB_DIRECTORY = local_path('py_mini_racer/extension/v8/v8')
 V8_STATIC_LIBRARIES = ['libv8_base.a', 'libv8_libbase.a', 'libv8_libplatform.a',
                        'libv8_nosnapshot.a']
 
-def is_v8_build():
+def is_v8_built():
     """ Check if v8 has been built
     """
     return all(isfile(static_filepath) for static_filepath in get_static_lib_paths())
@@ -64,11 +64,14 @@ def is_v8_build():
 def get_static_lib_paths():
     """ Return the required static libraries path
     """
-    pre = '-Wl,--start-group'
-    libs = [join(V8_LIB_DIRECTORY, "out/native/", static_file) for static_file in V8_STATIC_LIBRARIES]
-    post = '-Wl,--end-group'
-    return [pre] + libs + [post]
-
+    libs = []
+    is_linux = sys.platform.startswith('linux')
+    if is_linux:
+        libs += ['-Wl,--start-group']
+    libs += [join(V8_LIB_DIRECTORY, "out/native/", static_file) for static_file in V8_STATIC_LIBRARIES]
+    if is_linux:
+        libs += ['-Wl,--end-group']
+    return libs
 
 EXTRA_LINK_ARGS = [
     '-ldl',
@@ -98,7 +101,8 @@ class MiniRacerBuildExt(build_ext):
     def build_extension(self, ext):
         """ Compile manually the py_mini_racer extension, bypass setuptools
         """
-        self.run_command('build_v8')
+        if not is_v8_built():
+            self.run_command('build_v8')
 
         self.debug = True
 
@@ -119,7 +123,7 @@ class MiniRacerBuildV8(Command):
         pass
 
     def run(self):
-        if not is_v8_build():
+        if not is_v8_built():
             build_v8()
 
 setup(
