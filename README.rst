@@ -21,10 +21,33 @@ Minimal, modern embedded V8 for Python.
 Features
 --------
 
-* TODO
+* Unicode support
+* Thread safe
+* Re-usable contexts
+* Binary object is Python agnostic
+
+Example
+-------
+
+.. code:: python
+    >>> from py_mini_racer import py_mini_racer
+    >>> ctx = py_mini_racer.Context()
+    >>> ctx.eval('1+1')
+    2
+    >>> ctx.eval("var x = {company: 'Sqreen'}; x.company")
+    u'Sqreen'
+    >>> print ctx.eval(u"'\N{HEAVY BLACK HEART}'")
+    ❤
+    >>> ctx.eval("var fun = () => ({ foo: 1 });")
+    >>> ctx.call("fun")
+    {u'foo': 1}
 
 Credits
----------
+-------
+
+PyMiniRacer is inspired by mini_racer_, built for the Ruby world by Sam Saffron.
+
+.. _mini_racer: :https://github.com/SamSaffron/mini_racer
 
 Tools used in rendering this package:
 
@@ -35,7 +58,7 @@ Tools used in rendering this package:
 .. _`cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
 
 Build
---------
+-----
 
 You can build v8 with the command "python setup.py build_v8".
 
@@ -44,7 +67,7 @@ You can also build the ctype extension with "python setup.py build_ext" which au
 You can generate a wheel with the command "python setup.py bdist_wheel" which build the extension and v8.
 
 Tests
---------
+-----
 
 If you want to run the tests, you need to build V8 first, then launch:
 
