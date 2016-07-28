@@ -76,8 +76,12 @@ class MiniRacer(object):
     def eval(self, js_str):
         """ Eval the JavaScript string """
 
+        if isinstance(js_str, unicode):
+            bytes_val = js_str.encode("utf8")
+        else:
+            bytes_val = js_str
+
         self.lock.acquire()
-        bytes_val = js_str.encode("utf8")
         res = self.ext.mr_eval_context(self.ctx, bytes_val, len(bytes_val))
         self.lock.release()
 
@@ -96,6 +100,7 @@ class MiniRacer(object):
 
     def __del__(self):
         """ Free the context """
+
         self.ext.mr_free_context(self.ctx)
 
 
