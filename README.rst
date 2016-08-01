@@ -53,7 +53,7 @@ bits. You need pip >= 1.4 and setuptools >= 0.8.
 
 .. code:: bash
 
-    $ pip install pyminiracer
+    $ pip install py-mini-racer
 
 Build
 -----
