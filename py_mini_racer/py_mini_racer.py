@@ -187,7 +187,8 @@ class PythonValue(ctypes.Structure):
             raise JSEvalException(msg)
         elif self.type == PythonTypes.date.value:
             timestamp = self._double_value()
-            result = datetime.datetime.utcfromtimestamp(timestamp)
+            # JS timestamp are milliseconds, in python we are in seconds
+            result = datetime.datetime.utcfromtimestamp(timestamp / 1000.)
         else:
             raise WrongReturnTypeException("unknown type %d" % self.type)
         return result

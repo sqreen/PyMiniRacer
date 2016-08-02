@@ -91,10 +91,14 @@ class Test(unittest.TestCase):
         with self.assertRaises(py_mini_racer.JSConversionException):
             self.mr.eval(fun)
 
-    def test_date(self):
+    def test_timestamp(self):
         val = int(time.time())
-        res = self.mr.eval("var a = new Date(%d); a" % val)
+        res = self.mr.eval("var a = new Date(%d); a" % (val * 1000))
         self.assertEqual(res, datetime.utcfromtimestamp(val))
+
+    def test_date(self):
+        res = self.mr.eval("var a = new Date(Date.UTC(2014, 0, 2, 3, 4, 5)); a")
+        self.assertEqual(res, datetime(2014, 1, 2, 3, 4, 5))
 
 if __name__ == '__main__':
     import sys
