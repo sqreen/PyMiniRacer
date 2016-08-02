@@ -4,7 +4,8 @@
 import pip
 import sys
 
-from os.path import dirname, abspath, join, isfile
+from subprocess import check_call
+from os.path import dirname, abspath, join, isfile, isdir
 from pip.req import parse_requirements
 
 try:
@@ -55,10 +56,17 @@ V8_LIB_DIRECTORY = local_path('py_mini_racer/extension/v8/v8')
 V8_STATIC_LIBRARIES = ['libv8_base.a', 'libv8_libbase.a', 'libv8_libplatform.a',
                        'libv8_nosnapshot.a']
 
+
 def is_v8_built():
     """ Check if v8 has been built
     """
     return all(isfile(static_filepath) for static_filepath in get_static_lib_paths())
+
+
+def is_depot_tools_checkout():
+    """ Check if the depot tools submodule has been checkouted
+    """
+    return isdir(local_path('vendor/depot_tools'))
 
 
 def get_static_lib_paths():
@@ -123,7 +131,15 @@ class MiniRacerBuildV8(Command):
         pass
 
     def run(self):
+
+        if not is_depot_tools_checkout():
+            print("cloning depot tools submodule")
+            # We need a git repository for using submodules :(
+            check_call(['git', 'init'])
+            check_call(['git', 'clone', 'https://chromium.googlesource.com/chromium/tools/depot_tools.git', 'vendor/depot_tools'])
+
         if not is_v8_built():
+            print("building v8")
             build_v8()
 
 setup(
