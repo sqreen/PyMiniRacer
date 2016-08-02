@@ -2,11 +2,11 @@
 """ PyMiniRacer main wrappers """
 # pylint: disable=bad-whitespace,too-few-public-methods
 
-import time
 import json
 import ctypes
 import threading
 import pkg_resources
+import datetime
 
 import enum
 
@@ -187,7 +187,7 @@ class PythonValue(ctypes.Structure):
             raise JSEvalException(msg)
         elif self.type == PythonTypes.date.value:
             timestamp = self._double_value()
-            result = time.ctime(timestamp) 
+            result = datetime.datetime.utcfromtimestamp(timestamp)
         else:
             raise WrongReturnTypeException("unknown type %d" % self.type)
         return result

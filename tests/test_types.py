@@ -7,7 +7,10 @@ import unittest
 import json
 import time
 
+from datetime import datetime
+
 from py_mini_racer import py_mini_racer
+
 
 class Test(unittest.TestCase):
     """ Test basic types """
@@ -25,7 +28,6 @@ class Test(unittest.TestCase):
 
         self.mr = py_mini_racer.MiniRacer()
 
-
     def test_str(self):
         self.valid("'a string'")
         self.valid("'a ' + 'string'")
@@ -34,7 +36,6 @@ class Test(unittest.TestCase):
         ustr = u"\N{GREEK CAPITAL LETTER DELTA}"
         res = self.mr.eval("'" + ustr + "'")
         self.assertEqual(ustr, res)
-
 
     def test_numbers(self):
         self.valid(1)
@@ -81,7 +82,7 @@ class Test(unittest.TestCase):
         self.assertTrue(isinstance(res, py_mini_racer.JSFunction))
 
     def test_invalid_key(self):
-        
+
         fun = """
             var o = {};
             o.__defineGetter__("bar", function() { return null(); });
@@ -93,7 +94,7 @@ class Test(unittest.TestCase):
     def test_date(self):
         val = int(time.time())
         res = self.mr.eval("var a = new Date(%d); a" % val)
-        self.assertEqual(res, time.ctime(val))
+        self.assertEqual(res, datetime.utcfromtimestamp(val))
 
 if __name__ == '__main__':
     import sys
