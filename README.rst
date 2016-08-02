@@ -5,18 +5,11 @@ Python Mini Racer
 .. image:: https://img.shields.io/pypi/v/py_mini_racer.svg
         :target: https://pypi.python.org/pypi/py_mini_racer
 
-.. image:: https://img.shields.io/travis/sqreen/py_mini_racer.svg
-        :target: https://travis-ci.org/sqreen/py_mini_racer
-
-.. image:: https://readthedocs.org/projects/py_mini_racer/badge/?version=latest
-        :target: https://readthedocs.org/projects/py_mini_racer/?badge=latest
-        :alt: Documentation Status
-
-
 Minimal, modern embedded V8 for Python.
 
 * Free software: ISC license
-* Documentation: https://py_mini_racer.readthedocs.org.
+
+.. image:: data/py_mini_racer.png
 
 Features
 --------
@@ -26,6 +19,9 @@ Features
 * Re-usable contexts
 * Binary object is Python agnostic
 
+MiniRacer can be easily used by Django or Flask projects to minify assets, run
+babel or compile CoffeeScript.
+
 Examples
 --------
 
@@ -34,7 +30,7 @@ py_mini_racer is straightforward to use:
 .. code-block:: python
 
     >>> from py_mini_racer import py_mini_racer
-    >>> ctx = py_mini_racer.Context()
+    >>> ctx = py_mini_racer.MiniRacer()
     >>> ctx.eval('1+1')
     2
     >>> ctx.eval("var x = {company: 'Sqreen'}; x.company")
@@ -45,11 +41,39 @@ py_mini_racer is straightforward to use:
     >>> ctx.call("fun")
     {u'foo': 1}
 
+Variables are kept inside of a context:
+
+.. code-block:: python
+
+    >>> ctx.eval("x.company")
+    u'Sqreen'
+
+
+.. code-block:: javascript
+    [1,2,3].map(n => n + 1);
+
+Compatibility
+-------------
+
+PyMiniRacer is only compatible with Python 2.7 at the moment. Python 3 support
+is on its way.
+
+Binary builds availability
+--------------------------
+
+The PyMiniRacer binary builds have been tested on x86_64 with:
+* OSX 10.11
+* Ubuntu >= 14.04
+* Debian >= 8
+* CentOS >= 7
+
+It should work on any Linux with a libc >= 2.17.
+
 Installation
 ------------
 
-We built Python wheels (prebuilt binaries) for OSX 64 bits and Linux 32 & 64
-bits. You need pip >= 1.4 and setuptools >= 0.8.
+We built Python wheels (prebuilt binaries) for OSX 64 bits and Linux 64 bits -
+most recent distributions. You need pip >= 1.4 and setuptools >= 0.8.
 
 .. code:: bash
 
@@ -70,7 +94,7 @@ You can also build the ctype extension:
 
     $ python setup.py build_ext
 
-Which automatically build v8.
+Which automatically builds v8.
 
 You can generate a wheel with the command:
 
@@ -92,6 +116,10 @@ If you want to run the tests, you need to build V8 first, then launch:
 Credits
 -------
 
+Built with love by Sqreen_.
+
+.. _Sqreen: https://www.sqreen.io
+
 PyMiniRacer is inspired by mini_racer_, built for the Ruby world by Sam Saffron.
 
 .. _`mini_racer`: https://github.com/SamSaffron/mini_racer
@@ -107,4 +135,6 @@ Tools used in rendering this package:
 Todo
 ----
 
+Lower libc version needed.
 Export V8 version.
+Fix circular structures export.
