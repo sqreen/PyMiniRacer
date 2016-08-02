@@ -63,12 +63,22 @@ Binary builds availability
 --------------------------
 
 The PyMiniRacer binary builds have been tested on x86_64 with:
+
 * OSX 10.11
 * Ubuntu >= 14.04
 * Debian >= 8
 * CentOS >= 7
 
-It should work on any Linux with a libc >= 2.17.
+You need pip >= 8.1 to install the wheels - you can check and upgrade yours in
+this way:
+
+.. code-block:: bash
+
+    $ pip --version
+    $ pip install --upgrade pip
+
+It should work on any Linux with a libc >= 2.17 and a wheel compatible pip (>=
+8.1).
 
 Installation
 ------------
@@ -120,6 +130,10 @@ Credits
 Built with love by Sqreen_.
 
 .. _Sqreen: https://www.sqreen.io
+
+PyMiniRacer launch was described in `this blog post`_.
+
+.. _`this blog post`: https://blog.sqreen.io/embedding-javascript-into-python/
 
 PyMiniRacer is inspired by mini_racer_, built for the Ruby world by Sam Saffron.
 
