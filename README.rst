@@ -50,6 +50,7 @@ Variables are kept inside of a context:
 
 
 .. code-block:: javascript
+
     [1,2,3].map(n => n + 1);
 
 Compatibility
