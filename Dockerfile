@@ -15,16 +15,20 @@ RUN apt-get update &&       \
 
 WORKDIR /code
 
-COPY . /code/
+RUN python3 -m pip install auditwheel
 
-RUN git submodule update
+RUN git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git vendor/depot_tools
+
+COPY . /code/
 
 RUN python setup.py build_v8
 
-RUN pip wheel . -w dist
+RUN python -u setup.py bdist_wheel
 
-RUN python3 -m pip install auditwheel
+RUN python3 -u setup.py bdist_wheel
 
-RUN auditwheel repair dist/py_mini_racer-*.whl
+RUN for i in $(ls dist/*.whl); do auditwheel repair $i; done;
+
+RUN ls wheelhouse
 
 CMD bash

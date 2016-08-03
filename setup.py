@@ -3,6 +3,7 @@
 
 import pip
 import sys
+import codecs
 
 from subprocess import check_call
 from os.path import dirname, abspath, join, isfile, isdir
@@ -18,10 +19,10 @@ except ImportError:
 from py_mini_racer.extension.v8_build import build_v8
 
 
-with open('README.rst') as readme_file:
+with codecs.open('README.rst', 'r', encoding='utf8') as readme_file:
     readme = readme_file.read()
 
-with open('HISTORY.rst') as history_file:
+with codecs.open('HISTORY.rst', 'r', encoding='utf8') as history_file:
     history = history_file.read().replace('.. :changelog:', '')
 
 parsed_requirements = parse_requirements(
@@ -60,13 +61,20 @@ V8_STATIC_LIBRARIES = ['libv8_base.a', 'libv8_libbase.a', 'libv8_libplatform.a',
 def is_v8_built():
     """ Check if v8 has been built
     """
-    return all(isfile(static_filepath) for static_filepath in get_static_lib_paths())
+    return all(isfile(static_filepath) for static_filepath in get_raw_static_lib_path())
 
 
 def is_depot_tools_checkout():
     """ Check if the depot tools submodule has been checkouted
     """
     return isdir(local_path('vendor/depot_tools'))
+
+
+def get_raw_static_lib_path():
+    """ Return the list of the static libraries files ONLY, use
+    get_static_lib_paths to get the right compilation flags
+    """
+    return [join(V8_LIB_DIRECTORY, "out/native/", static_file) for static_file in V8_STATIC_LIBRARIES]
 
 
 def get_static_lib_paths():
@@ -76,7 +84,7 @@ def get_static_lib_paths():
     is_linux = sys.platform.startswith('linux')
     if is_linux:
         libs += ['-Wl,--start-group']
-    libs += [join(V8_LIB_DIRECTORY, "out/native/", static_file) for static_file in V8_STATIC_LIBRARIES]
+    libs += get_raw_static_lib_path()
     if is_linux:
         libs += ['-Wl,--end-group']
     return libs
@@ -134,7 +142,7 @@ class MiniRacerBuildV8(Command):
 
         if not is_depot_tools_checkout():
             print("cloning depot tools submodule")
-            # We need a git repository for using submodules :(
+            # Clone the depot_tools repository, easier than using submodules
             check_call(['git', 'init'])
             check_call(['git', 'clone', 'https://chromium.googlesource.com/chromium/tools/depot_tools.git', 'vendor/depot_tools'])
 
