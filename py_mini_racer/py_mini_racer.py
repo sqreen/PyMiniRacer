@@ -2,6 +2,7 @@
 """ PyMiniRacer main wrappers """
 # pylint: disable=bad-whitespace,too-few-public-methods
 
+import sys
 import json
 import ctypes
 import threading
@@ -40,6 +41,31 @@ class WrongReturnTypeException(MiniRacerBaseException):
 class JSFunction(object):
     """ type for JS functions """
     pass
+
+
+def is_unicode(value):
+    """ Check if a value is a valid unicode string, compatible with python 2 and python 3
+
+    >>> is_unicode(u'foo')
+    True
+    >>> is_unicode(u'✌')
+    True
+    >>> is_unicode(b'foo')
+    False
+    >>> is_unicode(42)
+    False
+    >>> is_unicode(('abc',))
+    False
+    """
+    python_version = sys.version_info[0]
+
+    if python_version == 2:
+        return isinstance(value, unicode)
+    elif python_version == 3:
+        return isinstance(value, str)
+    else:
+        raise NotImplementedError()
+
 
 class MiniRacer(object):
     """ Ctypes wrapper arround binary mini racer
@@ -80,7 +106,7 @@ class MiniRacer(object):
     def eval(self, js_str):
         """ Eval the JavaScript string """
 
-        if isinstance(js_str, unicode):
+        if is_unicode(js_str):
             bytes_val = js_str.encode("utf8")
         else:
             bytes_val = js_str

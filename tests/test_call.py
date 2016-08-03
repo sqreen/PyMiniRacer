@@ -23,6 +23,6 @@ class TestEval(unittest.TestCase):
 
         self.mr.eval(js_func)
 
-        self.assertEqual(self.mr.call('f', range(5)), 5)
-        self.assertEqual(self.mr.call('f', range(10)), 10)
-        self.assertEqual(self.mr.call('f', range(20)), 20)
+        self.assertEqual(self.mr.call('f', list(range(5))), 5)
+        self.assertEqual(self.mr.call('f', list(range(10))), 10)
+        self.assertEqual(self.mr.call('f', list(range(20))), 20)
