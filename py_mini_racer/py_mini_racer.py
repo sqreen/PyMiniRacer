@@ -5,12 +5,16 @@
 import json
 import ctypes
 import threading
-import pkg_resources
 import datetime
+import fnmatch
+
+from pkg_resources import resource_listdir, resource_filename
 
 import enum
 
-EXTENSION_PATH = pkg_resources.resource_filename('py_mini_racer', '_v8.so')
+# In python 3 the extension file name depends on the python version
+EXTENSION_NAME = fnmatch.filter(resource_listdir('py_mini_racer', '.'), '_v8*.so')[0]
+EXTENSION_PATH = resource_filename('py_mini_racer', EXTENSION_NAME)
 
 
 class MiniRacerBaseException(Exception):
