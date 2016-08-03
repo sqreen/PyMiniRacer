@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
 import pip
 import sys
 import codecs
+import fnmatch
 
 from subprocess import check_call
 from os.path import dirname, abspath, join, isfile, isdir
@@ -56,12 +58,13 @@ def local_path(path):
 V8_LIB_DIRECTORY = local_path('py_mini_racer/extension/v8/v8')
 V8_STATIC_LIBRARIES = ['libv8_base.a', 'libv8_libbase.a', 'libv8_libplatform.a',
                        'libv8_nosnapshot.a']
+BASE_STATIC_LIBRARIES = join(V8_LIB_DIRECTORY, "out/native/")
 
 
 def is_v8_built():
     """ Check if v8 has been built
     """
-    return all(isfile(static_filepath) for static_filepath in get_raw_static_lib_path())
+    return len(get_raw_static_lib_path()) == len(V8_STATIC_LIBRARIES)
 
 
 def is_depot_tools_checkout():
@@ -74,7 +77,17 @@ def get_raw_static_lib_path():
     """ Return the list of the static libraries files ONLY, use
     get_static_lib_paths to get the right compilation flags
     """
-    return [join(V8_LIB_DIRECTORY, "out/native/", static_file) for static_file in V8_STATIC_LIBRARIES]
+    matches = []
+    generated_libraries = []
+    for root, dirnames, filenames in os.walk(BASE_STATIC_LIBRARIES):
+        for filename in fnmatch.filter(filenames, '*.a'):
+            generated_libraries.append(join(root, filename))
+
+    for lib in V8_STATIC_LIBRARIES:
+        match = fnmatch.filter(generated_libraries, "*{}".format(lib))
+        if match:
+            matches.append(match[0])
+    return matches
 
 
 def get_static_lib_paths():
