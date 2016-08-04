@@ -48,9 +48,9 @@ class Test(unittest.TestCase):
     def test_arrays(self):
         self.valid([1])
         self.valid([])
-        self.valid([1,2,3])
+        self.valid([1, 2, 3])
         # Nested
-        self.valid([1,2,['a', 1]])
+        self.valid([1, 2, ['a', 1]])
 
     def test_none(self):
         self.valid(None)
@@ -67,10 +67,10 @@ class Test(unittest.TestCase):
             1: [
                 1, 2, 'qwe', {
                     'z': [
-                        4,5,6, {
+                        4, 5, 6, {
                             'eqewr': 1,
                             'zxczxc': 'qweqwe',
-                            'z': { 1: 2 }
+                            'z': {1: 2}
                         }
                     ]
                 }
@@ -99,6 +99,21 @@ class Test(unittest.TestCase):
     def test_date(self):
         res = self.mr.eval("var a = new Date(Date.UTC(2014, 0, 2, 3, 4, 5)); a")
         self.assertEqual(res, datetime(2014, 1, 2, 3, 4, 5))
+
+    def test_exception(self):
+        js_source = """
+        var f = function(arg) {
+            throw 'error: '+arg
+            return nil
+        }"""
+
+        self.mr.eval(js_source)
+
+        with self.assertRaises(py_mini_racer.JSEvalException) as cm:
+            self.mr.eval("f(42)")
+
+        self.assertIn('error: 42', cm.exception.args[0])
+
 
 if __name__ == '__main__':
     import sys
