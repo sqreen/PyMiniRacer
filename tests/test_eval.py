@@ -64,8 +64,6 @@ class Test(unittest.TestCase):
             context.eval(js_source)
 
 
-
-
 if __name__ == '__main__':
     import sys
     sys.exit(unittest.main())

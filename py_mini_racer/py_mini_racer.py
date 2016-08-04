@@ -214,7 +214,7 @@ class PythonValue(ctypes.Structure):
             raise JSParseException(msg)
         elif self.type == PythonTypes.execute_exception.value:
             msg = ctypes.c_char_p(self.value).value
-            raise JSEvalException(msg)
+            raise JSEvalException(msg.decode('utf-8', errors='replace'))
         elif self.type == PythonTypes.date.value:
             timestamp = self._double_value()
             # JS timestamp are milliseconds, in python we are in seconds

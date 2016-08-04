@@ -6,6 +6,8 @@ History
 UNRELEASED
 ---------------------
 
+* Ensure JSEvalException message is converted to unicode
+
 0.1.3 (2016-08-04)
 ---------------------
 
