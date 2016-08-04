@@ -1,0 +1,9 @@
+FROM python:3.5
+
+VOLUME ["/code"]
+
+WORKDIR /code
+
+RUN pip install wheel
+
+CMD python setup.py bdist_wheel && ls dist/
