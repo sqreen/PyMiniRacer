@@ -31,6 +31,7 @@ clean-build:
 	rm -fr build/
 	rm -fr dist/
 	rm -fr .eggs/
+	rm -Rf py_mini_racer/*.so
 	find . -name '*.egg-info' -exec rm -fr {} +
 	find . -name '*.egg' -exec rm -f {} +
 
@@ -79,6 +80,29 @@ dist: clean
 	python setup.py sdist
 	python setup.py bdist_wheel
 	ls -l dist
+
+docker-build: clean
+	# Sdist
+	python setup.py sdist
+
+	# Generate host wheels
+	python setup.py bdist_wheel
+	python3 setup.py bdist_wheel
+
+	# Generate linux wheels
+	docker-compose build
+	# Clean the existing images
+	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code ubuntu rm -Rf /code/dist /code/wheelhouse
+	# Generate wheels one by one
+	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code pyminiracer_py_mini_racer_py27
+	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code pyminiracer_py_mini_racer_py34
+	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code pyminiracer_py_mini_racer_py35
+	# Fix them
+	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code pyminiracer_py_mini_racer_auditwheel_repair
+	# List generated wheels
+	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code ubuntu ls /code/wheelhouse
+	# Recover them
+	docker run --rm=true -v py_mini_racer_build_volume:/code -v $(shell pwd)/dist:/dist -w /code/wheelhouse ubuntu cp -rv . /dist/
 
 install: clean
 	python setup.py install

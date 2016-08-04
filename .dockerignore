@@ -1,3 +1,4 @@
+*.pyc
 py_mini_racer/extension/v8/
 vendor/depot_tools/
 Dockerfile
@@ -5,3 +6,10 @@ Makefile
 wheelhouse
 dist
 build
+docker
+Dockerfile.build
+docker-compose.yml
+Makefile
+*.whl
+**/*.so
+.git
