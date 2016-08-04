@@ -161,7 +161,7 @@ class MiniRacerBuildV8(Command):
 
 setup(
     name='py_mini_racer',
-    version='0.1.5',
+    version='0.1.6-dev',
     description="Minimal, modern embedded V8 for Python.",
     long_description=readme + '\n\n' + history,
     author="Jean-Baptiste AVIAT, Boris FELD",
