@@ -91,8 +91,13 @@ docker-build: clean
 
 	# Generate linux wheels
 	docker-compose build
-	# Clean the existing images
-	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code ubuntu rm -Rf /code/dist /code/wheelhouse
+	# Clean the existing volume
+	docker volume rm py_mini_racer_build_volume || true
+	docker volume create --name py_mini_racer_build_volume
+
+	# Run the generated build image
+	docker run --rm=true -v py_mini_racer_build_volume:/artifact py_mini_racer.build
+
 	# Generate wheels one by one
 	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code pyminiracer_py_mini_racer_py27
 	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code pyminiracer_py_mini_racer_py34

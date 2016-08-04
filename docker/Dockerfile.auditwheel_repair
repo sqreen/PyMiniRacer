@@ -1,0 +1,13 @@
+# FROM python:3.5
+FROM py_mini_racer
+
+# RUN apt-get update &&       \
+#     apt-get install -qy     \
+#             unzip           \
+#             patchelf
+
+WORKDIR /code
+
+# RUN python -m pip install auditwheel
+
+CMD sleep 5; for i in $(ls dist/*.whl); do auditwheel repair $i; done; ls wheelhouse

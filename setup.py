@@ -70,11 +70,20 @@ def is_depot_tools_checkout():
     return isdir(local_path('vendor/depot_tools'))
 
 
+def libv8_object(object_name):
+    """ Return a path for object_name which is OS independent
+    """
+    filename = join(V8_LIB_DIRECTORY, "out/native/", object_name)
+    if not isfile(filename):
+        filename = join(V8_LIB_DIRECTORY, "out/native/obj.target/tools/gyp/", object_name)
+    return filename
+
+
 def get_raw_static_lib_path():
     """ Return the list of the static libraries files ONLY, use
     get_static_lib_paths to get the right compilation flags
     """
-    return [join(V8_LIB_DIRECTORY, "out/native/", static_file) for static_file in V8_STATIC_LIBRARIES]
+    return [libv8_object(static_file) for static_file in V8_STATIC_LIBRARIES]
 
 
 def get_static_lib_paths():

@@ -1,0 +1,37 @@
+FROM ubuntu:14.04
+
+RUN apt-get update &&       \
+    apt-get install -qy     \
+            git             \
+            build-essential \
+            git             \
+            curl            \
+            python-pip
+
+WORKDIR /code
+
+RUN git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git vendor/depot_tools
+
+COPY setup.py README.rst HISTORY.rst /code/
+
+COPY requirements /code/requirements/
+
+COPY patches /code/patches/
+
+COPY py_mini_racer/__init__.py /code/py_mini_racer/
+
+COPY py_mini_racer/extension/ /code/py_mini_racer/extension/
+
+###
+# Build V8
+###
+
+RUN pip install wheel
+
+RUN python setup.py build_v8
+
+COPY . /code/
+
+# VOLUME ["/code"]
+
+CMD cp -Raf * /artifact && echo "/code copied"

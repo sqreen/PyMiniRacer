@@ -1,0 +1,7 @@
+FROM python:2.7
+
+VOLUME ["/code"]
+
+WORKDIR /code
+
+CMD python setup.py bdist_wheel && ls dist
