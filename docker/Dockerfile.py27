@@ -1,4 +1,4 @@
-FROM python:2.7
+FROM lothiraldan/python:2.7
 
 VOLUME ["/code"]
 

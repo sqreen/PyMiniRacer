@@ -10,4 +10,6 @@ WORKDIR /code
 
 # RUN python -m pip install auditwheel
 
-CMD sleep 5; for i in $(ls dist/*.whl); do auditwheel repair $i; done; ls wheelhouse
+ADD fix_wheel.sh /
+
+CMD bash /fix_wheel.sh

@@ -6,6 +6,11 @@ History
 UNRELEASED
 ---------------------
 
+0.1.5 (2016-08-04)
+---------------------
+
+* Build py_mini_racer against a static Python. When built against a shared library python, it doesn't work with a static Python.
+
 0.1.4 (2016-08-04)
 ---------------------
 
