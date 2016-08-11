@@ -80,6 +80,8 @@ this way:
 It should work on any Linux with a libc >= 2.17 and a wheel compatible pip (>=
 8.1).
 
+If you have a up-to-date pip and it doesn't use a wheel, you might have an environment for which no wheel is built. Please open an issue.
+
 Installation
 ------------
 

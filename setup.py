@@ -126,12 +126,22 @@ class MiniRacerBuildExt(build_ext):
     def build_extension(self, ext):
         """ Compile manually the py_mini_racer extension, bypass setuptools
         """
-        if not is_v8_built():
-            self.run_command('build_v8')
+        try:
+            if not is_v8_built():
+                self.run_command('build_v8')
 
-        self.debug = True
+            self.debug = True
 
-        build_ext.build_extension(self, ext)
+            build_ext.build_extension(self, ext)
+        except Exception as e:
+            # Alter message
+            err_msg = """py_mini_racer failed to build, ensure you have an up-to-date pip (>= 8.1) to use the wheel instead
+            To update pip: 'pip install -U pip'
+            See also: https://github.com/sqreen/PyMiniRacer#binary-builds-availability
+
+            Original error: %s"""
+
+            raise Exception(err_msg % repr(e))
 
 
 class MiniRacerBuildV8(Command):
