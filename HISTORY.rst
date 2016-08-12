@@ -6,6 +6,9 @@ History
 UNRELEASED
 ---------------------
 
+0.1.6 (2016-08-12)
+---------------------
+
 * Add error message when py_mini_racer sdist fails to build asking to update pip in order to download the pre-compiled wheel instead of the source distribution.
 
 0.1.5 (2016-08-04)
