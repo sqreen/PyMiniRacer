@@ -10,6 +10,10 @@ services:
     build:
       context: ./docker
       dockerfile: Dockerfile.py27
+  py_mini_racer_py27-narrow:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.py27-narrow
   py_mini_racer_py35:
     build:
       context: ./docker

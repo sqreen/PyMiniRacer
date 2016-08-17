@@ -100,6 +100,7 @@ docker-build: clean
 
 	# Generate wheels one by one
 	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code pyminiracer_py_mini_racer_py27
+	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code pyminiracer_py_mini_racer_py27-narrow
 	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code pyminiracer_py_mini_racer_py34
 	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code pyminiracer_py_mini_racer_py35
 	# Fix them

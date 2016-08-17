@@ -1,0 +1,7 @@
+FROM lothiraldan/python:2.7-narrow
+
+VOLUME ["/code"]
+
+WORKDIR /code
+
+CMD python setup.py bdist_wheel && ls dist
