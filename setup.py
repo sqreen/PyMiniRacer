@@ -176,7 +176,7 @@ setup(
     long_description=readme + '\n\n' + history,
     author="Jean-Baptiste AVIAT, Boris FELD",
     author_email='jb@sqreen.io, boris@sqreen.io',
-    url='https://github.com/sqreen/py_mini_racer',
+    url='https://github.com/sqreen/PyMiniRacer',
     packages=[
         'py_mini_racer',
         'py_mini_racer.extension'
