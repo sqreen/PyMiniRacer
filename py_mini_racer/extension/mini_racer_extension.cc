@@ -206,8 +206,14 @@ void* nogvl_context_eval(void* arg) {
 }
 
 
-BinaryValue *convert_v8_to_binary(Isolate* isolate, Handle<Value> &value) {
+BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
+                                  Handle<Value> &value) {
 
+    Local<Context> context = context_info->context->Get(context_info->isolate);
+
+    Context::Scope context_scope(context);
+
+    Isolate *isolate = context_info->isolate;
     HandleScope scope(isolate);
 
     BinaryValue *res = ALLOC(BinaryValue);
@@ -254,7 +260,7 @@ BinaryValue *convert_v8_to_binary(Isolate* isolate, Handle<Value> &value) {
 
         for(uint32_t i=0; i < arr->Length(); i++) {
             Local<Value> element = arr->Get(i);
-            BinaryValue *bin_value = convert_v8_to_binary(isolate, element);
+            BinaryValue *bin_value = convert_v8_to_binary(context_info, element);
             if (bin_value == NULL) {
                 free(res);
                 free(ary);
@@ -290,7 +296,6 @@ BinaryValue *convert_v8_to_binary(Isolate* isolate, Handle<Value> &value) {
 
         TryCatch trycatch(isolate);
 
-        Local<Context> context = Context::New(isolate);
         Local<Object> object = value->ToObject();
         MaybeLocal<Array> maybe_props = object->GetOwnPropertyNames(context);
         if (!maybe_props.IsEmpty()) {
@@ -320,8 +325,8 @@ BinaryValue *convert_v8_to_binary(Isolate* isolate, Handle<Value> &value) {
                     return NULL;
                 }
 
-                BinaryValue *bin_key = convert_v8_to_binary(isolate, key);
-                BinaryValue *bin_value = convert_v8_to_binary(isolate, value);
+                BinaryValue *bin_key = convert_v8_to_binary(context_info, key);
+                BinaryValue *bin_value = convert_v8_to_binary(context_info, value);
 
                 ((BinaryValue **) res->value)[i*2]   = bin_key;
                 ((BinaryValue **) res->value)[i*2+1] = bin_value;
@@ -444,7 +449,7 @@ BinaryValue* MiniRacer_eval_context_unsafe(ContextInfo *context_info,
         if (eval_result.message != NULL) {
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.message);
-            message = convert_v8_to_binary(context_info->isolate, tmp);
+            message = convert_v8_to_binary(context_info, tmp);
             eval_result.message->Reset();
             delete eval_result.message;
         }
@@ -452,7 +457,7 @@ BinaryValue* MiniRacer_eval_context_unsafe(ContextInfo *context_info,
         if (eval_result.backtrace != NULL) {
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.backtrace);
-            backtrace = convert_v8_to_binary(context_info->isolate, tmp);
+            backtrace = convert_v8_to_binary(context_info, tmp);
             eval_result.backtrace->Reset();
             delete eval_result.backtrace;
         }
@@ -510,7 +515,7 @@ BinaryValue* MiniRacer_eval_context_unsafe(ContextInfo *context_info,
         HandleScope handle_scope(context_info->isolate);
 
         Local<Value> tmp = Local<Value>::New(context_info->isolate, *eval_result.value);
-        result = convert_v8_to_binary(context_info->isolate, tmp);
+        result = convert_v8_to_binary(context_info, tmp);
 
         eval_result.value->Reset();
         delete eval_result.value;
