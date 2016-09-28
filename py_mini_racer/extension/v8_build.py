@@ -127,11 +127,11 @@ def make_flags():
     return ' '.join(flags)
 
 
-def make(path, flags):
+def make(path, flags, target='native'):
     """ Create a release of v8
     """
     with chdir(path):
-        call("make native {}".format(flags))
+        call("make {} {}".format(target, flags))
 
 
 def patch_v8():
@@ -158,12 +158,12 @@ def apply_patches(path, patches_path):
                     applied_patches_file.write(patch + "\n")
 
 
-def build_v8():
+def build_v8(target):
     ensure_v8_src()
     patch_v8()
     flags = make_flags()
-    make(local_path('v8/v8'), flags)
+    make(local_path('v8/v8'), flags, target)
 
 
 if __name__ == '__main__':
-    build_v8()
+    build_v8('native')

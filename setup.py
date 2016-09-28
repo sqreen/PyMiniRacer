@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
 import pip
 import sys
 import codecs
@@ -46,6 +47,9 @@ setup_requires = [str(sr.req) for sr in parsed_setup_requirements]
 test_requirements = [str(tr.req) for tr in parsed_test_requirements]
 
 
+def get_target():
+    return os.environ.get('V8_TARGET', 'native')
+
 def local_path(path):
     """ Return path relative to this file
     """
@@ -73,9 +77,12 @@ def is_depot_tools_checkout():
 def libv8_object(object_name):
     """ Return a path for object_name which is OS independent
     """
-    filename = join(V8_LIB_DIRECTORY, "out/native/", object_name)
+    filename = join(V8_LIB_DIRECTORY, "out/{}/".format(get_target()),
+                    object_name)
     if not isfile(filename):
-        filename = join(V8_LIB_DIRECTORY, "out/native/obj.target/tools/gyp/", object_name)
+        filename = join(V8_LIB_DIRECTORY,
+                        "out/{}/obj.target/tools/gyp/".format(get_target()),
+                        object_name)
     return filename
 
 
@@ -167,7 +174,10 @@ class MiniRacerBuildV8(Command):
 
         if not is_v8_built():
             print("building v8")
-            build_v8()
+            target = os.environ.get('V8_TARGET', 'native')
+            build_v8(target)
+        else:
+            print("v8 is already built")
 
 setup(
     name='py_mini_racer',
