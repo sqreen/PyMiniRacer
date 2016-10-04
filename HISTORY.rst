@@ -6,6 +6,13 @@ History
 UNRELEASED
 ---------------------
 
+0.1.7 (2016-10-04)
+---------------------
+
+* Improve general performances of the JS execution.
+* Add the possibility to build a different version of V8 (for example with debug symbols).
+* Fix a conflict that could happens between statically linked libraries and dynamic ones.
+
 0.1.6 (2016-08-12)
 ---------------------
 
