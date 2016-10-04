@@ -23,6 +23,10 @@ from py_mini_racer.extension.v8_build import build_v8
 with codecs.open('README.rst', 'r', encoding='utf8') as readme_file:
     readme = readme_file.read()
 
+    # Convert local image links by their github equivalent
+    readme = readme.replace(".. image:: data/",
+                            ".. image:: https://github.com/sqreen/PyMiniRacer/raw/master/data/")
+
 with codecs.open('HISTORY.rst', 'r', encoding='utf8') as history_file:
     history = history_file.read().replace('.. :changelog:', '')
 
