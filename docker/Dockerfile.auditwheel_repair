@@ -1,14 +1,13 @@
-# FROM python:3.5
-FROM py_mini_racer
+FROM python:3.5
 
-# RUN apt-get update &&       \
-#     apt-get install -qy     \
-#             unzip           \
-#             patchelf
+RUN apt-get update &&       \
+    apt-get install -qy     \
+            unzip           \
+            patchelf
 
 WORKDIR /code
 
-# RUN python -m pip install auditwheel
+RUN python -m pip install auditwheel
 
 ADD fix_wheel.sh /
 

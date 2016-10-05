@@ -1,4 +1,4 @@
-FROM buildpack-deps:jessie
+FROM ubuntu:14.04
 
 RUN apt-get update &&       \
     apt-get install -qy     \
@@ -9,8 +9,6 @@ RUN apt-get update &&       \
             python-pip
 
 WORKDIR /code
-
-RUN git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git vendor/depot_tools
 
 COPY setup.py README.rst HISTORY.rst /code/
 
@@ -31,7 +29,5 @@ RUN pip install wheel
 RUN python setup.py build_v8
 
 COPY . /code/
-
-# VOLUME ["/code"]
 
 CMD cp -Raf * /artifact && echo "/code copied"
