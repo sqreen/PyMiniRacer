@@ -5,6 +5,7 @@ import os
 import pip
 import sys
 import codecs
+import pkg_resources
 
 from subprocess import check_call
 from os.path import dirname, abspath, join, isfile, isdir
@@ -30,29 +31,25 @@ with codecs.open('README.rst', 'r', encoding='utf8') as readme_file:
 with codecs.open('HISTORY.rst', 'r', encoding='utf8') as history_file:
     history = history_file.read().replace('.. :changelog:', '')
 
-parsed_requirements = parse_requirements(
-    'requirements/prod.txt',
-    session=pip.download.PipSession()
-)
 
-parsed_setup_requirements = parse_requirements(
-    'requirements/setup.txt',
-    session=pip.download.PipSession()
-)
+def _parse_requirements(filepath):
+    pip_version = map(int, pkg_resources.get_distribution('pip').version.split('.')[:2])
+    if pip_version >= [6, 0]:
+        raw = parse_requirements(filepath, session=pip.download.PipSession())
+    else:
+        raw = parse_requirements(filepath)
 
-parsed_test_requirements = parse_requirements(
-    'requirements/test.txt',
-    session=pip.download.PipSession()
-)
+    return [str(i.req) for i in raw]
 
 
-requirements = [str(ir.req) for ir in parsed_requirements]
-setup_requires = [str(sr.req) for sr in parsed_setup_requirements]
-test_requirements = [str(tr.req) for tr in parsed_test_requirements]
+requirements = _parse_requirements('requirements/prod.txt')
+setup_requires = _parse_requirements('requirements/setup.txt')
+test_requirements = _parse_requirements('requirements/test.txt')
 
 
 def get_target():
     return os.environ.get('V8_TARGET', 'native')
+
 
 def local_path(path):
     """ Return path relative to this file
