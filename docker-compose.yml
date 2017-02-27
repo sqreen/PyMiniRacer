@@ -22,6 +22,10 @@ services:
     build:
       context: ./docker
       dockerfile: Dockerfile.py34
+  py_mini_racer_py36:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.py36
   py_mini_racer_auditwheel_repair:
     build:
       context: ./docker
