@@ -1,4 +1,4 @@
-FROM ubuntu:14.04
+FROM ubuntu:12.04
 
 RUN apt-get update &&       \
     apt-get install -qy     \
@@ -7,6 +7,8 @@ RUN apt-get update &&       \
             git             \
             curl            \
             python-pip
+
+RUN pip install -U pip
 
 WORKDIR /code
 
@@ -30,4 +32,4 @@ RUN python setup.py build_v8
 
 COPY . /code/
 
-CMD cp -Raf * /artifact && echo "/code copied"
+CMD cp -Rafv * /artifact && echo "/code copied"
