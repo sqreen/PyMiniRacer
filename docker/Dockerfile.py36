@@ -1,0 +1,9 @@
+FROM lothiraldan/python:3.6
+
+VOLUME ["/code"]
+
+WORKDIR /code
+
+RUN pip install wheel
+
+CMD python setup.py bdist_wheel && ls dist/
