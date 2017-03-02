@@ -33,7 +33,7 @@ with codecs.open('HISTORY.rst', 'r', encoding='utf8') as history_file:
 
 
 def _parse_requirements(filepath):
-    pip_version = map(int, pkg_resources.get_distribution('pip').version.split('.')[:2])
+    pip_version = list(map(int, pkg_resources.get_distribution('pip').version.split('.')[:2]))
     if pip_version >= [6, 0]:
         raw = parse_requirements(filepath, session=pip.download.PipSession())
     else:

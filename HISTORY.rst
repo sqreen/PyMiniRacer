@@ -6,6 +6,11 @@ History
 UNRELEASED
 ---------------------
 
+0.1.8 (2017-03-02)
+---------------------
+
+* Update targets build for better compatibility with old Mac OS X and linux platforms.
+
 0.1.7 (2016-10-04)
 ---------------------
 
