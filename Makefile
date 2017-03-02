@@ -31,6 +31,7 @@ clean-build:
 	rm -fr build/
 	rm -fr dist/
 	rm -fr .eggs/
+	rm -fr venv*
 	rm -Rf py_mini_racer/*.so
 	find . -name '*.egg-info' -exec rm -fr {} +
 	find . -name '*.egg' -exec rm -f {} +
@@ -85,9 +86,11 @@ docker-build: clean
 	# Sdist
 	python setup.py sdist
 
-	# Generate host wheels
-	python setup.py bdist_wheel
-	# python3 setup.py bdist_wheel
+	# Generate mac os x wheels
+	./build_mac_os_x_wheel.sh 2.7
+	./build_mac_os_x_wheel.sh 3.4
+	./build_mac_os_x_wheel.sh 3.5
+	./build_mac_os_x_wheel.sh 3.6
 
 	# Generate linux wheels
 	docker-compose build
