@@ -48,24 +48,26 @@ Variables are kept inside of a context:
     >>> ctx.eval("x.company")
     u'Sqreen'
 
+PyMiniRacer is ES6 capable:
 
-.. code-block:: javascript
+.. code-block:: python
 
-    [1,2,3].map(n => n + 1);
+    >>> ctx.eval("[1,2,3].includes(5)")
+    False
+
 
 Compatibility
 -------------
 
-PyMiniRacer is only compatible with Python 2.7 at the moment. Python 3 support
-is on its way.
+PyMiniRacer is compatible with Python 2 and Python 3. Wheels are generated for python 2.7 and python 3.4 to python 3.6.
 
 Binary builds availability
 --------------------------
 
 The PyMiniRacer binary builds have been tested on x86_64 with:
 
-* OSX 10.11
-* Ubuntu >= 14.04
+* OSX 10.10
+* Ubuntu >= 12.04
 * Debian >= 8
 * CentOS >= 7
 
