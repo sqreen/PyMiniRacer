@@ -119,6 +119,14 @@ You can generate a wheel with the command:
 
 which builds v8, the extension, and generates a wheel.
 
+Notes for building on OSX
+'''''''''''''''''''''''''
+
+The legacy Python binary builds (OSX 10.6) need to be downloaded from:
+    https://www.python.org/downloads/
+
+They will allow to build a wheel compatible with former OSX versions.
+
 Tests
 -----
 
