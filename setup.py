@@ -116,7 +116,7 @@ EXTRA_LINK_ARGS = [
 if sys.platform[:6] == "darwin":
     EXTRA_LINK_ARGS += ['-stdlib=libstdc++', '-lpthread']
 elif sys.platform.startswith('linux'):
-    EXTRA_LINK_ARGS += []
+    EXTRA_LINK_ARGS += ['-lrt']
 
 
 PY_MINI_RACER_EXTENSION = Extension(
