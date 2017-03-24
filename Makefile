@@ -95,7 +95,7 @@ docker-build: clean
 	# Generate linux wheels
 	docker-compose build
 	# Clean the existing volume
-	docker volume rm py_mini_racer_build_volume || true
+	docker volume rm -f py_mini_racer_build_volume || true
 	docker volume create --name py_mini_racer_build_volume
 
 	# Run the generated build image

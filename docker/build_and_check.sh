@@ -9,7 +9,7 @@ python setup.py bdist_wheel
 virtualenv /tmp/venv/
 
 # Install py_mini_racer
-/tmp/venv/bin/pip install dist/*.whl
+/tmp/venv/bin/pip install --find-links=./dist/ py_mini_racer
 
 cd /tmp
 

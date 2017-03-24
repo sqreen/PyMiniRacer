@@ -18,7 +18,7 @@ RUN git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git v
 
 COPY py_mini_racer/__init__.py /code/py_mini_racer/
 
-COPY py_mini_racer/extension/ /code/py_mini_racer/extension/
+COPY py_mini_racer/extension/v8_build.py /code/py_mini_racer/extension/v8_build.py
 
 ###
 # Build V8
