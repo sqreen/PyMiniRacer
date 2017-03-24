@@ -90,6 +90,11 @@ RUN cd /usr/local/bin \
     && ln -s python3 python \
     && ln -s python3-config python-config
 
+# install "virtualenv", since the vast majority of users of this image will want it
+RUN pip install --no-cache-dir virtualenv
+
+RUN rm -rf /var/lib/apt/lists/*
+
 ###
 # Bdist_wheel part
 ###
