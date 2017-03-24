@@ -100,4 +100,6 @@ WORKDIR /code
 
 RUN pip install wheel
 
-CMD python setup.py bdist_wheel && ls dist/
+ADD ./build_and_check.sh /
+
+CMD bash /build_and_check.sh
