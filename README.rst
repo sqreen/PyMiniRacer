@@ -48,6 +48,32 @@ Variables are kept inside of a context:
     >>> ctx.eval("x.company")
     u'Sqreen'
 
+
+You can give directly a custom JSON encoder when sending non-JSON encodable
+parameters:
+
+.. code-block:: python
+
+    import json
+
+    from datetime import datetime
+
+    class CustomEncoder(json.JSONEncoder):
+
+            def default(self, obj):
+                if isinstance(obj, datetime):
+                    return obj.isoformat()
+
+                return json.JSONEncoder.default(self, obj)
+
+
+.. code-block:: python
+
+    >>> ctx.eval("var f = function(args) { return args; }")
+    >>> ctx.call("f", datetime.now(), encoder=CustomEncoder)
+    u'2017-03-31T16:51:02.474118'
+
+
 PyMiniRacer is ES6 capable:
 
 .. code-block:: python

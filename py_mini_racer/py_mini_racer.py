@@ -121,10 +121,15 @@ class MiniRacer(object):
         self.free(res)
         return python_value
 
-    def call(self, identifier, *args):
-        """ Call the named function with provided arguments """
+    def call(self, identifier, *args, **kwargs):
+        """ Call the named function with provided arguments
+        You can pass a custom JSON encoder by passing it in the encoder
+        keyword only argument.
+        """
 
-        json_args = json.dumps(args, separators=(',', ':'))
+        encoder = kwargs.get('encoder', None)
+
+        json_args = json.dumps(args, separators=(',', ':'), cls=encoder)
         js = "{identifier}.apply(this, {json_args})"
         return self.eval(js.format(identifier=identifier, json_args=json_args))
 
