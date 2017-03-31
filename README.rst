@@ -49,7 +49,7 @@ Variables are kept inside of a context:
     u'Sqreen'
 
 
-You can give directly a custom JSON encoder when sending non-json encodable
+You can give directly a custom JSON encoder when sending non-JSON encodable
 parameters:
 
 .. code-block:: python
