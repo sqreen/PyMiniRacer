@@ -6,6 +6,9 @@ History
 UNRELEASED
 ---------------------
 
+0.1.10 (2017-03-31)
+---------------------
+
 * Add the possibility to pass a custom JSON encoder in call.
 
 0.1.9 (2017-03-24)
