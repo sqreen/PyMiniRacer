@@ -114,5 +114,8 @@ docker-build: clean
 	# Recover them
 	docker run --rm=true -v py_mini_racer_build_volume:/code -v $(shell pwd)/dist:/dist -w /code/wheelhouse ubuntu cp -rv . /dist/
 
+upload: docker-build
+	twine upload dist/*
+
 install: clean
 	python setup.py install
