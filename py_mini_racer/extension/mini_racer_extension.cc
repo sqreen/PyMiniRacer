@@ -497,8 +497,10 @@ BinaryValue* MiniRacer_eval_context_unsafe(ContextInfo *context_info,
             result->len = dest_size;
         } else if(message && TYPE(message) == T_STRING) {
             result->value = strdup(PSTRING_PTR(message));
+            result->len = strlen((char *) result->value);
         } else {
             result->value = strdup("Unknown JavaScript error during execution");
+            result->len = strlen((char *) result->value);
         }
         BinaryValueFree(message);
         BinaryValueFree(backtrace);
