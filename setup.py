@@ -22,6 +22,7 @@ except ImportError:
     from distutils.command.build_ext import build_ext
     from distutils.command.install import install
 
+import py_mini_racer
 from py_mini_racer.extension.v8_build import build_v8
 
 V8_PATH = os.environ.get("PY_MINI_RACER_V8_PATH")
@@ -195,7 +196,7 @@ class MiniRacerBuildV8(Command):
 
 setup(
     name='py_mini_racer',
-    version='0.1.10',
+    version=py_mini_racer.__version__,
     description="Minimal, modern embedded V8 for Python.",
     long_description=readme + '\n\n' + history,
     author="Jean-Baptiste AVIAT, Boris FELD",
