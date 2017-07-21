@@ -133,7 +133,6 @@ def make(path, flags, target='native'):
     with chdir(path):
         call("make {} {}".format(target, flags))
 
-
 def patch_v8():
     """ Apply patch on v8
     """

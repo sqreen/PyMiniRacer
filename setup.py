@@ -8,18 +8,23 @@ import codecs
 import pkg_resources
 
 from subprocess import check_call
-from os.path import dirname, abspath, join, isfile, isdir
+from os.path import dirname, abspath, join, isfile, isdir, basename
 from pip.req import parse_requirements
+
+from distutils.file_util import copy_file
 
 try:
     from setuptools import setup, Extension, Command
     from setuptools.command.build_ext import build_ext
+    from setuptools.command.install import install
 except ImportError:
     from distutils.core import setup, Extension, Command
     from distutils.command.build_ext import build_ext
+    from distutils.command.install import install
 
 from py_mini_racer.extension.v8_build import build_v8
 
+V8_PATH = os.environ.get("PY_MINI_RACER_V8_PATH")
 
 with codecs.open('README.rst', 'r', encoding='utf8') as readme_file:
     readme = readme_file.read()
@@ -66,6 +71,8 @@ V8_STATIC_LIBRARIES = ['libv8_base.a', 'libv8_libbase.a', 'libv8_libplatform.a',
 def is_v8_built():
     """ Check if v8 has been built
     """
+    if V8_PATH:
+        return True
     return all(isfile(static_filepath) for static_filepath in get_raw_static_lib_path())
 
 
@@ -139,8 +146,12 @@ class MiniRacerBuildExt(build_ext):
                 self.run_command('build_v8')
 
             self.debug = True
+            if V8_PATH:
+                dest_filename = join(self.build_lib, "py_mini_racer")
+                copy_file(V8_PATH, dest_filename, verbose=self.verbose, dry_run=self.dry_run)
+            else:
+                build_ext.build_extension(self, ext)
 
-            build_ext.build_extension(self, ext)
         except Exception as e:
             # Alter message
             err_msg = """py_mini_racer failed to build, ensure you have an up-to-date pip (>= 8.1) to use the wheel instead
@@ -155,17 +166,19 @@ class MiniRacerBuildExt(build_ext):
 class MiniRacerBuildV8(Command):
 
     description = 'Compile vendored v8'
-    user_options = []
+    user_options = [
+    ]
 
     def initialize_options(self):
         """Set default values for options."""
-        pass
 
     def finalize_options(self):
         """Post-process options."""
         pass
 
     def run(self):
+        if V8_PATH:
+            return
 
         if not is_depot_tools_checkout():
             print("cloning depot tools submodule")
@@ -217,6 +230,6 @@ setup(
     tests_require=test_requirements,
     cmdclass={
         'build_ext': MiniRacerBuildExt,
-        'build_v8': MiniRacerBuildV8
+        'build_v8': MiniRacerBuildV8,
     }
 )

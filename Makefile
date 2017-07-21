@@ -93,26 +93,7 @@ docker-build: clean
 	./build_mac_os_x_wheel.sh 3.6
 
 	# Generate linux wheels
-	docker-compose build
-	# Clean the existing volume
-	docker volume rm -f py_mini_racer_build_volume || true
-	docker volume create --name py_mini_racer_build_volume
-
-	# Run the generated build image
-	docker run --rm=true -v py_mini_racer_build_volume:/artifact py_mini_racer.build
-
-	# Generate wheels one by one
-	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code pyminiracer_py_mini_racer_py27
-	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code pyminiracer_py_mini_racer_py27-narrow
-	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code pyminiracer_py_mini_racer_py34
-	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code pyminiracer_py_mini_racer_py35
-	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code pyminiracer_py_mini_racer_py36
-	# Fix them
-	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code pyminiracer_py_mini_racer_auditwheel_repair
-	# List generated wheels
-	docker run --rm=true -t -i -v py_mini_racer_build_volume:/code ubuntu ls /code/wheelhouse
-	# Recover them
-	docker run --rm=true -v py_mini_racer_build_volume:/code -v $(shell pwd)/dist:/dist -w /code/wheelhouse ubuntu cp -rv . /dist/
+	./build_linux_wheels.sh
 
 upload: docker-build
 	twine upload dist/*

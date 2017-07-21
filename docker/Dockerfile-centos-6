@@ -1,0 +1,24 @@
+FROM centos:6
+
+RUN yum install -y gcc gcc-c++ \
+                   libtool libtool-ltdl \
+                   make cmake \
+                   git \
+                   pkgconfig \
+                   sudo \
+                   wget \
+                   automake autoconf \
+                   yum-utils rpm-build && \
+    yum clean all
+
+RUN wget http://download.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm
+RUN rpm -ivh epel-release-6-8.noarch.rpm
+RUN yum install -y centos-release-scl
+RUN yum install -y python27
+RUN yum install -y devtoolset-6-gcc-c++
+
+COPY build_scripts /build_scripts
+ENV PATH /opt/rh/devtoolset-6/root/usr/bin:$PATH
+
+RUN bash build_scripts/build.sh && rm -r build_scripts
+
