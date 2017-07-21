@@ -3,6 +3,8 @@
 
 """ Basic JS types tests """
 
+from io import open
+
 import unittest
 import os
 
@@ -17,7 +19,7 @@ class Test(unittest.TestCase):
         context = py_mini_racer.MiniRacer()
 
         path = os.path.join(os.path.dirname(__file__), 'fixtures/babel.js')
-        babel_source = open(path, "r").read()
+        babel_source = open(path, "r", encoding='utf-8').read()
         source = """
           var self = this;
           %s

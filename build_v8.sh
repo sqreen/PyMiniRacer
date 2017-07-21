@@ -4,9 +4,10 @@ set -x
 
 CONT=$(date +%s)
 
-TAG=dockerfile-centos-5
+TAG=dockerfile-centos-6
 
-docker build -f docker/Dockerfile-centos-5 -t ${TAG} .
+cd docker && docker build -f Dockerfile-centos-6 -t ${TAG} .
+cd ..
 
 docker run -d --name ${CONT} ${TAG} bash -c "mkdir /${BASE_PATH}; tail -f /var/log/lastlog"
 
