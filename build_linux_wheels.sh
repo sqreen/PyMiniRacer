@@ -26,6 +26,11 @@ do
     docker exec ${CONT} /opt/python/${PYVERSION}/bin/python setup.py bdist_wheel
 done
 
+docker exec ${CONT} bash -c 'for i in $(ls dist/*.whl); do auditwheel repair $i -w tmpdist; done;'
+docker exec ${CONT} bash -c "rm dist/*.whl"
+docker exec ${CONT} bash -c "cp tmpdist/*.whl  dist"
+docker exec ${CONT} bash -c "rm -rf tmpdist/"
+
 docker exec ${CONT} tar cvzf wheels.tar.gz dist/
 docker cp ${CONT}:wheels.tar.gz .
 tar xvf wheels.tar.gz
