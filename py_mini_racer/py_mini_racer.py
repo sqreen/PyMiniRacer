@@ -12,8 +12,6 @@ import fnmatch
 
 from pkg_resources import resource_listdir, resource_filename
 
-import enum
-
 # In python 3 the extension file name depends on the python version
 try:
     EXTENSION_NAME = fnmatch.filter(resource_listdir('py_mini_racer', '.'), '_v8*.so')[0]
@@ -146,7 +144,7 @@ class MiniRacer(object):
         self.ext.mr_free_context(self.ctx)
 
 
-class PythonTypes(enum.Enum):
+class PythonTypes(object):
     """ Python types identifier - need to be coherent with
     mini_racer_extension.cc """
 
@@ -184,21 +182,21 @@ class PythonValue(ctypes.Structure):
         """ Return an object as native Python """
 
         result = None
-        if self.type == PythonTypes.null.value:
+        if self.type == PythonTypes.null:
             result = None
-        elif self.type == PythonTypes.bool.value:
+        elif self.type == PythonTypes.bool:
             result = self.value == 1
-        elif self.type == PythonTypes.integer.value:
+        elif self.type == PythonTypes.integer:
             if self.value is None:
                 result = 0
             else:
                 result = ctypes.c_int32(self.value).value
-        elif self.type == PythonTypes.double.value:
+        elif self.type == PythonTypes.double:
             result = self._double_value()
-        elif self.type == PythonTypes.str_utf8.value:
+        elif self.type == PythonTypes.str_utf8:
             buf = ctypes.c_char_p(self.value).value
             result = buf.decode("utf8")
-        elif self.type == PythonTypes.array.value:
+        elif self.type == PythonTypes.array:
             if self.len == 0:
                 return []
             ary = []
@@ -208,7 +206,7 @@ class PythonValue(ctypes.Structure):
                 pval = PythonValue.from_address(ptr_to_ary[i])
                 ary.append(pval.to_python())
             result = ary
-        elif self.type == PythonTypes.hash.value:
+        elif self.type == PythonTypes.hash:
             if self.len == 0:
                 return {}
             res = {}
@@ -219,15 +217,15 @@ class PythonValue(ctypes.Structure):
                 pval = PythonValue.from_address(ptr_to_hash[i*2+1])
                 res[pkey.to_python()] = pval.to_python()
             result = res
-        elif self.type == PythonTypes.function.value:
+        elif self.type == PythonTypes.function:
             result = JSFunction()
-        elif self.type == PythonTypes.parse_exception.value:
+        elif self.type == PythonTypes.parse_exception:
             msg = ctypes.c_char_p(self.value).value
             raise JSParseException(msg)
-        elif self.type == PythonTypes.execute_exception.value:
+        elif self.type == PythonTypes.execute_exception:
             msg = ctypes.c_char_p(self.value).value
             raise JSEvalException(msg.decode('utf-8', errors='replace'))
-        elif self.type == PythonTypes.date.value:
+        elif self.type == PythonTypes.date:
             timestamp = self._double_value()
             # JS timestamp are milliseconds, in python we are in seconds
             result = datetime.datetime.utcfromtimestamp(timestamp / 1000.)
