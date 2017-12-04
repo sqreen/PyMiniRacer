@@ -1,12 +1,34 @@
 sudo: required
 language: python
-services:
-    - docker
-script:
-    - ./build_and_check_linux_wheels.sh
+
+branches:
+  only:
+    - master
+
+matrix:
+  include:
+    - dist: trusty
+      services:
+        - docker
+      script:
+        - ./build_and_check_linux_wheels.sh
+    - os: osx
+      osx_image: xcode8.3
+      script:
+        - ./build_mac_os_x_wheel.sh 2.7
+        - ./build_mac_os_x_wheel.sh 3.4
+        - ./build_mac_os_x_wheel.sh 3.5
+        - ./build_mac_os_x_wheel.sh 3.6
+
+install:
+  - if [ "${TRAVIS_OS_NAME:-}" == "osx" ]; then ./install_osx.sh; fi
+
+addons:
+  artifacts: true
+  paths:
+    - $(ls dist/*.whl | tr "\n" ":")
 
 notifications:
   recipients:
     - jb@sqreen.io
     - selim@sqreen.io
-
