@@ -92,6 +92,12 @@ def libv8_object(object_name):
         filename = join(V8_LIB_DIRECTORY,
                         "out/{}/obj.target/tools/gyp/".format(get_target()),
                         object_name)
+
+    if not isfile(filename):
+        filename = join(V8_LIB_DIRECTORY,
+                        "out/{}/".format(get_target()),
+                        object_name)
+
     return filename
 
 
