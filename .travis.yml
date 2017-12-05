@@ -1,5 +1,4 @@
 sudo: required
-language: python
 
 branches:
   only:
@@ -8,6 +7,7 @@ branches:
 matrix:
   include:
     - dist: trusty
+      language: python
       services:
         - docker
       script:
