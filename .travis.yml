@@ -15,10 +15,7 @@ matrix:
     - os: osx
       osx_image: xcode8.3
       script:
-        - ./build_mac_os_x_wheel.sh 2.7
-        - ./build_mac_os_x_wheel.sh 3.4
-        - ./build_mac_os_x_wheel.sh 3.5
-        - ./build_mac_os_x_wheel.sh 3.6
+        - ./build_mac_os_x_wheels.sh
 
 install:
   - if [ "${TRAVIS_OS_NAME:-}" == "osx" ]; then ./install_osx.sh; fi
