@@ -23,10 +23,6 @@ matrix:
 install:
   - if [ "${TRAVIS_OS_NAME:-}" == "osx" ]; then ./install_osx.sh; fi
 
-addons:
-  artifacts: true
-  working_dir: dist
-
 notifications:
   recipients:
     - jb@sqreen.io
