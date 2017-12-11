@@ -31,6 +31,3 @@ do
     docker exec ${CONT} bash -c "/opt/python/${PYVERSION}/bin/pip install -r requirements/test.txt"
     docker exec ${CONT} bash -c "/opt/python/${PYVERSION}/bin/pytest tests"
 done
-
-pip install awscli
-aws s3 cp dist/ "s3://sqreen-pyminiracer-travis-artefact/$(git rev-parse HEAD)/dist/" --recursive --exclude "*" --include "*.whl"

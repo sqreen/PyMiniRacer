@@ -12,10 +12,14 @@ matrix:
         - docker
       script:
         - ./build_and_check_linux_wheels.sh
+      after_success:
+        - ./upload_artifacts_linux.sh
     - os: osx
       osx_image: xcode8.3
       script:
         - ./build_mac_os_x_wheels.sh
+      after_success:
+        - ./upload_artifacts_mac_os_x.sh
 
 install:
   - if [ "${TRAVIS_OS_NAME:-}" == "osx" ]; then ./install_osx.sh; fi
