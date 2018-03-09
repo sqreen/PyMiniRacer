@@ -81,6 +81,17 @@ PyMiniRacer is ES6 capable:
     >>> ctx.eval("[1,2,3].includes(5)")
     False
 
+V8 heap information can be retrieved:
+
+.. code-block:: python
+
+    >>> ctx.heap_stats()
+    {u'total_physical_size': 1613896,
+     u'used_heap_size': 1512520,
+     u'total_heap_size': 3997696,
+     u'total_heap_size_executable': 3145728,
+     u'heap_size_limit': 1501560832}
+
 
 Compatibility
 -------------
