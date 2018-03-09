@@ -93,6 +93,9 @@ class MiniRacer(object):
 
         self.ext.mr_free_context.argtypes = [ctypes.c_void_p]
 
+        self.ext.mr_heap_stats.argtypes = [ctypes.c_void_p]
+        self.ext.mr_heap_stats.restype = ctypes.POINTER(PythonValue)
+
         self.ctx = self.ext.mr_init_context()
 
         self.lock = threading.Lock()
@@ -137,6 +140,17 @@ class MiniRacer(object):
         json_args = json.dumps(args, separators=(',', ':'), cls=encoder)
         js = "{identifier}.apply(this, {json_args})"
         return self.eval(js.format(identifier=identifier, json_args=json_args))
+
+    def heap_stats(self):
+        """ Return heap statistics """
+
+        self.lock.acquire()
+        res = self.ext.mr_heap_stats(self.ctx)
+        self.lock.release()
+
+        python_value = res.contents.to_python()
+        self.free(res)
+        return python_value
 
     def __del__(self):
         """ Free the context """
