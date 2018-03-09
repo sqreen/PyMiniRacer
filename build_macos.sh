@@ -16,7 +16,7 @@ fi;
 # Compile py_mini_racer extension
 clang++ -Ivendor/v8/include \
     -Ivendor/v8 py_mini_racer/extension/mini_racer_extension.cc \
-    -o _v8.so \
+    -o py_mini_racer/_v8.so \
     vendor/v8/out/x64.release/libv8_{base,libbase,snapshot,libplatform,libsampler}.a \
     -ldl \
     -pthread \
