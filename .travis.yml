@@ -7,7 +7,7 @@ branches:
 matrix:
   include:
     - dist: trusty
-      language: python
+      language: c
       services:
         - docker
       script:
