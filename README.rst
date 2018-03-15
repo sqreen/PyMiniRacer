@@ -105,8 +105,8 @@ The PyMiniRacer binary builds have been tested on x86_64 with:
 
 * OSX 10.10
 * Ubuntu >= 12.04
-* Debian >= 8
-* CentOS >= 7
+* Debian >= 7
+* CentOS >= 6
 
 You need pip >= 8.1 to install the wheels - you can check and upgrade yours in
 this way:
@@ -116,7 +116,7 @@ this way:
     $ pip --version
     $ pip install --upgrade pip
 
-It should work on any Linux with a libc >= 2.17 and a wheel compatible pip (>=
+It should work on any Linux with a libc >= 2.12 and a wheel compatible pip (>=
 8.1).
 
 If you have a up-to-date pip and it doesn't use a wheel, you might have an environment for which no wheel is built. Please open an issue.
@@ -199,6 +199,5 @@ Tools used in rendering this package:
 Todo
 ----
 
-Lower libc version needed.
 Export V8 version.
 Fix circular structures export.

@@ -6,6 +6,16 @@ History
 UNRELEASED
 ---------------------
 
+0.1.13 (2018-03-15)
+---------------------
+
+* Add heap_stats function
+* Fix issue with returned strings containing null bytes
+
+0.1.12 (2018-17-04)
+---------------------
+
+* Remove dependency to enum
 
 0.1.11 (2017-07-11)
 ---------------------
