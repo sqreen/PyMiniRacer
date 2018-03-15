@@ -1,4 +1,4 @@
-FROM centos:6
+FROM centos:6.8
 
 RUN yum install -y gcc gcc-c++ \
                    libtool libtool-ltdl \
