@@ -205,6 +205,99 @@ void* nogvl_context_eval(void* arg) {
     return NULL;
 }
 
+static BinaryValue *new_bv_str(char *str) {
+    BinaryValue *bv = (BinaryValue *) malloc(sizeof(BinaryValue));
+    if (!bv) {
+        return NULL;
+    }
+    bv->type = type_str_utf8;
+    if (str) {
+        bv->len   = strlen(str);
+        bv->value = strdup(str);
+    } else {
+        bv->len   = 0;
+        bv->value = NULL;
+    }
+    return bv;
+}
+
+static BinaryValue *new_bv_int(int val) {
+    BinaryValue *bv = (BinaryValue *) malloc(sizeof(BinaryValue));
+    if (!bv) {
+        return NULL;
+    }
+    bv->type  = type_integer;
+    bv->len   = 0;
+    *(uint32_t *) &bv->value = val;
+    return bv;
+}
+
+#define HEAP_NB_ITEMS 5
+
+static BinaryValue *heap_stats(ContextInfo *context_info) {
+
+    Isolate* isolate;
+    v8::HeapStatistics stats;
+
+    if (!context_info) {
+        return NULL;
+    }
+
+    isolate = context_info->isolate;
+
+    BinaryValue **content = (BinaryValue **) malloc(sizeof(BinaryValue *) * 2 * HEAP_NB_ITEMS);
+    BinaryValue *hash = (BinaryValue *) malloc(sizeof(BinaryValue));
+    hash->type = type_hash;
+    hash->len = HEAP_NB_ITEMS;
+    hash->value = content;
+
+    if (!hash || !content) {
+        free(hash);
+        free(content);
+        return NULL;
+    }
+
+    uint32_t idx = 0;
+    content[idx++ * 2] = new_bv_str((char *) "total_physical_size");
+    content[idx++ * 2] = new_bv_str((char *) "total_heap_size_executable");
+    content[idx++ * 2] = new_bv_str((char *) "total_heap_size");
+    content[idx++ * 2] = new_bv_str((char *) "used_heap_size");
+    content[idx++ * 2] = new_bv_str((char *) "heap_size_limit");
+
+    idx = 0;
+    if (!isolate) {
+        content[idx++ * 2 + 1] = new_bv_int(0);
+        content[idx++ * 2 + 1] = new_bv_int(0);
+        content[idx++ * 2 + 1] = new_bv_int(0);
+        content[idx++ * 2 + 1] = new_bv_int(0);
+        content[idx++ * 2 + 1] = new_bv_int(0);
+    } else {
+	isolate->GetHeapStatistics(&stats);
+
+        content[idx++ * 2 + 1] = new_bv_int(stats.total_physical_size());
+        content[idx++ * 2 + 1] = new_bv_int(stats.total_heap_size_executable());
+        content[idx++ * 2 + 1] = new_bv_int(stats.total_heap_size());
+        content[idx++ * 2 + 1] = new_bv_int(stats.used_heap_size());
+        content[idx++ * 2 + 1] = new_bv_int(stats.heap_size_limit());
+    }
+
+    for(idx=0; idx < HEAP_NB_ITEMS; idx++) {
+        if(content[idx*2] == NULL || content[idx*2+1] == NULL) {
+            goto err;
+        }
+    }
+    return hash;
+
+err:
+    for(idx=0; idx < HEAP_NB_ITEMS; idx++) {
+        free(content[idx*2]);
+        free(content[idx*2+1]);
+    }
+    free(hash);
+    free(content);
+    return NULL;
+}
+
 
 BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
                                   Handle<Value> &value) {
@@ -544,6 +637,10 @@ void mr_free_value(BinaryValue *val) {
 
 void mr_free_context(ContextInfo *context_info) {
     deallocate(context_info);
+}
+
+BinaryValue *mr_heap_stats(ContextInfo *context_info) {
+    return heap_stats(context_info);
 }
 
 
