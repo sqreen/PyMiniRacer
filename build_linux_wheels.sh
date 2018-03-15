@@ -6,15 +6,10 @@ set -x
 
 CONT=$(date +%s)
 
-TAG=dockerfile-centos-6
-
-cd docker && docker build -f Dockerfile-centos-6 -t ${TAG} .
-cd ..
-
 docker run \
     -e PY_MINI_RACER_V8_PATH=_v8.so \
     -d \
-    --name ${CONT} ${TAG} bash \
+    --name ${CONT} quay.io/pypa/manylinux1_x86_64 bash \
     -c "mkdir /${BASE_PATH}; tail -f /var/log/lastlog"
 
 docker cp . ${CONT}:${BASE_PATH}

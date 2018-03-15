@@ -1,5 +1,0 @@
-FROM quay.io/pypa/manylinux1_x86_64
-
-RUN wget https://github.com/squeaky-pl/centos-devtools/releases/download/6.3/gcc-6.3.0-binutils-2.27-x86_64.tar.bz2 -O - | tar -C / -xj
-
-ENV PATH /opt/devtools-6.3/bin/:$PATH
