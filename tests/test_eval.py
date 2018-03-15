@@ -63,6 +63,17 @@ class Test(unittest.TestCase):
         with self.assertRaises(py_mini_racer.JSParseException):
             context.eval(js_source)
 
+    def test_null_byte(self):
+
+        context = py_mini_racer.MiniRacer()
+
+        s = "\x00 my string!"
+
+        # Try return a string including a null byte
+        in_val = "var str = \"" + s + "\"; str;"
+        result = context.eval(in_val)
+        self.assertEqual(result, s)
+
 
 if __name__ == '__main__':
     import sys

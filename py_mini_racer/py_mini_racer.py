@@ -208,8 +208,9 @@ class PythonValue(ctypes.Structure):
         elif self.type == PythonTypes.double:
             result = self._double_value()
         elif self.type == PythonTypes.str_utf8:
-            buf = ctypes.c_char_p(self.value).value
-            result = buf.decode("utf8")
+            buf = ctypes.c_char_p(self.value)
+            ptr = ctypes.cast(buf, ctypes.POINTER(ctypes.c_char))
+            result = ptr[0:self.len].decode("utf8")
         elif self.type == PythonTypes.array:
             if self.len == 0:
                 return []
