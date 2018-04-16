@@ -205,8 +205,8 @@ setup(
     version=py_mini_racer.__version__,
     description="Minimal, modern embedded V8 for Python.",
     long_description=readme + '\n\n' + history,
-    author="Jean-Baptiste AVIAT, Boris FELD",
-    author_email='jb@sqreen.io, boris@sqreen.io',
+    author='Sqreen',
+    author_email='hey@sqreen.io',
     url='https://github.com/sqreen/PyMiniRacer',
     packages=[
         'py_mini_racer',

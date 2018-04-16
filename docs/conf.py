@@ -56,7 +56,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Python Mini Racer'
-copyright = u'2016, Boris FELD'
+copyright = u'2016, Sqreen'
 
 # The version info for the project you're documenting, acts as replacement
 # for |version| and |release|, also used in various other places throughout
@@ -241,7 +241,7 @@ latex_documents = [
 man_pages = [
     ('index', 'py_mini_racer',
      u'Python Mini Racer Documentation',
-     [u'Boris FELD'], 1)
+     [u'Sqreen'], 1)
 ]
 
 # If true, show URL addresses after external links.
@@ -256,7 +256,7 @@ man_pages = [
 texinfo_documents = [
     ('index', 'py_mini_racer',
      u'Python Mini Racer Documentation',
-     u'Boris FELD',
+     u'Sqreen',
      'py_mini_racer',
      'One line description of project.',
      'Miscellaneous'),
