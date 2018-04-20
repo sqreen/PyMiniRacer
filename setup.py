@@ -9,7 +9,6 @@ import pkg_resources
 
 from subprocess import check_call
 from os.path import dirname, abspath, join, isfile, isdir, basename
-from pip.req import parse_requirements
 
 from distutils.file_util import copy_file
 
@@ -40,9 +39,16 @@ with codecs.open('HISTORY.rst', 'r', encoding='utf8') as history_file:
 
 def _parse_requirements(filepath):
     pip_version = list(map(int, pkg_resources.get_distribution('pip').version.split('.')[:2]))
-    if pip_version >= [6, 0]:
-        raw = parse_requirements(filepath, session=pip.download.PipSession())
+    if pip_version >= [10, 0]:
+        from pip._internal.download import PipSession
+        from pip._internal.req import parse_requirements
+        raw = parse_requirements(filepath, session=PipSession())
+    elif pip_version >= [6, 0]:
+        from pip.download import PipSession
+        from pip.req import parse_requirements
+        raw = parse_requirements(filepath, session=PipSession())
     else:
+        from pip.req import parse_requirements
         raw = parse_requirements(filepath)
 
     return [str(i.req) for i in raw]
