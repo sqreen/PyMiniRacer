@@ -6,6 +6,7 @@ for PYVERSION in 2.7 3.4 3.5 3.6; do
     . ./venv_${PYVERSION}/bin/activate
     curl https://bootstrap.pypa.io/get-pip.py | python
     pip install certifi
+    pip install -r requirements/setup.txt
     python setup.py bdist_wheel
     deactivate
 done
