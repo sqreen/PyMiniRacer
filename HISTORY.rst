@@ -3,8 +3,11 @@
 History
 -------
 
-UNRELEASED
+0.1.14 (2018-05-25)
 ---------------------
+
+* Add support for pip 10
+* Update package metadata
 
 0.1.13 (2018-03-15)
 ---------------------
