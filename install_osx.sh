@@ -7,6 +7,8 @@ URLS=(
     'https://www.python.org/ftp/python/3.4.4/python-3.4.4-macosx10.6.pkg'
     'https://www.python.org/ftp/python/3.5.3/python-3.5.3-macosx10.6.pkg'
     'https://www.python.org/ftp/python/3.6.0/python-3.6.0-macosx10.6.pkg'
+    # Change this when python 3.7 is released
+    'https://www.python.org/ftp/python/3.7.0/python-3.7.0rc1-macosx10.6.pkg '
 )
 
 for url in "${URLS[@]}"; do

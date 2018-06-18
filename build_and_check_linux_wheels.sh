@@ -8,11 +8,17 @@ set -x
 TAG=dockerfile-centos-6
 
 
-for PYVERSION in cp27-cp27mu cp34-cp34m cp35-cp35m cp36-cp36m
+for PYVERSION in cp27-cp27mu cp34-cp34m cp35-cp35m cp36-cp36m cp37-cp37m
 do
     CONT=$(date +%s)A
 
     PYTHON=${PYVERSION:2:1}.${PYVERSION:3:1}
+
+    # Remove this when python 3.7 is released
+    if [ $PYTHON = "3.7" ]
+    then
+        PYTHON="3.7-rc"
+    fi
     docker run \
         -d \
         --name ${CONT} \
