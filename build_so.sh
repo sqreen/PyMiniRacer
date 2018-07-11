@@ -2,10 +2,8 @@
 set -e
 set -x
 
-# Get the .a file from libv8 gem
-# TODO: Import the certificate, in centos5 it's invalid
-wget --no-check-certificate https://rubygems.org/downloads/libv8-5.7.492.65.1-x86_64-linux.gem
-tar xvf libv8-5.7.492.65.1-x86_64-linux.gem
+curl https://rubygems.org/downloads/libv8-5.7.492.65.1-x86_64-linux.gem --output libv8.gem
+tar xvf libv8.gem
 tar xvf data.tar.gz
 
 # Compile py_mini_racer extension
