@@ -24,19 +24,16 @@ done
 docker exec ${CONT} bash -c 'for i in $(ls dist/*.whl); do auditwheel repair $i -w tmpdist; done;'
 docker exec ${CONT} bash -c "rm dist/*.whl"
 docker exec ${CONT} bash -c "cp tmpdist/*.whl  dist"
+
+# Add wheel for Python without PyMalloc. Since we don't rely on it we can
+# safely copy the wheel with another name
+docker exec ${CONT} /opt/python/cp35-cp35m/bin/pip install auditwheel
+docker exec ${CONT} /opt/python/cp35-cp35m/bin/python wheel_pymalloc.py
 docker exec ${CONT} bash -c "rm -rf tmpdist/"
 
 docker exec ${CONT} tar cvzf wheels.tar.gz dist/
 docker cp ${CONT}:wheels.tar.gz .
 tar xvf wheels.tar.gz
 rm wheels.tar.gz
-
-# Add wheel for Python without PyMalloc. Since we don't rely on it we can
-# safely copy the wheel with another name
-for file in $(find dist -name "*m-manylinux1_*.whl")
-do
-    echo $file
-    cp $file $(echo $file | sed 's/m-manylinux/-manylinux/g')
-done
 
 docker rm -f ${CONT}
