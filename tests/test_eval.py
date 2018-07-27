@@ -4,6 +4,7 @@
 """ Basic JS types tests """
 
 import unittest
+import six
 
 from py_mini_racer import py_mini_racer
 
@@ -55,12 +56,12 @@ class Test(unittest.TestCase):
             context.eval("f()")
 
     def test_cannot_parse(self):
-
         context = py_mini_racer.MiniRacer()
-
         js_source = "var f = function("
 
-        with self.assertRaises(py_mini_racer.JSParseException):
+        with six.assertRaisesRegex(
+            self, py_mini_racer.JSParseException, '.*Unexpected end of input.*'
+        ):
             context.eval(js_source)
 
     def test_null_byte(self):
