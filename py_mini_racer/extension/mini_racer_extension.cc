@@ -160,7 +160,7 @@ void* nogvl_context_eval(void* arg) {
 
     if (!result->parsed) {
         result->message = new Persistent<Value>();
-        result->message->Reset(isolate, trycatch.Exception());
+        result->message->Reset(isolate, trycatch.Exception()->ToString());
     } else {
 
         pthread_t breaker_thread;
@@ -561,7 +561,7 @@ BinaryValue* MiniRacer_eval_context_unsafe(ContextInfo *context_info,
     if (!eval_result.parsed) {
         result = ALLOC(BinaryValue);
         result->type = type_parse_exception;
-        // FIXME: is the value being freed in all time here?
+
         if(message && TYPE(message) == T_STRING) {
             result->value = strdup(PSTRING_PTR(message));
         } else {
