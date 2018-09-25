@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <mutex>
 
 #include <include/v8.h>
 #include <include/libplatform/libplatform.h>
@@ -120,9 +121,11 @@ typedef struct {
     EvalResult* result;
 } EvalParams;
 
+static std::mutex init_mutex;
 static Platform* current_platform = NULL;
 
 static void init_v8() {
+    std::lock_guard<std::mutex> guard(init_mutex);
     if (current_platform == NULL) {
         V8::InitializeICU();
         current_platform = platform::CreateDefaultPlatform();
