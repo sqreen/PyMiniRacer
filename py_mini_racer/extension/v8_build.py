@@ -14,7 +14,7 @@ logging.basicConfig()
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
-V8_VERSION = "5.1.281.67"
+V8_VERSION = "6.7.288.46"
 
 
 def local_path(path):

@@ -71,8 +71,7 @@ def local_path(path):
 
 
 V8_LIB_DIRECTORY = local_path('py_mini_racer/extension/v8/v8')
-V8_STATIC_LIBRARIES = ['libv8_base.a', 'libv8_libbase.a', 'libv8_libplatform.a',
-                       'libv8_nosnapshot.a']
+V8_STATIC_LIBRARIES = ['libv8_monolith.a']
 
 
 def is_v8_built():

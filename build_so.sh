@@ -2,15 +2,19 @@
 set -e
 set -x
 
-curl https://rubygems.org/downloads/libv8-5.7.492.65.1-x86_64-linux.gem --output libv8.gem
+VERSION=6.7.288.46.1
+URL=https://rubygems.org/downloads/libv8-$VERSION-x86_64-linux.gem
+[[ -f libv8.gem ]] || curl "$URL" --output libv8.gem
 tar xvf libv8.gem
 tar xvf data.tar.gz
 
 # Compile py_mini_racer extension
-g++ -Ivendor/v8/include \
-    -Ivendor/v8 py_mini_racer/extension/mini_racer_extension.cc \
+"${CXX:=g++}" \
+    -g -O0 \
+    -Ivendor/v8/include \
+    py_mini_racer/extension/mini_racer_extension.cc \
     -o _v8.so \
-    -Wl,--start-group vendor/v8/out/x64.release/obj.target/src/libv8_{base,libbase,snapshot,libplatform,libsampler}.a \
+    -Wl,--start-group vendor/v8/out.gn/libv8/obj/libv8_monolith.a \
     -Wl,--end-group \
     -lrt \
     -ldl \

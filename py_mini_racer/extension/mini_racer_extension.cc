@@ -5,8 +5,9 @@
 #include <unistd.h>
 #include <pthread.h>
 
-#include <include/v8.h>
-#include <include/libplatform/libplatform.h>
+#include <v8.h>
+#include <v8-profiler.h>
+#include <libplatform/libplatform.h>
 
 static void * xalloc(size_t x) {
     void *tmp = malloc(x);
@@ -15,12 +16,11 @@ static void * xalloc(size_t x) {
     }
     return tmp;
 }
+
 #define ALLOC(x) ((x *) xalloc(sizeof(x)));
 
-#define TYPE(x) x->type
-#define PSTRING_PTR(x) ((char *) x->value)
-
 enum BinaryTypes {
+    type_invalid   =   0,
     type_null      =   1,
     type_bool      =   2,
     type_integer   =   3,
@@ -34,11 +34,7 @@ enum BinaryTypes {
 
     type_execute_exception = 200,
     type_parse_exception   = 201,
-
-    type_invalid   = 300,
 };
-
-#define T_STRING type_str_utf8
 
 /* This is a generic store for arbitrary JSON like values.
  * Non scalar values are:
@@ -47,39 +43,54 @@ enum BinaryTypes {
  *  - Hash: contiguous map of pair of pointers to BinaryTypes (first is key,
  *          second is value)
  */
-typedef struct {
-    void *value;
+struct BinaryValue {
+    union {
+        BinaryValue **array_val;
+        BinaryValue **hash_val;
+        char *str_val;
+        uint32_t int_val;
+        double double_val;
+    };
     enum BinaryTypes type;
     size_t len;
-} BinaryValue;
+};
 
 
 void BinaryValueFree(BinaryValue *v) {
-    size_t i=0;
     if (!v) {
         return;
     }
     switch(v->type) {
-        case type_str_utf8:
-            free(v->value);
-            break;
-        case type_array:
-            for(i=0; i < v->len; i++) {
-                BinaryValue *w = ((BinaryValue **) v->value)[i];
-                BinaryValueFree(w);
-            }
-            break;
-        case type_hash:
-            for(i=0; i < v->len; i++) {
-                BinaryValue *k = ((BinaryValue **) v->value)[i*2];
-                BinaryValue *w = ((BinaryValue **) v->value)[i*2+1];
-                BinaryValueFree(k);
-                BinaryValueFree(w);
-            }
-            break;
-        default:
-            // the other types are scalar values
-            break;
+    case type_execute_exception:
+    case type_parse_exception:
+    case type_str_utf8:
+        free(v->str_val);
+        break;
+    case type_array:
+        for (size_t i = 0; i < v->len; i++) {
+            BinaryValue *w = v->array_val[i];
+            BinaryValueFree(w);
+        }
+        free(v->array_val);
+        break;
+    case type_hash:
+        for(size_t i = 0; i < v->len; i++) {
+            BinaryValue *k = v->hash_val[i*2];
+            BinaryValue *w = v->hash_val[i*2+1];
+            BinaryValueFree(k);
+            BinaryValueFree(w);
+        }
+        free(v->hash_val);
+        break;
+    case type_bool:
+    case type_double:
+    case type_date:
+    case type_null:
+    case type_integer:
+    case type_function: // no value implemented
+    case type_invalid:
+        // the other types are scalar values
+        break;
     }
     free(v);
 }
@@ -97,21 +108,36 @@ class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
   virtual void Free(void* data, size_t) { free(data); }
 };
 
-typedef struct {
+struct ContextInfo {
     Isolate* isolate;
     Persistent<Context>* context;
     ArrayBufferAllocator* allocator;
     bool interrupted;
-} ContextInfo;
+};
 
-typedef struct {
+struct EvalResult {
     bool parsed;
     bool executed;
     bool terminated;
     Persistent<Value>* value;
     Persistent<Value>* message;
     Persistent<Value>* backtrace;
-} EvalResult;
+
+    ~EvalResult() {
+        kill_value(value);
+        kill_value(message);
+        kill_value(backtrace);
+    }
+
+private:
+    static void kill_value(Persistent<Value> *val) {
+        if (!val) {
+            return;
+        }
+        val->Reset();
+        delete val;
+    }
+};
 
 typedef struct {
     ContextInfo* context_info;
@@ -131,15 +157,15 @@ static void init_v8() {
     }
 }
 
-void* breaker(void *d) {
+static void* breaker(void *d) {
   EvalParams* data = (EvalParams*)d;
   usleep(data->timeout*1000);
   pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
-  V8::TerminateExecution(data->context_info->isolate);
+  data->context_info->isolate->TerminateExecution();
   return NULL;
 }
 
-void* nogvl_context_eval(void* arg) {
+static void* nogvl_context_eval(void* arg) {
     EvalParams* eval_params = (EvalParams*)arg;
     EvalResult* result = eval_params->result;
     Isolate* isolate = eval_params->context_info->isolate;
@@ -163,15 +189,16 @@ void* nogvl_context_eval(void* arg) {
         result->message->Reset(isolate, trycatch.Exception()->ToString());
     } else {
 
-        pthread_t breaker_thread;
+        pthread_t breaker_thread = 0;
 
-        if (eval_params->timeout > 0) {
+        auto timeout = eval_params->timeout;
+        if (timeout > 0) {
             pthread_create(&breaker_thread, NULL, breaker, (void*)eval_params);
         }
 
         MaybeLocal<Value> maybe_value = parsed_script.ToLocalChecked()->Run(context);
 
-        if (eval_params->timeout > 0) {
+        if (timeout > 0) {
             pthread_cancel(breaker_thread);
             pthread_join(breaker_thread, NULL);
         }
@@ -205,30 +232,30 @@ void* nogvl_context_eval(void* arg) {
     return NULL;
 }
 
-static BinaryValue *new_bv_str(char *str) {
+static BinaryValue *new_bv_str(const char *str) {
     BinaryValue *bv = (BinaryValue *) malloc(sizeof(BinaryValue));
     if (!bv) {
         return NULL;
     }
     bv->type = type_str_utf8;
     if (str) {
-        bv->len   = strlen(str);
-        bv->value = strdup(str);
+        bv->len     = strlen(str);
+        bv->str_val = strdup(str);
     } else {
-        bv->len   = 0;
-        bv->value = NULL;
+        bv->len     = 0;
+        bv->str_val = NULL;
     }
     return bv;
 }
 
-static BinaryValue *new_bv_int(int val) {
+template<class T> static BinaryValue *new_bv_int(T val) {
     BinaryValue *bv = (BinaryValue *) malloc(sizeof(BinaryValue));
     if (!bv) {
         return NULL;
     }
-    bv->type  = type_integer;
-    bv->len   = 0;
-    *(uint32_t *) &bv->value = val;
+    bv->type    = type_integer;
+    bv->len     = 0;
+    bv->int_val = uint32_t(val);
     return bv;
 }
 
@@ -249,7 +276,7 @@ static BinaryValue *heap_stats(ContextInfo *context_info) {
     BinaryValue *hash = (BinaryValue *) malloc(sizeof(BinaryValue));
     hash->type = type_hash;
     hash->len = HEAP_NB_ITEMS;
-    hash->value = content;
+    hash->hash_val = content;
 
     if (!hash || !content) {
         free(hash);
@@ -258,11 +285,11 @@ static BinaryValue *heap_stats(ContextInfo *context_info) {
     }
 
     uint32_t idx = 0;
-    content[idx++ * 2] = new_bv_str((char *) "total_physical_size");
-    content[idx++ * 2] = new_bv_str((char *) "total_heap_size_executable");
-    content[idx++ * 2] = new_bv_str((char *) "total_heap_size");
-    content[idx++ * 2] = new_bv_str((char *) "used_heap_size");
-    content[idx++ * 2] = new_bv_str((char *) "heap_size_limit");
+    content[idx++ * 2] = new_bv_str("total_physical_size");
+    content[idx++ * 2] = new_bv_str("total_heap_size_executable");
+    content[idx++ * 2] = new_bv_str("total_heap_size");
+    content[idx++ * 2] = new_bv_str("used_heap_size");
+    content[idx++ * 2] = new_bv_str("heap_size_limit");
 
     idx = 0;
     if (!isolate) {
@@ -299,9 +326,9 @@ err:
 }
 
 
-BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
-                                  Handle<Value> &value) {
-
+static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
+                                         Handle<Value> &value)
+{
     Local<Context> context = context_info->context->Get(context_info->isolate);
 
     Context::Scope context_scope(context);
@@ -310,82 +337,76 @@ BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
     HandleScope scope(isolate);
 
     BinaryValue *res = ALLOC(BinaryValue);
+    if (!res) {
+        return NULL;
+    }
+    memset(res, 0, sizeof(*res));
     res->len = 0;
-    res->value = NULL;
     res->type = type_invalid;
 
     if (value->IsNull() || value->IsUndefined()) {
         res->type = type_null;
-        res->value = NULL;
-        return res;
     }
 
-    if (value->IsInt32()) {
+    else if (value->IsInt32()) {
         res->type = type_integer;
-        uint32_t val = value->Int32Value();
-        *(uint32_t *) &res->value = val;
-        return res;
+        auto val = value->Uint32Value();
+        res->int_val = val;
     }
 
     // ECMA-262, 4.3.20
     // http://www.ecma-international.org/ecma-262/5.1/#sec-4.3.19
-    if (value->IsNumber()) {
+    else if (value->IsNumber()) {
         res->type = type_double;
         double val = value->NumberValue();
-        *(double *) &res->value = val;
-        return res;
+        res->double_val = val;
     }
 
-    if (value->IsBoolean()) {
+    else if (value->IsBoolean()) {
         res->type = type_bool;
-        *(int *) &res->value = (value->IsTrue() ? 1 : 0);
-        return res;
+        res->int_val = (value->IsTrue() ? 1 : 0);
     }
 
-    if (value->IsArray()) {
+    else if (value->IsArray()) {
         Local<Array> arr = Local<Array>::Cast(value);
         size_t len = arr->Length();
-        BinaryValue **ary = (BinaryValue **) malloc(sizeof(BinaryValue *) * len);
+        BinaryValue **ary = static_cast<BinaryValue **>(
+                    malloc(sizeof(BinaryValue *) * len));
         if (!ary) {
-            free(res);
-            return NULL;
+            goto err;
         }
 
-        for(uint32_t i=0; i < arr->Length(); i++) {
+        res->type = type_array;
+        res->array_val = ary;
+        res->len = 0;
+
+        for(uint32_t i = 0; i < arr->Length(); i++) {
             Local<Value> element = arr->Get(i);
             BinaryValue *bin_value = convert_v8_to_binary(context_info, element);
             if (bin_value == NULL) {
-                free(res);
-                free(ary);
-                return NULL;
+                goto err;
             }
             ary[i] = bin_value;
+            res->len++;
         }
-        res->type = type_array;
-        res->len = len;
-        res->value = (void *) ary;
-        return res;
     }
 
-    if (value->IsFunction()){
+    else if (value->IsFunction()){
         res->type = type_function;
-        res->value = NULL;
         res->len = 0;
-        return res;
     }
 
-    if (value->IsDate()) {
+    else if (value->IsDate()) {
         res->type = type_date;
         Local<Date> date = Local<Date>::Cast(value);
 
         double timestamp = date->ValueOf();
-
-        *(double *) &res->value = timestamp;
-        return res;
+        res->double_val = timestamp;
     }
 
-    if (value->IsObject()) {
+    else if (value->IsObject()) {
         res->type = type_hash;
+        res->len = 0;
 
         TryCatch trycatch(isolate);
 
@@ -395,63 +416,66 @@ BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
             Local<Array> props = maybe_props.ToLocalChecked();
             uint32_t hash_len = props->Length();
 
-            res->len = hash_len;
             if (hash_len > 0) {
-                res->value = malloc(sizeof(void *) * hash_len * 2);
-                if (!res->value) {
-                    free(res);
-                    return NULL;
+                res->hash_val = static_cast<BinaryValue**>(
+                            malloc(sizeof(*res->hash_val) * hash_len * 2));
+                if (!res->hash_val) {
+                    goto err;
                 }
             } else {
-                res->value = NULL;
+                res->hash_val = NULL;
             }
-            for(uint32_t i=0; i < hash_len; i++) {
-                Local<Value> key = props->Get(i);
-                Local<Value> value = object->Get(key);
+
+            for (uint32_t i = 0; i < hash_len; i++) {
+                Local<Value> pkey = props->Get(i);
+                Local<Value> pvalue = object->Get(pkey);
                 // this may have failed due to Get raising
 
                 if (trycatch.HasCaught()) {
-                    // TODO isolate code that translates execption
-
-                    free(res->value);
-                    free(res);
-                    return NULL;
+                    goto err;
                 }
 
-                BinaryValue *bin_key = convert_v8_to_binary(context_info, key);
-                BinaryValue *bin_value = convert_v8_to_binary(context_info, value);
+                BinaryValue *bin_key = convert_v8_to_binary(context_info, pkey);
+                BinaryValue *bin_value = convert_v8_to_binary(context_info, pvalue);
 
-                ((BinaryValue **) res->value)[i*2]   = bin_key;
-                ((BinaryValue **) res->value)[i*2+1] = bin_value;
+                if (!bin_key || !bin_value) {
+                    BinaryValueFree(bin_key);
+                    BinaryValueFree(bin_value);
+                    goto err;
+                }
+
+                res->hash_val[i * 2]     = bin_key;
+                res->hash_val[i * 2 + 1] = bin_value;
+                res->len++;
             }
-        } else {
-            // empty hash
-            res->len = 0;
-            res->value = NULL;
+        } // else empty hash
+    }
+
+    else {
+        Local<String> rstr = value->ToString();
+
+        res->type = type_str_utf8;
+        res->len = size_t(rstr->Utf8Length()); // in bytes
+        size_t capacity = res->len + 1;
+        res->str_val = static_cast<char *>(malloc(capacity));
+        if (!res->str_val) {
+            goto err;
         }
-        return res;
+
+        rstr->WriteUtf8(res->str_val);
     }
-
-    Local<String> rstr = value->ToString();
-
-    res->type = type_str_utf8;
-
-    int str_len = rstr->Utf8Length();
-    res->len = str_len;
-    str_len++;
-    res->value = (char *) malloc(str_len);
-    if (!res->value) {
-        free(res);
-        return NULL;
-    }
-    rstr->WriteUtf8((char *) res->value, str_len);
     return res;
+
+err:
+    BinaryValueFree(res);
+    return NULL;
 }
 
 
-void deallocate(void * data) {
+static void deallocate(void * data) {
     ContextInfo* context_info = (ContextInfo*)data;
     {
+        // XXX: what is the point of this?
         Locker lock(context_info->isolate);
     }
 
@@ -460,12 +484,12 @@ void deallocate(void * data) {
         delete context_info->context;
     }
 
-    {
-        if (context_info->interrupted) {
-            fprintf(stderr, "WARNING: V8 isolate was interrupted by Ruby, it can not be disposed and memory will not be reclaimed till the Ruby process exits.");
-        } else {
-            context_info->isolate->Dispose();
-        }
+    if (context_info->interrupted) {
+        fprintf(stderr, "WARNING: V8 isolate was interrupted by Python, "
+                        "it can not be disposed and memory will not be "
+                        "reclaimed till the Python process exits.");
+    } else {
+        context_info->isolate->Dispose();
     }
 
     delete context_info->allocator;
@@ -483,6 +507,7 @@ ContextInfo *MiniRacer_init_context() {
     create_params.array_buffer_allocator = context_info->allocator;
 
     context_info->isolate = Isolate::New(create_params);
+    //context_info->isolate->GetHeapProfiler()->StartTrackingHeapObjects(true);
 
     Locker lock(context_info->isolate);
     Isolate::Scope isolate_scope(context_info->isolate);
@@ -496,17 +521,17 @@ ContextInfo *MiniRacer_init_context() {
     return context_info;
 }
 
-BinaryValue* MiniRacer_eval_context_unsafe(ContextInfo *context_info,
-                                           char *utf_str,
-                                           int   str_len) {
-
+static BinaryValue* MiniRacer_eval_context_unsafe(
+        ContextInfo *context_info,
+        char *utf_str, int   str_len)
+{
     EvalParams eval_params;
-    EvalResult eval_result;
+    EvalResult eval_result{};
 
     BinaryValue *result = NULL;
 
-    BinaryValue *message = NULL;
-    BinaryValue *backtrace = NULL;
+    BinaryValue *bmessage = NULL;
+    BinaryValue *bbacktrace = NULL;
 
     if (context_info == NULL) {
         return NULL;
@@ -534,27 +559,23 @@ BinaryValue* MiniRacer_eval_context_unsafe(ContextInfo *context_info,
         // FIXME - we should allow setting a timeout here
         //     eval_params.timeout = (useconds_t)NUM2LONG(timeout);
 
-        eval_result.message = NULL;
-        eval_result.backtrace = NULL;
-
         nogvl_context_eval(&eval_params);
 
-        if (eval_result.message != NULL) {
+        if (eval_result.message) {
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.message);
-            message = convert_v8_to_binary(context_info, tmp);
-            eval_result.message->Reset();
-            delete eval_result.message;
+            bmessage = convert_v8_to_binary(context_info, tmp);
         }
 
-        if (eval_result.backtrace != NULL) {
+        if (eval_result.backtrace) {
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.backtrace);
-            backtrace = convert_v8_to_binary(context_info, tmp);
-            eval_result.backtrace->Reset();
-            delete eval_result.backtrace;
+            bbacktrace = convert_v8_to_binary(context_info, tmp);
         }
     }
+
+    // bmessage and bbacktrace are now potentially allocated
+    // they are always freed at the end of the function
 
     // NOTE: this is very important, we can not do an raise from within
     // a v8 scope, if we do the scope is never cleaned up properly and we leak
@@ -562,62 +583,94 @@ BinaryValue* MiniRacer_eval_context_unsafe(ContextInfo *context_info,
         result = ALLOC(BinaryValue);
         result->type = type_parse_exception;
 
-        if(message && TYPE(message) == T_STRING) {
-            result->value = strdup(PSTRING_PTR(message));
+        if (bmessage && bmessage->type == type_str_utf8) {
+            // canibalize bmessage
+            result->str_val = bmessage->str_val;
+            result->len = bmessage->len;
+            free(bmessage);
+            bmessage = NULL;
         } else {
-            result->value = strdup("Unknown JavaScript error during parse");
+            result->str_val = strdup("Unknown JavaScript error during parse");
+            result->len = result->str_val ? strlen(result->str_val) : 0;
         }
-        return result;
     }
 
-    if (!eval_result.executed) {
+    else if (!eval_result.executed) {
         result = ALLOC(BinaryValue);
         result->type = type_execute_exception;
+        result->str_val = nullptr;
 
-        if(message && TYPE(message) == T_STRING && backtrace && TYPE(backtrace) == T_STRING) {
-            char *msg_str = PSTRING_PTR(message);
-            char *backtrace_str = PSTRING_PTR(backtrace);
-            size_t dest_size = strlen(msg_str) + strlen(backtrace_str) + 1;
-            char *dest = (char *) malloc(dest_size);
+        if (bmessage && bmessage->type == type_str_utf8 &&
+                bbacktrace && bbacktrace->type == type_str_utf8) {
+            // +1 for \n
+            size_t dest_size = bmessage->len + bbacktrace->len + 1;
+            char *dest = static_cast<char *>(malloc(dest_size));
             if (!dest) {
-                BinaryValueFree(message);
-                free(result);
-                return NULL;
+                goto err;
             }
-            snprintf(dest, dest_size, "%s\n%s", msg_str, backtrace_str);
+            memcpy(dest, bmessage->str_val, bmessage->len);
+            dest[bmessage->len] = '\n';
+            memcpy(dest + bmessage->len + 1, bbacktrace->str_val, bbacktrace->len);
 
-            result->value = dest;
+            result->str_val = dest;
             result->len = dest_size;
-        } else if(message && TYPE(message) == T_STRING) {
-            result->value = strdup(PSTRING_PTR(message));
-            result->len = strlen((char *) result->value);
+        } else if(bmessage && bmessage->type == type_str_utf8) {
+            // canibalize bmessage
+            result->str_val = bmessage->str_val;
+            result->len = bmessage->len;
+            free(bmessage);
+            bmessage = NULL;
         } else {
-            result->value = strdup("Unknown JavaScript error during execution");
-            result->len = strlen((char *) result->value);
+            result->str_val = strdup("Unknown JavaScript error during execution");
+            result->len = result->str_val ? strlen(result->str_val) : 0;
         }
-        BinaryValueFree(message);
-        BinaryValueFree(backtrace);
-
-        return result;
     }
-    BinaryValueFree(message);
-    BinaryValueFree(backtrace);
 
     // New scope for return value
-    {
+    else {
         Locker lock(context_info->isolate);
         Isolate::Scope isolate_scope(context_info->isolate);
         HandleScope handle_scope(context_info->isolate);
 
         Local<Value> tmp = Local<Value>::New(context_info->isolate, *eval_result.value);
         result = convert_v8_to_binary(context_info, tmp);
-
-        eval_result.value->Reset();
-        delete eval_result.value;
     }
+
+    if (false) {
+err:
+        BinaryValueFree(result);
+        result = nullptr;
+    }
+
+    BinaryValueFree(bmessage);
+    BinaryValueFree(bbacktrace);
 
     return result;
 }
+
+class BufferOutputStream: public OutputStream {
+public:
+    BinaryValue *bv;
+    BufferOutputStream() {
+        bv = ALLOC(BinaryValue);
+        bv->len = 0;
+        bv->type = type_str_utf8;
+        bv->str_val = nullptr;
+    }
+    virtual ~BufferOutputStream() {} // don't destroy the stuff
+    virtual void EndOfStream() {}
+    virtual int GetChunkSize() { return 1000000; }
+    virtual WriteResult WriteAsciiChunk(char* data, int size) {
+        size_t oldlen = bv->len;
+        bv->len = oldlen + size_t(size);
+        bv->str_val = static_cast<char *>(realloc(bv->str_val, bv->len));
+        if (!bv->str_val) {
+            return kAbort;
+        }
+        memcpy(bv->str_val + oldlen, data, (size_t) size);
+        return kContinue;
+    }
+};
 
 extern "C" {
 
@@ -643,5 +696,18 @@ BinaryValue *mr_heap_stats(ContextInfo *context_info) {
     return heap_stats(context_info);
 }
 
+void mr_low_memory_notification(ContextInfo *context_info) {
+    context_info->isolate->LowMemoryNotification();
+}
 
+BinaryValue* mr_heap_snapshot(ContextInfo *context_info) {
+    Isolate* isolate = context_info->isolate;
+    Locker lock(isolate);
+    Isolate::Scope isolate_scope(isolate);
+    HandleScope handle_scope(isolate);
+    auto snap = isolate->GetHeapProfiler()->TakeHeapSnapshot();
+    BufferOutputStream bos{};
+    snap->Serialize(&bos);
+    return bos.bv;
+}
 }
