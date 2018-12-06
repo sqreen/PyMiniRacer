@@ -2,7 +2,8 @@
 set -e
 set -x
 
-GEM=libv8-5.7.492.65.1-x86_64-darwin-16.gem
+VERSION=6.7.288.46.1
+GEM=libv8-$VERSION-x86_64-darwin-16.gem
 
 if ! [ -f ${GEM} ]; then
 

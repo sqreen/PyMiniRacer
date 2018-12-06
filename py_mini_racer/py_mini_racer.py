@@ -72,6 +72,40 @@ def is_unicode(value):
         raise NotImplementedError()
 
 
+_ext_handle = None
+
+
+def _fetch_ext_handle():
+    global _ext_handle
+
+    if _ext_handle:
+        return _ext_handle
+
+    _ext_handle = ctypes.CDLL(EXTENSION_PATH)
+
+    _ext_handle.mr_init_context.restype = ctypes.c_void_p
+
+    _ext_handle.mr_eval_context.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        ctypes.c_int]
+    _ext_handle.mr_eval_context.restype = ctypes.POINTER(PythonValue)
+
+    _ext_handle.mr_free_value.argtypes = [ctypes.c_void_p]
+
+    _ext_handle.mr_free_context.argtypes = [ctypes.c_void_p]
+
+    _ext_handle.mr_heap_stats.argtypes = [ctypes.c_void_p]
+    _ext_handle.mr_heap_stats.restype = ctypes.POINTER(PythonValue)
+
+    _ext_handle.mr_low_memory_notification.argtypes = [ctypes.c_void_p]
+
+    _ext_handle.mr_heap_snapshot.argtypes = [ctypes.c_void_p]
+    _ext_handle.mr_heap_snapshot.restype = ctypes.POINTER(PythonValue)
+
+    return _ext_handle
+
+
 class MiniRacer(object):
     """ Ctypes wrapper arround binary mini racer
         https://docs.python.org/2/library/ctypes.html
@@ -80,24 +114,8 @@ class MiniRacer(object):
     def __init__(self):
         """ Init a JS context """
 
-        self.ext = ctypes.CDLL(EXTENSION_PATH)
-
-        self.ext.mr_init_context.restype = ctypes.c_void_p
-        self.ext.mr_eval_context.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_char_p,
-            ctypes.c_int]
-        self.ext.mr_eval_context.restype = ctypes.POINTER(PythonValue)
-
-        self.ext.mr_free_value.argtypes = [ctypes.c_void_p]
-
-        self.ext.mr_free_context.argtypes = [ctypes.c_void_p]
-
-        self.ext.mr_heap_stats.argtypes = [ctypes.c_void_p]
-        self.ext.mr_heap_stats.restype = ctypes.POINTER(PythonValue)
-
+        self.ext = _fetch_ext_handle()
         self.ctx = self.ext.mr_init_context()
-
         self.lock = threading.Lock()
 
     def free(self, res):
@@ -120,14 +138,16 @@ class MiniRacer(object):
             bytes_val = js_str
 
         self.lock.acquire()
-        res = self.ext.mr_eval_context(self.ctx, bytes_val, len(bytes_val))
-        self.lock.release()
+        try:
+            res = self.ext.mr_eval_context(self.ctx, bytes_val, len(bytes_val))
 
-        if bool(res) is False:
-            raise JSConversionException()
-        python_value = res.contents.to_python()
-        self.free(res)
-        return python_value
+            if bool(res) is False:
+                raise JSConversionException()
+            python_value = res.contents.to_python()
+            return python_value
+        finally:
+            self.lock.release()
+            self.free(res)
 
     def call(self, identifier, *args, **kwargs):
         """ Call the named function with provided arguments
@@ -152,6 +172,20 @@ class MiniRacer(object):
         self.free(res)
         return python_value
 
+    def low_memory_notification(self):
+        self.ext.mr_low_memory_notification(self.ctx)
+
+    def heap_snapshot(self):
+        """ Return heap snapshot """
+
+        self.lock.acquire()
+        res = self.ext.mr_heap_snapshot(self.ctx)
+        self.lock.release()
+
+        python_value = res.contents.to_python()
+        self.free(res)
+        return python_value
+
     def __del__(self):
         """ Free the context """
 
@@ -162,6 +196,7 @@ class PythonTypes(object):
     """ Python types identifier - need to be coherent with
     mini_racer_extension.cc """
 
+    invalid   =   0
     null      =   1
     bool      =   2
     integer   =   3
@@ -175,8 +210,6 @@ class PythonTypes(object):
 
     execute_exception = 200
     parse_exception = 201
-
-    invalid   = 300
 
 
 class PythonValue(ctypes.Structure):

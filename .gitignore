@@ -60,3 +60,5 @@ target/
 
 # V8 vendor
 py_mini_racer/ffi/v8/
+
+*.iml
