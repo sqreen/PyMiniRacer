@@ -4,10 +4,10 @@ branches:
   only:
     - master
 
+language: c
 matrix:
   include:
     - dist: trusty
-      language: c
       services:
         - docker
       script:
@@ -15,7 +15,7 @@ matrix:
       after_success:
         - ./upload_artifacts_linux.sh
     - os: osx
-      osx_image: xcode8.3
+      osx_image: xcode9.4
       script:
         - ./build_mac_os_x_wheels.sh
       after_success:

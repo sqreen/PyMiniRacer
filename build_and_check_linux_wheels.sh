@@ -14,11 +14,6 @@ do
 
     PYTHON=${PYVERSION:2:1}.${PYVERSION:3:1}
 
-    # Remove this when python 3.7 is released
-    if [ $PYTHON = "3.7" ]
-    then
-        PYTHON="3.7-rc"
-    fi
     docker run \
         -d \
         --name ${CONT} \
