@@ -10,7 +10,7 @@ tar xvf data.tar.gz
 
 # Compile py_mini_racer extension
 "${CXX:=g++}" \
-    -g -O0 \
+    -g -O2 \
     -Ivendor/v8/include \
     py_mini_racer/extension/mini_racer_extension.cc \
     -o _v8.so \

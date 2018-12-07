@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import errno
+
 import logging
 import os
 import os.path
@@ -93,45 +95,31 @@ def dependencies_sync(path):
     with chdir(path):
         call("gclient sync")
 
+def gen_makefiles(path):
+    opts = {
+        'is_component_build': 'false',
+        'v8_monolithic': 'true',
+        'use_gold': 'false',
+        'use_allocator_shim': 'false',
+        'symbol_level': '1',
+        'strip_debug_info': 'false',
+        'v8_use_external_startup_data': 'false',
+        'v8_enable_i18n_support': 'false',
+        'v8_static_library': 'true',
+        'v8_experimental_extra_library_files': '[]',
+        'v8_extra_library_files': '[]'
+    }
+    joined_opts = ' '.join('{}={}'.format(a, b) for (a, b) in opts.iteritems())
 
-def gyp_defines():
-    defines = []
+    with chdir(path):
+        call('./tools/dev/v8gen.py -vv x64.release -- ' + joined_opts)
 
-    # Do not use an external snapshot as we don't really care for binary size
-    # and so we don't need to ship the blobs
-    defines.append('v8_use_external_startup_data=0')
-
-    # Do not use the GPLv3 ld.gold binary on Linux
-    defines.append('linux_use_bundled_gold=0')
-
-    return 'GYP_DEFINES="{}"'.format(" ".join(defines))
-
-
-def make_flags():
-    """ Returns compilation flags
-    """
-    flags = []
-
-    # Activate parallel build process
-    flags.append('-j {:d}'.format(multiprocessing.cpu_count()))
-
-    # Disable i18n
-    flags.append('i18nsupport=off')
-
-    # Disable werror as this version of v8 is getting difficult to maintain
-    # with it on
-    flags.append('werror=no')
-
-    flags.append(gyp_defines())
-
-    return ' '.join(flags)
-
-
-def make(path, flags, target='native'):
+def make(path, cmd_prefix):
     """ Create a release of v8
     """
     with chdir(path):
-        call("make {} {}".format(target, flags))
+        call("{} ninja -vv -C out.gn/x64.release -j {} v8_monolith"
+             .format(cmd_prefix, 4))
 
 def patch_v8():
     """ Apply patch on v8
@@ -139,6 +127,35 @@ def patch_v8():
     path = local_path('v8/v8')
     patches_paths = PATCHES_PATH
     apply_patches(path, patches_paths)
+
+
+def symlink_force(target, link_name):
+    try:
+        os.symlink(target, link_name)
+    except OSError as e:
+        if e.errno == errno.EEXIST:
+            os.remove(link_name)
+            os.symlink(target, link_name)
+        else:
+            raise e
+
+
+def fixup_libtinfo(dir):
+    dirs = ['/lib64', '/usr/lib64', '/lib', '/usr/lib']
+
+    v5_locs = ["{}/libtinfo.so.5".format(d) for d in dirs]
+    found_v5 = next((f for f in v5_locs if os.path.isfile(f)), None)
+    if found_v5 and os.stat(found_v5).st_size > 100:
+        return ''
+
+    v6_locs = ["{}/libtinfo.so.6".format(d) for d in dirs]
+    found_v6 = next((f for f in v6_locs if os.path.isfile(f)), None)
+    if not found_v6:
+        return ''
+
+    symlink_force(found_v6, join(dir, 'libtinfo.so.5'))
+    return "LD_LIBRARY_PATH='{}:{}'"\
+        .format(dir, os.getenv('LD_LIBRARY_PATH', ''))
 
 
 def apply_patches(path, patches_path):
@@ -157,12 +174,14 @@ def apply_patches(path, patches_path):
                     applied_patches_file.write(patch + "\n")
 
 
-def build_v8(target):
+def build_v8():
     ensure_v8_src()
     patch_v8()
-    flags = make_flags()
-    make(local_path('v8/v8'), flags, target)
+    checkout_path = local_path('v8/v8')
+    cmd_prefix = fixup_libtinfo(checkout_path)
+    gen_makefiles(checkout_path)
+    make(checkout_path, cmd_prefix)
 
 
 if __name__ == '__main__':
-    build_v8('native')
+    build_v8()
