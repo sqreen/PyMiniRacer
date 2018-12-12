@@ -576,15 +576,16 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
 
         if (bmessage && bmessage->type == type_str_utf8 &&
                 bbacktrace && bbacktrace->type == type_str_utf8) {
-            // +1 for \n
-            size_t dest_size = bmessage->len + bbacktrace->len + 1;
+            // +1 for \n, +1 for NUL terminator
+            size_t dest_size = bmessage->len + bbacktrace->len + 1 + 1;
             char *dest = xalloc(dest, dest_size);
             memcpy(dest, bmessage->str_val, bmessage->len);
             dest[bmessage->len] = '\n';
             memcpy(dest + bmessage->len + 1, bbacktrace->str_val, bbacktrace->len);
+            dest[dest_size - 1] = '\0';
 
             result->str_val = dest;
-            result->len = dest_size;
+            result->len = dest_size - 1;
         } else if(bmessage && bmessage->type == type_str_utf8) {
             // canibalize bmessage
             result->str_val = bmessage->str_val;
