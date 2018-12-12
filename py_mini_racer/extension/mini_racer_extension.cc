@@ -9,15 +9,16 @@
 #include <v8-profiler.h>
 #include <libplatform/libplatform.h>
 
-static void * xalloc(size_t x) {
+template<class T> static inline T* xalloc(T*& ptr, size_t x = sizeof(T))
+{
     void *tmp = malloc(x);
     if (tmp == NULL) {
+        fprintf(stderr, "malloc failed. Aborting");
         abort();
     }
-    return tmp;
+    ptr = static_cast<T*>(tmp);
+    return ptr;
 }
-
-#define ALLOC(x) ((x *) xalloc(sizeof(x)));
 
 enum BinaryTypes {
     type_invalid   =   0,
@@ -51,10 +52,9 @@ struct BinaryValue {
         uint32_t int_val;
         double double_val;
     };
-    enum BinaryTypes type;
+    enum BinaryTypes type = type_invalid;
     size_t len;
 };
-
 
 void BinaryValueFree(BinaryValue *v) {
     if (!v) {
@@ -233,10 +233,7 @@ static void* nogvl_context_eval(void* arg) {
 }
 
 static BinaryValue *new_bv_str(const char *str) {
-    BinaryValue *bv = (BinaryValue *) malloc(sizeof(BinaryValue));
-    if (!bv) {
-        return NULL;
-    }
+    BinaryValue *bv = xalloc(bv);
     bv->type = type_str_utf8;
     if (str) {
         bv->len     = strlen(str);
@@ -249,10 +246,7 @@ static BinaryValue *new_bv_str(const char *str) {
 }
 
 template<class T> static BinaryValue *new_bv_int(T val) {
-    BinaryValue *bv = (BinaryValue *) malloc(sizeof(BinaryValue));
-    if (!bv) {
-        return NULL;
-    }
+    BinaryValue *bv = xalloc(bv);
     bv->type    = type_integer;
     bv->len     = 0;
     bv->int_val = uint32_t(val);
@@ -272,8 +266,8 @@ static BinaryValue *heap_stats(ContextInfo *context_info) {
 
     isolate = context_info->isolate;
 
-    BinaryValue **content = (BinaryValue **) malloc(sizeof(BinaryValue *) * 2 * HEAP_NB_ITEMS);
-    BinaryValue *hash = (BinaryValue *) malloc(sizeof(BinaryValue));
+    BinaryValue **content = xalloc(content, sizeof(BinaryValue *) * 2 * HEAP_NB_ITEMS);
+    BinaryValue *hash = xalloc(hash);
     hash->type = type_hash;
     hash->len = HEAP_NB_ITEMS;
     hash->hash_val = content;
@@ -336,13 +330,7 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
     Isolate *isolate = context_info->isolate;
     HandleScope scope(isolate);
 
-    BinaryValue *res = ALLOC(BinaryValue);
-    if (!res) {
-        return NULL;
-    }
-    memset(res, 0, sizeof(*res));
-    res->len = 0;
-    res->type = type_invalid;
+    BinaryValue *res = new (xalloc(res)) BinaryValue();
 
     if (value->IsNull() || value->IsUndefined()) {
         res->type = type_null;
@@ -370,15 +358,10 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
     else if (value->IsArray()) {
         Local<Array> arr = Local<Array>::Cast(value);
         size_t len = arr->Length();
-        BinaryValue **ary = static_cast<BinaryValue **>(
-                    malloc(sizeof(BinaryValue *) * len));
-        if (!ary) {
-            goto err;
-        }
+        BinaryValue **ary = xalloc(ary, sizeof(*ary) * len);
 
         res->type = type_array;
         res->array_val = ary;
-        res->len = 0;
 
         for(uint32_t i = 0; i < arr->Length(); i++) {
             Local<Value> element = arr->Get(i);
@@ -393,7 +376,6 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
 
     else if (value->IsFunction()){
         res->type = type_function;
-        res->len = 0;
     }
 
     else if (value->IsDate()) {
@@ -406,7 +388,6 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
 
     else if (value->IsObject()) {
         res->type = type_hash;
-        res->len = 0;
 
         TryCatch trycatch(isolate);
 
@@ -417,13 +398,8 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
             uint32_t hash_len = props->Length();
 
             if (hash_len > 0) {
-                res->hash_val = static_cast<BinaryValue**>(
-                            malloc(sizeof(*res->hash_val) * hash_len * 2));
-                if (!res->hash_val) {
-                    goto err;
-                }
-            } else {
-                res->hash_val = NULL;
+                res->hash_val = xalloc(res->hash_val,
+                                       sizeof(*res->hash_val) * hash_len * 2);
             }
 
             for (uint32_t i = 0; i < hash_len; i++) {
@@ -432,6 +408,8 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
                 // this may have failed due to Get raising
 
                 if (trycatch.HasCaught()) {
+                    // TODO: factor out code converting exception in
+                    //       nogvl_context_eval() and use it here/?
                     goto err;
                 }
 
@@ -457,11 +435,7 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
         res->type = type_str_utf8;
         res->len = size_t(rstr->Utf8Length()); // in bytes
         size_t capacity = res->len + 1;
-        res->str_val = static_cast<char *>(malloc(capacity));
-        if (!res->str_val) {
-            goto err;
-        }
-
+        res->str_val = xalloc(res->str_val, capacity);
         rstr->WriteUtf8(res->str_val);
     }
     return res;
@@ -497,17 +471,17 @@ static void deallocate(void * data) {
 }
 
 
-ContextInfo *MiniRacer_init_context() {
+ContextInfo *MiniRacer_init_context()
+{
     init_v8();
 
-    ContextInfo* context_info = ALLOC(ContextInfo);
+    ContextInfo* context_info = xalloc(context_info);
     context_info->allocator = new ArrayBufferAllocator();
     context_info->interrupted = false;
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator = context_info->allocator;
 
     context_info->isolate = Isolate::New(create_params);
-    //context_info->isolate->GetHeapProfiler()->StartTrackingHeapObjects(true);
 
     Locker lock(context_info->isolate);
     Isolate::Scope isolate_scope(context_info->isolate);
@@ -580,7 +554,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
     // NOTE: this is very important, we can not do an raise from within
     // a v8 scope, if we do the scope is never cleaned up properly and we leak
     if (!eval_result.parsed) {
-        result = ALLOC(BinaryValue);
+        xalloc(result);
         result->type = type_parse_exception;
 
         if (bmessage && bmessage->type == type_str_utf8) {
@@ -596,7 +570,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
     }
 
     else if (!eval_result.executed) {
-        result = ALLOC(BinaryValue);
+        xalloc(result);
         result->type = type_execute_exception;
         result->str_val = nullptr;
 
@@ -604,10 +578,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
                 bbacktrace && bbacktrace->type == type_str_utf8) {
             // +1 for \n
             size_t dest_size = bmessage->len + bbacktrace->len + 1;
-            char *dest = static_cast<char *>(malloc(dest_size));
-            if (!dest) {
-                goto err;
-            }
+            char *dest = xalloc(dest, dest_size);
             memcpy(dest, bmessage->str_val, bmessage->len);
             dest[bmessage->len] = '\n';
             memcpy(dest + bmessage->len + 1, bbacktrace->str_val, bbacktrace->len);
@@ -626,7 +597,6 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         }
     }
 
-    // New scope for return value
     else {
         Locker lock(context_info->isolate);
         Isolate::Scope isolate_scope(context_info->isolate);
@@ -634,12 +604,6 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
 
         Local<Value> tmp = Local<Value>::New(context_info->isolate, *eval_result.value);
         result = convert_v8_to_binary(context_info, tmp);
-    }
-
-    if (false) {
-err:
-        BinaryValueFree(result);
-        result = nullptr;
     }
 
     BinaryValueFree(bmessage);
@@ -652,7 +616,7 @@ class BufferOutputStream: public OutputStream {
 public:
     BinaryValue *bv;
     BufferOutputStream() {
-        bv = ALLOC(BinaryValue);
+        xalloc(bv);
         bv->len = 0;
         bv->type = type_str_utf8;
         bv->str_val = nullptr;
@@ -700,6 +664,7 @@ void mr_low_memory_notification(ContextInfo *context_info) {
     context_info->isolate->LowMemoryNotification();
 }
 
+// FOR DEBUGGING ONLY
 BinaryValue* mr_heap_snapshot(ContextInfo *context_info) {
     Isolate* isolate = context_info->isolate;
     Locker lock(isolate);
