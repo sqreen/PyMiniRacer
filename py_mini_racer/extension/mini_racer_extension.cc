@@ -17,7 +17,7 @@ template<class T> static inline T* xalloc(T*& ptr, size_t x = sizeof(T))
         abort();
     }
     ptr = static_cast<T*>(tmp);
-    return ptr;
+    return static_cast<T*>(ptr);
 }
 
 enum BinaryTypes {
@@ -247,9 +247,9 @@ static BinaryValue *new_bv_str(const char *str) {
 
 template<class T> static BinaryValue *new_bv_int(T val) {
     BinaryValue *bv = xalloc(bv);
-    bv->type    = type_integer;
-    bv->len     = 0;
-    bv->int_val = uint32_t(val);
+    bv->type        = type_integer;
+    bv->len         = 0;
+    bv->int_val     = uint32_t(val);
     return bv;
 }
 
@@ -554,7 +554,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
     // NOTE: this is very important, we can not do an raise from within
     // a v8 scope, if we do the scope is never cleaned up properly and we leak
     if (!eval_result.parsed) {
-        xalloc(result);
+        result = xalloc(result);
         result->type = type_parse_exception;
 
         if (bmessage && bmessage->type == type_str_utf8) {
@@ -570,7 +570,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
     }
 
     else if (!eval_result.executed) {
-        xalloc(result);
+        result = xalloc(result);
         result->type = type_execute_exception;
         result->str_val = nullptr;
 
@@ -617,7 +617,7 @@ class BufferOutputStream: public OutputStream {
 public:
     BinaryValue *bv;
     BufferOutputStream() {
-        xalloc(bv);
+        bv = xalloc(bv);
         bv->len = 0;
         bv->type = type_str_utf8;
         bv->str_val = nullptr;
