@@ -76,7 +76,7 @@ def is_v8_built():
     """
     if V8_PATH:
         return True
-    return all(get_raw_static_lib_path())
+    return all(isfile(static_filepath) for static_filepath in get_raw_static_lib_path())
 
 
 def is_depot_tools_checkout():
@@ -88,12 +88,16 @@ def is_depot_tools_checkout():
 def libv8_object(object_name):
     """ Return a path for object_name which is OS independent
     """
-    filenames = [
-        join(V8_LIB_DIRECTORY, 'out.gn/x64.release/obj/{}'.format(object_name)),
-        join(local_path('vendor/v8/out.gn/libv8/obj/{}'.format(object_name)))
-    ]
 
-    return next((f for f in filenames if isfile(f)), None)
+    filename = join(V8_LIB_DIRECTORY, 'out.gn/x64.release/obj/{}'.format(object_name))
+
+    if not isfile(filename):
+        filename = join(local_path('vendor/v8/out.gn/libv8/obj/{}'.format(object_name)))
+
+    if not isfile(filename):
+        filename = join(V8_LIB_DIRECTORY, 'out.gn/x64.release/obj/{}'.format(object_name))
+
+    return filename
 
 
 def get_raw_static_lib_path():

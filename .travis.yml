@@ -4,7 +4,6 @@ branches:
   only:
     - master
 
-language: c
 matrix:
   include:
     - dist: trusty
@@ -16,6 +15,7 @@ matrix:
         - ./upload_artifacts_linux.sh
     - os: osx
       osx_image: xcode9.4
+      compiler: clang
       script:
         - ./build_mac_os_x_wheels.sh
       after_success:
