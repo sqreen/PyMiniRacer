@@ -4,6 +4,10 @@ branches:
   only:
     - master
 
+cache:
+  directories:
+  - $HOME/build/sqreen/PyMiniRacer/py_mini_racer/extension/v8/
+
 matrix:
   include:
     - dist: trusty
