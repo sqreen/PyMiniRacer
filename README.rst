@@ -156,13 +156,26 @@ You can generate a wheel with the command:
 
 which builds v8, the extension, and generates a wheel.
 
-Notes for building on OSX
+Notes for building on macOS
 '''''''''''''''''''''''''
 
 The legacy Python binary builds (OSX 10.6) need to be downloaded from:
     https://www.python.org/downloads/
 
 They will allow to build a wheel compatible with former OSX versions.
+
+If you're having build issues, you may either have to run the build a second time (which will be much faster than the first run) or run the following command before running the first build: 
+
+``export LDSHARED="clang++ -bundle -undefined dynamic_lookup -arch i386 -arch x86_64"``
+
+Notes for building on Travis
+'''''''''''''''''''''''''
+
+The V8 build is cached in order to make the Travis builds faster.
+
+Whenever V8 is updated, the caches need to be flushed `on Travis here`_.
+
+.. _`on Travis here`: https://travis-ci.org/sqreen/PyMiniRacer/caches
 
 Tests
 -----
