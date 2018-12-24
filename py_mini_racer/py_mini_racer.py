@@ -35,6 +35,14 @@ class JSEvalException(MiniRacerBaseException):
     """ JS could not be executed """
     pass
 
+class JSOOMException(JSEvalException):
+    """ JS execution out of memory """
+    pass
+
+class JSTimeoutException(JSEvalException):
+    """ JS execution timed out """
+    pass
+
 class JSConversionException(MiniRacerBaseException):
     """ type could not be converted """
     pass
@@ -88,7 +96,9 @@ def _fetch_ext_handle():
     _ext_handle.mr_eval_context.argtypes = [
         ctypes.c_void_p,
         ctypes.c_char_p,
-        ctypes.c_int]
+        ctypes.c_int,
+        ctypes.c_ulong,
+        ctypes.c_size_t]
     _ext_handle.mr_eval_context.restype = ctypes.POINTER(PythonValue)
 
     _ext_handle.mr_free_value.argtypes = [ctypes.c_void_p]
@@ -123,13 +133,13 @@ class MiniRacer(object):
 
         self.ext.mr_free_value(res)
 
-    def execute(self, js_str):
+    def execute(self, js_str, timeout=0, max_memory=0):
         """ Exec the given JS value """
 
         wrapped = "(function(){return (%s)})()" % js_str
-        return self.eval(wrapped)
+        return self.eval(wrapped, timeout, max_memory)
 
-    def eval(self, js_str):
+    def eval(self, js_str, timeout=0, max_memory=0):
         """ Eval the JavaScript string """
 
         if is_unicode(js_str):
@@ -137,9 +147,14 @@ class MiniRacer(object):
         else:
             bytes_val = js_str
 
+        res = None
         self.lock.acquire()
         try:
-            res = self.ext.mr_eval_context(self.ctx, bytes_val, len(bytes_val))
+            res = self.ext.mr_eval_context(self.ctx,
+                                           bytes_val,
+                                           len(bytes_val),
+                                           ctypes.c_ulong(timeout),
+                                           ctypes.c_size_t(max_memory))
 
             if bool(res) is False:
                 raise JSConversionException()
@@ -147,7 +162,8 @@ class MiniRacer(object):
             return python_value
         finally:
             self.lock.release()
-            self.free(res)
+            if res is not None:
+                self.free(res)
 
     def call(self, identifier, *args, **kwargs):
         """ Call the named function with provided arguments
@@ -156,10 +172,12 @@ class MiniRacer(object):
         """
 
         encoder = kwargs.get('encoder', None)
+        timeout = kwargs.get('timeout', 0)
+        max_memory = kwargs.get('max_memory', 0)
 
         json_args = json.dumps(args, separators=(',', ':'), cls=encoder)
         js = "{identifier}.apply(this, {json_args})"
-        return self.eval(js.format(identifier=identifier, json_args=json_args))
+        return self.eval(js.format(identifier=identifier, json_args=json_args), timeout, max_memory)
 
     def heap_stats(self):
         """ Return heap statistics """
@@ -210,6 +228,8 @@ class PythonTypes(object):
 
     execute_exception = 200
     parse_exception = 201
+    oom_exception = 202
+    timeout_exception = 203
 
 
 class PythonValue(ctypes.Structure):
@@ -273,6 +293,12 @@ class PythonValue(ctypes.Structure):
         elif self.type == PythonTypes.execute_exception:
             msg = ctypes.c_char_p(self.value).value
             raise JSEvalException(msg.decode('utf-8', errors='replace'))
+        elif self.type == PythonTypes.oom_exception:
+            msg = ctypes.c_char_p(self.value).value
+            raise JSOOMException(msg)
+        elif self.type == PythonTypes.timeout_exception:
+            msg = ctypes.c_char_p(self.value).value
+            raise JSTimeoutException(msg)
         elif self.type == PythonTypes.date:
             timestamp = self._double_value()
             # JS timestamp are milliseconds, in python we are in seconds

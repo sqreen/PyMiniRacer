@@ -3,6 +3,7 @@
 
 """ Basic JS types tests """
 
+import time
 import unittest
 import six
 
@@ -74,6 +75,26 @@ class Test(unittest.TestCase):
         in_val = "var str = \"" + s + "\"; str;"
         result = context.eval(in_val)
         self.assertEqual(result, s)
+
+    def test_timeout(self):
+        timeout_ms = 100
+        with self.assertRaises(py_mini_racer.JSTimeoutException):
+            start_time = time.clock()
+            self.mr.eval('while(1) { }', timeout=timeout_ms)
+            duration = time.clock() - start_time
+            assert timeout_ms <= duration * 1000 <= timeout_ms + 10
+
+    def test_max_memory(self):
+        with self.assertRaises(py_mini_racer.JSOOMException):
+            self.mr.eval('''let s = 1000;
+                var a = new Array(s);
+                a.fill(0);
+                while(true) {
+                    s *= 1.1;
+                    let n = new Array(Math.floor(s));
+                    n.fill(0);
+                    a = a.concat(n);
+                }''', max_memory=200000000)
 
 
 if __name__ == '__main__':

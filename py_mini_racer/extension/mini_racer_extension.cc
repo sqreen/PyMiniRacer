@@ -35,6 +35,8 @@ enum BinaryTypes {
 
     type_execute_exception = 200,
     type_parse_exception   = 201,
+    type_oom_exception = 202,
+    type_timeout_exception = 203,
 };
 
 /* This is a generic store for arbitrary JSON like values.
@@ -63,6 +65,8 @@ void BinaryValueFree(BinaryValue *v) {
     switch(v->type) {
     case type_execute_exception:
     case type_parse_exception:
+    case type_oom_exception:
+    case type_timeout_exception:
     case type_str_utf8:
         free(v->str_val);
         break;
@@ -119,6 +123,7 @@ struct EvalResult {
     bool parsed;
     bool executed;
     bool terminated;
+    bool timed_out;
     Persistent<Value>* value;
     Persistent<Value>* message;
     Persistent<Value>* backtrace;
@@ -144,9 +149,30 @@ typedef struct {
     Local<String>* eval;
     useconds_t timeout;
     EvalResult* result;
+    size_t max_memory;
 } EvalParams;
 
+enum IsolateFlags {
+    MEM_SOFTLIMIT_VALUE,
+    MEM_SOFTLIMIT_REACHED,
+};
+
 static Platform* current_platform = NULL;
+
+static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
+    if((bool)isolate->GetData(MEM_SOFTLIMIT_REACHED)) return;
+
+    size_t softlimit = *(size_t*) isolate->GetData(MEM_SOFTLIMIT_VALUE);
+
+    HeapStatistics stats;
+    isolate->GetHeapStatistics(&stats);
+    size_t used = stats.used_heap_size();
+
+    if(used > softlimit) {
+        isolate->SetData(MEM_SOFTLIMIT_REACHED, (void*)true);
+        isolate->TerminateExecution();
+    }
+}
 
 static void init_v8() {
     if (current_platform == NULL) {
@@ -161,6 +187,7 @@ static void* breaker(void *d) {
   EvalParams* data = (EvalParams*)d;
   usleep(data->timeout*1000);
   pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+  data->result->timed_out = true;
   data->context_info->isolate->TerminateExecution();
   return NULL;
 }
@@ -178,10 +205,16 @@ static void* nogvl_context_eval(void* arg) {
 
     Context::Scope context_scope(context);
 
+    // Memory softlimit
+    isolate->SetData(MEM_SOFTLIMIT_VALUE, (void*)false);
+    // Memory softlimit hit flag
+    isolate->SetData(MEM_SOFTLIMIT_REACHED, (void*)false);
+
     MaybeLocal<Script> parsed_script = Script::Compile(context, *eval_params->eval);
     result->parsed = !parsed_script.IsEmpty();
     result->executed = false;
     result->terminated = false;
+    result->timed_out = false;
     result->value = NULL;
 
     if (!result->parsed) {
@@ -191,9 +224,15 @@ static void* nogvl_context_eval(void* arg) {
 
         pthread_t breaker_thread = 0;
 
+        // timeout limit
         auto timeout = eval_params->timeout;
         if (timeout > 0) {
             pthread_create(&breaker_thread, NULL, breaker, (void*)eval_params);
+        }
+        // memory limit
+        if (eval_params->max_memory > 0) {
+            isolate->SetData(MEM_SOFTLIMIT_VALUE, &eval_params->max_memory);
+            isolate->AddGCEpilogueCallback(gc_callback);
         }
 
         MaybeLocal<Value> maybe_value = parsed_script.ToLocalChecked()->Run(context);
@@ -204,7 +243,6 @@ static void* nogvl_context_eval(void* arg) {
         }
 
         result->executed = !maybe_value.IsEmpty();
-
         if (!result->executed) {
             if (trycatch.HasCaught()) {
                 if (!trycatch.Exception()->IsNull()) {
@@ -213,7 +251,12 @@ static void* nogvl_context_eval(void* arg) {
                 } else if(trycatch.HasTerminated()) {
                     result->terminated = true;
                     result->message = new Persistent<Value>();
-                    Local<String> tmp = String::NewFromUtf8(isolate, "JavaScript was terminated (either by timeout or explicitly)");
+                    Local<String> tmp;
+                    if (result->timed_out) {
+                        tmp = String::NewFromUtf8(isolate, "JavaScript was terminated by timeout");
+                    } else {
+                        tmp = String::NewFromUtf8(isolate, "JavaScript was terminated");
+                    }
                     result->message->Reset(isolate, tmp);
                 }
 
@@ -497,7 +540,8 @@ ContextInfo *MiniRacer_init_context()
 
 static BinaryValue* MiniRacer_eval_context_unsafe(
         ContextInfo *context_info,
-        char *utf_str, int   str_len)
+        char *utf_str, int str_len,
+        unsigned long timeout, size_t max_memory)
 {
     EvalParams eval_params;
     EvalResult eval_result{};
@@ -529,9 +573,13 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         eval_params.eval = &eval;
         eval_params.result = &eval_result;
         eval_params.timeout = 0;
-
-        // FIXME - we should allow setting a timeout here
-        //     eval_params.timeout = (useconds_t)NUM2LONG(timeout);
+        eval_params.max_memory = 0;
+        if (timeout > 0) {
+            eval_params.timeout = (useconds_t)timeout;
+        }
+        if (max_memory > 0) {
+            eval_params.max_memory = max_memory;
+        }
 
         nogvl_context_eval(&eval_params);
 
@@ -571,8 +619,18 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
 
     else if (!eval_result.executed) {
         result = xalloc(result);
-        result->type = type_execute_exception;
         result->str_val = nullptr;
+
+        bool mem_softlimit_reached = (bool)context_info->isolate->GetData(MEM_SOFTLIMIT_REACHED);
+        if (mem_softlimit_reached) {
+            result->type = type_oom_exception;
+        } else {
+            if (eval_result.timed_out) {
+                result->type = type_timeout_exception;
+            } else {
+                result->type = type_execute_exception;
+            }
+        }
 
         if (bmessage && bmessage->type == type_str_utf8 &&
                 bbacktrace && bbacktrace->type == type_str_utf8) {
@@ -639,8 +697,8 @@ public:
 
 extern "C" {
 
-BinaryValue* mr_eval_context(ContextInfo *context_info, char *str, int len) {
-    BinaryValue *res = MiniRacer_eval_context_unsafe(context_info, str, len);
+BinaryValue* mr_eval_context(ContextInfo *context_info, char *str, int len, unsigned long timeout, size_t max_memory) {
+    BinaryValue *res = MiniRacer_eval_context_unsafe(context_info, str, len, timeout, max_memory);
     return res;
 }
 
