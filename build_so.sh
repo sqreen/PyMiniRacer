@@ -3,7 +3,14 @@ set -e
 set -x
 
 VERSION=6.7.288.46.1
-URL=https://rubygems.org/downloads/libv8-$VERSION-x86_64-linux.gem
+
+libc=$(ldd /bin/cat | grep musl)
+if [ -z "$libc" ]; then
+    URL=https://rubygems.org/downloads/libv8-$VERSION-x86_64-linux.gem
+else
+    URL=https://rubygems.org/downloads/libv8-alpine-$VERSION-x86_64-linux.gem
+fi
+
 [[ -f libv8.gem ]] || curl "$URL" --output libv8.gem
 tar xvf libv8.gem
 tar xvf data.tar.gz

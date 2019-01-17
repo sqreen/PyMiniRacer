@@ -2,9 +2,19 @@
 set -e
 set -x
 
+if [ $# == 1 ] && [ $1 == "alpine" ]; then
+	distribution="alpine"
+else
+	distribution="quay.io/pypa/manylinux1_x86_64"
+fi
+
 CONT=$(date +%s)
 
-docker run -d --name ${CONT} quay.io/pypa/manylinux1_x86_64 bash -c "mkdir /${BASE_PATH}; tail -f /var/log/lastlog"
+docker run -d --name ${CONT} $distribution sh -c "tail -f /dev/null"
+
+if [ "$distribution" == "alpine" ]; then
+	docker exec ${CONT} sh -c "apk update; apk add bash curl g++"
+fi
 
 docker cp . ${CONT}:${BASE_PATH}
 
