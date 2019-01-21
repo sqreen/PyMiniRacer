@@ -14,14 +14,4 @@ if ! [ -f ${GEM} ]; then
 
 fi;
 
-# Compile py_mini_racer extension
-clang++ -Ivendor/v8/include \
-    -Ivendor/v8 py_mini_racer/extension/mini_racer_extension.cc \
-    -o py_mini_racer/_v8.so \
-    vendor/v8/out/x64.release/libv8_{base,libbase,snapshot,libplatform,libsampler}.a \
-    -ldl \
-    -pthread \
-    -std=c++11 \
-    -stdlib=libc++ \
-    -shared \
-    -fPIC
+python setup.py build_ext

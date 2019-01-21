@@ -1,7 +1,17 @@
 set -e
 set -x
 
-PATH_TO_V8=$HOME/build/sqreen/PyMiniRacer/py_mini_racer/extension/v8/
+VERSION=6.7.288.46.1
+GEM=libv8-$VERSION-x86_64-darwin-16.gem
+
+if ! [ -f ${GEM} ]; then
+
+    # Get the .a file from libv8 gem
+    wget https://rubygems.org/downloads/${GEM}
+    tar xvf ${GEM}
+    tar xvf data.tar.gz
+
+fi
 
 for PYVERSION in 2.7 3.4 3.5 3.6 3.7; do
     curl https://bootstrap.pypa.io/get-pip.py | python
@@ -14,12 +24,6 @@ for PYVERSION in 2.7 3.4 3.5 3.6 3.7; do
     pip install certifi
     pip install -r requirements/setup.txt
 
-    # Recyling V8
-    if [ ! -d $PATH_TO_V8 ] || [ -z "$(ls -A $PATH_TO_V8)" ]; then
-        rm -rf $PATH_TO_V8
-        python setup.py build_v8
-    fi
-    
     export LDSHARED="clang++ -bundle -undefined dynamic_lookup -arch i386 -arch x86_64"
     python setup.py bdist_wheel
     deactivate
