@@ -2,7 +2,15 @@
 set -e
 set -x
 
-./build_linux_wheels.sh
+if [ $# == 1 ] && [ $1 == "alpine" ]; then
+    ./build_linux_musl_wheels.sh
+    docker_tag="-alpine"
+    wheel_ext="linux_"
+else
+    ./build_linux_wheels.sh
+    wheel_ext="manylinux1"
+fi
+
 
 
 TAG=dockerfile-centos-6
@@ -17,20 +25,20 @@ do
     docker run \
         -d \
         --name ${CONT} \
-        python:$PYTHON bash \
-        -c "mkdir /${BASE_PATH}; tail -f /var/log/lastlog"
+        python:$PYTHON$docker_tag sh \
+        -c "tail -f /dev/null"
 
     docker cp dist/ ${CONT}:${BASE_PATH}/dist
     docker cp tests/ ${CONT}:${BASE_PATH}/tests
     docker cp requirements/ ${CONT}:${BASE_PATH}/requirements
 
-    WHEEL=`find dist/ -name "*${PYVERSION}-manylinux1*.whl" -print`
-    docker exec ${CONT} bash -c 'echo python --version'
+    WHEEL=`find dist/ -name "*${PYVERSION}-${wheel_ext}*.whl" -print`
+    docker exec ${CONT} sh -c 'echo python --version'
 
-    docker exec ${CONT} bash -c 'find tests -name "*.pyc" -delete'
-    docker exec ${CONT} bash -c "pip install ${WHEEL}"
-    docker exec ${CONT} bash -c "pip install -r requirements/test.txt"
-    docker exec ${CONT} bash -c "pytest tests"
+    docker exec ${CONT} sh -c 'find tests -name "*.pyc" -delete'
+    docker exec ${CONT} sh -c "pip install ${WHEEL}"
+    docker exec ${CONT} sh -c "pip install -r requirements/test.txt"
+    docker exec ${CONT} sh -c "pytest tests"
 
     docker rm -f ${CONT}
 done

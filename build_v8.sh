@@ -12,13 +12,14 @@ CONT=$(date +%s)
 
 docker run -d --name ${CONT} $distribution sh -c "tail -f /dev/null"
 
-if [ "$distribution" == "alpine" ]; then
-	docker exec ${CONT} sh -c "apk update; apk add bash curl g++"
-fi
-
 docker cp . ${CONT}:${BASE_PATH}
 
-docker exec ${CONT} bash build_so.sh
+if [ "$distribution" == "alpine" ]; then
+	docker exec ${CONT} sh -c "apk update; apk add bash curl g++"
+	docker exec ${CONT} bash build_so.sh alpine
+else
+	docker exec ${CONT} bash build_so.sh
+fi
 
 docker cp ${CONT}:_v8.so .
 

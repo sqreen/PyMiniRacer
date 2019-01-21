@@ -4,11 +4,10 @@ set -x
 
 VERSION=6.7.288.46.1
 
-libc=$(ldd /bin/cat | grep musl)
-if [ -z "$libc" ]; then
-    URL=https://rubygems.org/downloads/libv8-$VERSION-x86_64-linux.gem
-else
+if [ $# == 1 ] && [ $1 == "alpine" ]; then
     URL=https://rubygems.org/downloads/libv8-alpine-$VERSION-x86_64-linux.gem
+else
+    URL=https://rubygems.org/downloads/libv8-$VERSION-x86_64-linux.gem
 fi
 
 [[ -f libv8.gem ]] || curl "$URL" --output libv8.gem
