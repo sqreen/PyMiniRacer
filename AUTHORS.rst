@@ -12,4 +12,6 @@ Authors
 Contributors
 ------------
 
-None yet. Why not be the first?
+* messense https://github.com/messense
+
+Why not add your name to the list?

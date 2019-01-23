@@ -96,7 +96,7 @@ V8 heap information can be retrieved:
 Compatibility
 -------------
 
-PyMiniRacer is compatible with Python 2 and Python 3. Wheels are generated for python 2.7 and python 3.4 to python 3.6.
+PyMiniRacer is compatible with Python 2 and Python 3. Wheels are generated for python 2.7 and python 3.4 to python 3.7.
 
 Binary builds availability
 --------------------------
@@ -107,17 +107,21 @@ The PyMiniRacer binary builds have been tested on x86_64 with:
 * Ubuntu >= 12.04
 * Debian >= 7
 * CentOS >= 6
+* The latest Alpine Linux Docker image
 
-You need pip >= 8.1 to install the wheels - you can check and upgrade yours in
-this way:
+You need pip >= 8.1 to install the wheels - you can check and upgrade yours in this way:
 
 .. code-block:: bash
 
     $ pip --version
     $ pip install --upgrade pip
 
-It should work on any Linux with a libc >= 2.12 and a wheel compatible pip (>=
-8.1).
+It should work on any Linux with a libc >= 2.12 and a wheel compatible pip (>= 8.1).
+If you're running Alpine Linux, you may need to install `libgcc` manually using the following command:
+
+.. code-block:: bash
+
+    # apk add libgcc
 
 If you have a up-to-date pip and it doesn't use a wheel, you might have an environment for which no wheel is built. Please open an issue.
 
