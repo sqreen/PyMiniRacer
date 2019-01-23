@@ -28,6 +28,10 @@ do
         python:$PYTHON$docker_tag sh \
         -c "tail -f /dev/null"
 
+    if [ $# == 1 ] && [ $1 == "alpine" ]; then
+        docker exec ${CONT} sh -c 'apk add libgcc'
+    fi
+
     docker cp dist/ ${CONT}:${BASE_PATH}/dist
     docker cp tests/ ${CONT}:${BASE_PATH}/tests
     docker cp requirements/ ${CONT}:${BASE_PATH}/requirements
