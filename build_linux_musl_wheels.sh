@@ -16,8 +16,6 @@ for PYVERSION in 2.7 3.4 3.5 3.6 3.7; do
 	    --name ${CONT} python:${PYVERSION}-alpine sh \
 	    -c "tail -f /dev/null"
 
-	trap "if [ -n '${CONT}' ]; then echo 'lol'; fi" EXIT
-
 	docker cp . ${CONT}:${BASE_PATH}
 	docker cp _v8.so ${CONT}:.
 
@@ -44,5 +42,7 @@ for PYVERSION in 2.7 3.4 3.5 3.6 3.7; do
 
 	docker rm -f ${CONT}
 	unset CONT
+
+	trap "if [ '$CONT' -ne '' ]; then docker rm -f ${CONT}; fi" EXIT
 
 done
