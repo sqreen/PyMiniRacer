@@ -13,6 +13,13 @@ matrix:
         - ./build_and_check_linux_wheels.sh
       after_success:
         - ./upload_artifacts_linux.sh
+    - dist: trusty
+      services:
+        - docker
+      script:
+        - ./build_and_check_linux_wheels.sh alpine
+      after_success:
+        - ./upload_artifacts_linux.sh
     - os: osx
       osx_image: xcode9.4
       compiler: clang
