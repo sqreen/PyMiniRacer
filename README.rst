@@ -121,7 +121,7 @@ If you're running Alpine Linux, you may need to install `libgcc` manually using 
 
 .. code-block:: bash
 
-    # apk add libgcc
+    $ apk add libgcc
 
 If you have a up-to-date pip and it doesn't use a wheel, you might have an environment for which no wheel is built. Please open an issue.
 
@@ -134,6 +134,14 @@ most recent distributions. You need pip >= 1.4 and setuptools >= 0.8.
 .. code:: bash
 
     $ pip install py-mini-racer
+
+If you're running Alpine, Pypi isn't able to host the dedicated wheels.  
+We're making them available with the following command.
+
+.. code:: bash
+
+    $ pip install --index-url https://download.sqreen.io/python/alpine py-mini-racer
+
 
 Build
 -----
