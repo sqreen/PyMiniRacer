@@ -8,6 +8,7 @@ import unittest
 import six
 
 from py_mini_racer import py_mini_racer
+from py_mini_racer.py_mini_racer import JSSymbol
 
 class Test(unittest.TestCase):
     """ Test basic types """
@@ -95,6 +96,11 @@ class Test(unittest.TestCase):
                     n.fill(0);
                     a = a.concat(n);
                 }''', max_memory=200000000)
+
+
+    def test_symbol(self):
+        res = self.mr.eval('Symbol.toPrimitive')
+        self.assertEqual(type(res), JSSymbol)
 
 
 if __name__ == '__main__':
