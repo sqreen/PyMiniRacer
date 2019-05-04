@@ -214,6 +214,7 @@ setup(
     version=py_mini_racer.__version__,
     description="Minimal, modern embedded V8 for Python.",
     long_description=readme + '\n\n' + history,
+    long_description_content_type='text/markdown',
     author='Sqreen',
     author_email='hey@sqreen.io',
     url='https://github.com/sqreen/PyMiniRacer',
@@ -231,7 +232,7 @@ setup(
     zip_safe=False,
     keywords='py_mini_racer',
     classifiers=[
-        'Development Status :: 2 - Pre-Alpha',
+        'Development Status :: 5 - Production/Stable',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: ISC License (ISCL)',
         'Natural Language :: English',
