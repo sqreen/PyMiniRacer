@@ -30,6 +30,7 @@ enum BinaryTypes {
     type_array     =   6,
     type_hash      =   7,
     type_date      =   8,
+    type_symbol    =   9,
 
     type_function  = 100,
 
@@ -92,6 +93,7 @@ void BinaryValueFree(BinaryValue *v) {
     case type_null:
     case type_integer:
     case type_function: // no value implemented
+    case type_symbol:
     case type_invalid:
         // the other types are scalar values
         break;
@@ -419,6 +421,10 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
 
     else if (value->IsFunction()){
         res->type = type_function;
+    }
+
+    else if (value->IsSymbol()){
+        res->type = type_symbol;
     }
 
     else if (value->IsDate()) {

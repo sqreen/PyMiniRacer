@@ -55,6 +55,9 @@ class JSFunction(object):
     """ type for JS functions """
     pass
 
+class JSSymbol(object):
+    """ type for JS symbols """
+    pass
 
 def is_unicode(value):
     """ Check if a value is a valid unicode string, compatible with python 2 and python 3
@@ -223,6 +226,7 @@ class PythonTypes(object):
     array     =   6
     hash      =   7
     date      =   8
+    symbol    =   9
 
     function  = 100
 
@@ -303,6 +307,8 @@ class PythonValue(ctypes.Structure):
             timestamp = self._double_value()
             # JS timestamp are milliseconds, in python we are in seconds
             result = datetime.datetime.utcfromtimestamp(timestamp / 1000.)
+        elif self.type == PythonTypes.symbol:
+            result = JSSymbol()
         else:
             raise WrongReturnTypeException("unknown type %d" % self.type)
         return result

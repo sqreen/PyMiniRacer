@@ -97,6 +97,11 @@ class Test(unittest.TestCase):
                 }''', max_memory=200000000)
 
 
+    def test_symbol(self):
+        res = self.mr.eval('Symbol.toPrimitive')
+        self.assertEqual(type(res), py_mini_racer.JSSymbol)
+
+
 if __name__ == '__main__':
     import sys
     sys.exit(unittest.main())
