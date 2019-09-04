@@ -84,7 +84,21 @@ class Test(unittest.TestCase):
             duration = time.clock() - start_time
             assert timeout_ms <= duration * 1000 <= timeout_ms + 10
 
-    def test_max_memory(self):
+    def test_max_memory_soft(self):
+        self.mr.set_soft_memory_limit(100000000)
+        with self.assertRaises(py_mini_racer.JSOOMException):
+            self.mr.eval('''let s = 1000;
+                var a = new Array(s);
+                a.fill(0);
+                while(true) {
+                    s *= 1.1;
+                    let n = new Array(Math.floor(s));
+                    n.fill(0);
+                    a = a.concat(n);
+                }''', max_memory=200000000)
+        self.assertEqual(self.mr.was_soft_memory_limit_reached(), True)
+
+    def test_max_memory_hard(self):
         with self.assertRaises(py_mini_racer.JSOOMException):
             self.mr.eval('''let s = 1000;
                 var a = new Array(s);

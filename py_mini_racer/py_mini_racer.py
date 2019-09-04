@@ -116,6 +116,12 @@ def _fetch_ext_handle():
     _ext_handle.mr_heap_snapshot.argtypes = [ctypes.c_void_p]
     _ext_handle.mr_heap_snapshot.restype = ctypes.POINTER(PythonValue)
 
+    _ext_handle.mr_set_soft_memory_limit.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+    _ext_handle.mr_set_soft_memory_limit.restype = None
+
+    _ext_handle.mr_soft_memory_limit_reached.argtypes = [ctypes.c_void_p]
+    _ext_handle.mr_soft_memory_limit_reached.restype = ctypes.c_bool
+
     return _ext_handle
 
 
@@ -135,6 +141,14 @@ class MiniRacer(object):
         """ Free value returned by mr_eval_context """
 
         self.ext.mr_free_value(res)
+
+    def set_soft_memory_limit(self, limit):
+        """ Set instance soft memory limit """
+        self.ext.mr_set_soft_memory_limit(self.ctx, limit)
+
+    def was_soft_memory_limit_reached(self):
+        """ Tell if the instance soft memory limit was reached """
+        return self.ext.mr_soft_memory_limit_reached(self.ctx)
 
     def execute(self, js_str, timeout=0, max_memory=0):
         """ Exec the given JS value """
