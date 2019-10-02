@@ -110,7 +110,7 @@ def gen_makefiles(path):
         'v8_experimental_extra_library_files': '[]',
         'v8_extra_library_files': '[]'
     }
-    joined_opts = ' '.join('{}={}'.format(a, b) for (a, b) in opts.iteritems())
+    joined_opts = ' '.join('{}={}'.format(a, b) for (a, b) in opts.items())
 
     with chdir(path):
         call('./tools/dev/v8gen.py -vv x64.release -- ' + joined_opts)

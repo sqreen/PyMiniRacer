@@ -82,20 +82,7 @@ dist: clean
 	python setup.py bdist_wheel
 	ls -l dist
 
-docker-build: clean
-	# Sdist
-	python setup.py sdist
-
-	# Generate mac os x wheels
-	./build_mac_os_x_wheel.sh 2.7
-	./build_mac_os_x_wheel.sh 3.4
-	./build_mac_os_x_wheel.sh 3.5
-	./build_mac_os_x_wheel.sh 3.6
-
-	# Generate linux wheels
-	./build_linux_wheels.sh
-
-upload: docker-build
+upload: dist
 	twine upload dist/*
 
 install: clean

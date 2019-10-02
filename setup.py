@@ -8,7 +8,8 @@ import codecs
 import pkg_resources
 import traceback
 
-from subprocess import check_call
+from itertools import chain
+from subprocess import check_call, check_output, STDOUT
 from os.path import dirname, abspath, join, isfile, isdir, basename
 
 from distutils.file_util import copy_file
@@ -76,7 +77,15 @@ def is_v8_built():
     """
     if V8_PATH:
         return True
-    return all(isfile(static_filepath) for static_filepath in get_raw_static_lib_path())
+    return all(isfile(filepath) for filepath in chain(
+        get_raw_static_lib_path(), get_include_path()))
+
+
+def check_python_version():
+    """ Check that the python executable is Python 2.7.
+    """
+    output = check_output(['python', '--version'], stderr=STDOUT)
+    return output.strip().decode().startswith('Python 2.7')
 
 
 def is_depot_tools_checkout():
@@ -98,6 +107,13 @@ def libv8_object(object_name):
         filename = join(V8_LIB_DIRECTORY, 'out.gn/x64.release/obj/{}'.format(object_name))
 
     return filename
+
+
+def get_include_path():
+    """ Return the V8 header files
+    """
+    headers = ["v8.h"]
+    return [join(V8_LIB_DIRECTORY, "include", header) for header in headers]
 
 
 def get_raw_static_lib_path():
@@ -125,7 +141,6 @@ EXTRA_LINK_ARGS = [
 ]
 EXTRA_COMPILE_ARGS = [
     '-std=c++11',
-    '-rdynamic',
     '-fpermissive',
     '-fno-common'
 ]
@@ -137,6 +152,7 @@ if sys.platform[:6] == "darwin":
     EXTRA_COMPILE_ARGS += ['-mmacosx-version-min=10.9', '-stdlib=libc++']
     EXTRA_LINK_ARGS    += ['-lpthread', '-mmacosx-version-min=10.9', '-stdlib=libc++']
 elif sys.platform.startswith('linux'):
+    EXTRA_COMPILE_ARGS += ['-rdynamic']
     EXTRA_LINK_ARGS    += ['-lrt']
 
 
@@ -152,6 +168,12 @@ PY_MINI_RACER_EXTENSION = Extension(
 
 
 class MiniRacerBuildExt(build_ext):
+
+    def get_ext_filename(self, ext_name):
+        """ Return a filename without Python ABI in the name
+        """
+        ext_path = ext_name.split(".")
+        return os.path.join(*ext_path) + ".so"
 
     def build_extension(self, ext):
         """ Compile manually the py_mini_racer extension, bypass setuptools
@@ -197,13 +219,20 @@ class MiniRacerBuildV8(Command):
         if V8_PATH:
             return
 
-        if not is_depot_tools_checkout():
-            print("cloning depot tools submodule")
-            # Clone the depot_tools repository, easier than using submodules
-            check_call(['git', 'init'])
-            check_call(['git', 'clone', 'https://chromium.googlesource.com/chromium/tools/depot_tools.git', 'vendor/depot_tools'])
+        if not check_python_version():
+            msg = """py_mini_racer cannot build V8 in the current configuration.
+            The V8 build system requires the python executable to be Python 2.7.
+            See also: https://github.com/sqreen/PyMiniRacer#build"""
+            raise Exception(msg)
 
         if not is_v8_built():
+
+            if not is_depot_tools_checkout():
+                print("cloning depot tools submodule")
+                # Clone the depot_tools repository, easier than using submodules
+                check_call(['git', 'init'])
+                check_call(['git', 'clone', 'https://chromium.googlesource.com/chromium/tools/depot_tools.git', 'vendor/depot_tools'])
+
             print("building v8")
             build_v8()
         else:
