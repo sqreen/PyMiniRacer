@@ -1,8 +1,4 @@
 steps:
-- task: UsePythonVersion@0
-  inputs:
-    versionSpec: '2.7'
-    architecture: x64
 - task: CacheBeta@0
   inputs:
     key: v8_libraries | $(Agent.OS) | py_mini_racer/extension/v8_build.py
