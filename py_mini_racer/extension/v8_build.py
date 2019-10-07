@@ -38,6 +38,11 @@ def call(cmd):
     return subprocess.check_call(cmd, shell=True, env=current_env)
 
 
+def call_python_script(script, *args):
+    return call("{} {} {}".format(
+        sys.executable, os.path.join(VENDOR_PATH, script), " ".join(args)))
+
+
 @contextmanager
 def chdir(new_path, make=False):
     old_path = os.getcwd()
@@ -72,14 +77,14 @@ def fetch_v8(path):
     """ Fetch v8
     """
     with chdir(abspath(path), make=True):
-        call("{} fetch.py v8".format(sys.executable))
+        call_python_script("fetch.py", "v8")
 
 
 def update_v8(path):
     """ Update v8 repository
     """
     with chdir(path):
-        call("{} gclient.py fetch".format(sys.executable))
+        call_python_script("gclient.py", "fetch")
 
 
 def checkout_v8_version(path, version):
@@ -93,7 +98,7 @@ def dependencies_sync(path):
     """ Sync v8 build dependencies
     """
     with chdir(path):
-        call("{} gclient.py sync".format(sys.executable))
+        call_python_script("gclient.py", "sync")
 
 def gen_makefiles(path):
     opts = {
