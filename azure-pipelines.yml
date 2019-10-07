@@ -26,4 +26,5 @@ jobs:
   pool: {vmImage: 'vs2017-win2016'}
   steps:
    - checkout: self
+   - bash: echo "##vso[task.prependpath]$(Build.SourcesDirectory)/vendor/depot_tools/"
    - template: helpers/release.yml
