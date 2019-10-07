@@ -1,13 +1,21 @@
+#include <thread>
+#include <mutex>
+#include <chrono>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <pthread.h>
-
 #include <v8.h>
 #include <v8-profiler.h>
 #include <libplatform/libplatform.h>
+
+#ifdef V8_OS_WIN
+# define LIB_EXPORT __declspec(dllexport)
+#else  // V8_OS_WIN
+# define LIB_EXPORT __attribute__ ((visibility("default")))
+#endif
+
+
 
 template<class T> static inline T* xalloc(T*& ptr, size_t x = sizeof(T))
 {
@@ -149,7 +157,7 @@ private:
 typedef struct {
     ContextInfo* context_info;
     Local<String>* eval;
-    useconds_t timeout;
+    unsigned long timeout;
     EvalResult* result;
     size_t max_memory;
 } EvalParams;
@@ -159,7 +167,8 @@ enum IsolateFlags {
     MEM_SOFTLIMIT_REACHED,
 };
 
-static Platform* current_platform = NULL;
+static std::unique_ptr<Platform> current_platform = NULL;
+static std::mutex platform_lock;
 
 static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
     if((bool)isolate->GetData(MEM_SOFTLIMIT_REACHED)) return;
@@ -177,21 +186,28 @@ static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
 }
 
 static void init_v8() {
+    // no need to wait for the lock if already initialized
+    if (current_platform != NULL) return;
+
+    platform_lock.lock();
+
     if (current_platform == NULL) {
         V8::InitializeICU();
-        current_platform = platform::CreateDefaultPlatform();
-        V8::InitializePlatform(current_platform);
+        current_platform = platform::NewDefaultPlatform();
+        V8::InitializePlatform(current_platform.get());
         V8::Initialize();
     }
+
+    platform_lock.unlock();
 }
 
-static void* breaker(void *d) {
+static void breaker(std::timed_mutex& breaker_mutex, void * d) {
   EvalParams* data = (EvalParams*)d;
-  usleep(data->timeout*1000);
-  pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
-  data->result->timed_out = true;
-  data->context_info->isolate->TerminateExecution();
-  return NULL;
+
+  if (!breaker_mutex.try_lock_for(std::chrono::milliseconds(data->timeout))) {
+    data->result->timed_out = true;
+    data->context_info->isolate->TerminateExecution();
+  }
 }
 
 static void* nogvl_context_eval(void* arg) {
@@ -221,15 +237,17 @@ static void* nogvl_context_eval(void* arg) {
 
     if (!result->parsed) {
         result->message = new Persistent<Value>();
-        result->message->Reset(isolate, trycatch.Exception()->ToString());
+        result->message->Reset(isolate, trycatch.Exception());
     } else {
 
-        pthread_t breaker_thread = 0;
+        std::timed_mutex breaker_mutex;
+        std::thread breaker_thread;
 
         // timeout limit
         auto timeout = eval_params->timeout;
         if (timeout > 0) {
-            pthread_create(&breaker_thread, NULL, breaker, (void*)eval_params);
+            breaker_mutex.lock();
+            breaker_thread = std::thread(&breaker, std::ref(breaker_mutex), (void *) eval_params);
         }
         // memory limit
         if (eval_params->max_memory > 0) {
@@ -240,8 +258,8 @@ static void* nogvl_context_eval(void* arg) {
         MaybeLocal<Value> maybe_value = parsed_script.ToLocalChecked()->Run(context);
 
         if (timeout > 0) {
-            pthread_cancel(breaker_thread);
-            pthread_join(breaker_thread, NULL);
+            breaker_mutex.unlock();
+            breaker_thread.join();
         }
 
         result->executed = !maybe_value.IsEmpty();
@@ -249,22 +267,45 @@ static void* nogvl_context_eval(void* arg) {
             if (trycatch.HasCaught()) {
                 if (!trycatch.Exception()->IsNull()) {
                     result->message = new Persistent<Value>();
-                    result->message->Reset(isolate, trycatch.Exception()->ToString());
+			Local<Message> message = trycatch.Message();
+			char buf[1000];
+			int len, line, column;
+
+			if (!message->GetLineNumber(context).To(&line)) {
+			  line = 0;
+			}
+
+			if (!message->GetStartColumn(context).To(&column)) {
+			  column = 0;
+			}
+
+			len = snprintf(buf, sizeof(buf), "%s at %s:%i:%i", *String::Utf8Value(isolate, message->Get()),
+				       *String::Utf8Value(isolate, message->GetScriptResourceName()->ToString(context).ToLocalChecked()),
+				       line,
+				       column);
+
+			if ((size_t) len >= sizeof(buf)) {
+			    len = sizeof(buf) - 1;
+			    buf[len] = '\0';
+			}
+
+			Local<String> v8_message = String::NewFromUtf8(isolate, buf, NewStringType::kNormal, len).ToLocalChecked();
+			result->message->Reset(isolate, v8_message);
                 } else if(trycatch.HasTerminated()) {
                     result->terminated = true;
                     result->message = new Persistent<Value>();
                     Local<String> tmp;
                     if (result->timed_out) {
-                        tmp = String::NewFromUtf8(isolate, "JavaScript was terminated by timeout");
+                        tmp = String::NewFromUtf8(isolate, "JavaScript was terminated by timeout").ToLocalChecked();
                     } else {
-                        tmp = String::NewFromUtf8(isolate, "JavaScript was terminated");
+                        tmp = String::NewFromUtf8(isolate, "JavaScript was terminated").ToLocalChecked();
                     }
                     result->message->Reset(isolate, tmp);
                 }
 
-                if (!trycatch.StackTrace().IsEmpty()) {
+                if (!trycatch.StackTrace(context).IsEmpty()) {
                     result->backtrace = new Persistent<Value>();
-                    result->backtrace->Reset(isolate, trycatch.StackTrace()->ToString());
+                    result->backtrace->Reset(isolate, trycatch.StackTrace(context).ToLocalChecked()->ToString(context).ToLocalChecked());
                 }
             }
         } else {
@@ -365,14 +406,11 @@ err:
 }
 
 
-static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
-                                         Handle<Value> &value)
+static BinaryValue *convert_v8_to_binary(Isolate * isolate,
+		                         Local<Context> context,
+                                         Local<Value> value)
 {
-    Local<Context> context = context_info->context->Get(context_info->isolate);
-
-    Context::Scope context_scope(context);
-
-    Isolate *isolate = context_info->isolate;
+	Isolate::Scope isolate_scope(isolate);
     HandleScope scope(isolate);
 
     BinaryValue *res = new (xalloc(res)) BinaryValue();
@@ -383,7 +421,7 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
 
     else if (value->IsInt32()) {
         res->type = type_integer;
-        auto val = value->Uint32Value();
+        auto val = value->Uint32Value(context).ToChecked();
         res->int_val = val;
     }
 
@@ -391,7 +429,7 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
     // http://www.ecma-international.org/ecma-262/5.1/#sec-4.3.19
     else if (value->IsNumber()) {
         res->type = type_double;
-        double val = value->NumberValue();
+        double val = value->NumberValue(context).ToChecked();
         res->double_val = val;
     }
 
@@ -409,8 +447,8 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
         res->array_val = ary;
 
         for(uint32_t i = 0; i < arr->Length(); i++) {
-            Local<Value> element = arr->Get(i);
-            BinaryValue *bin_value = convert_v8_to_binary(context_info, element);
+            Local<Value> element = arr->Get(context, i).ToLocalChecked();
+            BinaryValue *bin_value = convert_v8_to_binary(isolate, context, element);
             if (bin_value == NULL) {
                 goto err;
             }
@@ -440,7 +478,7 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
 
         TryCatch trycatch(isolate);
 
-        Local<Object> object = value->ToObject();
+        Local<Object> object = value->ToObject(context).ToLocalChecked();
         MaybeLocal<Array> maybe_props = object->GetOwnPropertyNames(context);
         if (!maybe_props.IsEmpty()) {
             Local<Array> props = maybe_props.ToLocalChecked();
@@ -452,18 +490,22 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
             }
 
             for (uint32_t i = 0; i < hash_len; i++) {
-                Local<Value> pkey = props->Get(i);
-                Local<Value> pvalue = object->Get(pkey);
-                // this may have failed due to Get raising
 
-                if (trycatch.HasCaught()) {
+                MaybeLocal<Value> maybe_pkey = props->Get(context, i);
+                if (maybe_pkey.IsEmpty()) {
+			goto err;
+		}
+		Local<Value> pkey = maybe_pkey.ToLocalChecked();
+                MaybeLocal<Value> maybe_pvalue = object->Get(context, pkey);
+                // this may have failed due to Get raising
+                if (maybe_pvalue.IsEmpty() || trycatch.HasCaught()) {
                     // TODO: factor out code converting exception in
                     //       nogvl_context_eval() and use it here/?
                     goto err;
                 }
 
-                BinaryValue *bin_key = convert_v8_to_binary(context_info, pkey);
-                BinaryValue *bin_value = convert_v8_to_binary(context_info, pvalue);
+                BinaryValue *bin_key = convert_v8_to_binary(isolate, context, pkey);
+                BinaryValue *bin_value = convert_v8_to_binary(isolate, context, maybe_pvalue.ToLocalChecked());
 
                 if (!bin_key || !bin_value) {
                     BinaryValueFree(bin_key);
@@ -479,13 +521,13 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
     }
 
     else {
-        Local<String> rstr = value->ToString();
+        Local<String> rstr = value->ToString(context).ToLocalChecked();
 
         res->type = type_str_utf8;
-        res->len = size_t(rstr->Utf8Length()); // in bytes
+        res->len = size_t(rstr->Utf8Length(isolate)); // in bytes
         size_t capacity = res->len + 1;
         res->str_val = xalloc(res->str_val, capacity);
-        rstr->WriteUtf8(res->str_val);
+        rstr->WriteUtf8(isolate, res->str_val);
     }
     return res;
 
@@ -494,6 +536,16 @@ err:
     return NULL;
 }
 
+
+static BinaryValue *convert_v8_to_binary(Isolate * isolate,
+		                         const Persistent<Context> & context,
+                                         Local<Value> value)
+{
+    HandleScope scope(isolate);
+    return convert_v8_to_binary(isolate,
+                                Local<Context>::New(isolate, context),
+                                value);
+}
 
 static void deallocate(void * data) {
     ContextInfo* context_info = (ContextInfo*)data;
@@ -581,7 +633,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         eval_params.timeout = 0;
         eval_params.max_memory = 0;
         if (timeout > 0) {
-            eval_params.timeout = (useconds_t)timeout;
+            eval_params.timeout = timeout;
         }
         if (max_memory > 0) {
             eval_params.max_memory = max_memory;
@@ -592,13 +644,15 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         if (eval_result.message) {
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.message);
-            bmessage = convert_v8_to_binary(context_info, tmp);
+
+            bmessage = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
         }
 
         if (eval_result.backtrace) {
+
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.backtrace);
-            bbacktrace = convert_v8_to_binary(context_info, tmp);
+            bbacktrace = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
         }
     }
 
@@ -668,7 +722,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         HandleScope handle_scope(context_info->isolate);
 
         Local<Value> tmp = Local<Value>::New(context_info->isolate, *eval_result.value);
-        result = convert_v8_to_binary(context_info, tmp);
+        result = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
     }
 
     BinaryValueFree(bmessage);
@@ -703,34 +757,34 @@ public:
 
 extern "C" {
 
-BinaryValue* mr_eval_context(ContextInfo *context_info, char *str, int len, unsigned long timeout, size_t max_memory) {
+LIB_EXPORT BinaryValue * mr_eval_context(ContextInfo *context_info, char *str, int len, unsigned long timeout, size_t max_memory) {
     BinaryValue *res = MiniRacer_eval_context_unsafe(context_info, str, len, timeout, max_memory);
     return res;
 }
 
-ContextInfo *mr_init_context() {
+LIB_EXPORT ContextInfo * mr_init_context() {
     ContextInfo *res = MiniRacer_init_context();
     return res;
 }
 
-void mr_free_value(BinaryValue *val) {
+LIB_EXPORT void mr_free_value(BinaryValue *val) {
     BinaryValueFree(val);
 }
 
-void mr_free_context(ContextInfo *context_info) {
+LIB_EXPORT void mr_free_context(ContextInfo *context_info) {
     deallocate(context_info);
 }
 
-BinaryValue *mr_heap_stats(ContextInfo *context_info) {
+LIB_EXPORT BinaryValue * mr_heap_stats(ContextInfo *context_info) {
     return heap_stats(context_info);
 }
 
-void mr_low_memory_notification(ContextInfo *context_info) {
+LIB_EXPORT void mr_low_memory_notification(ContextInfo *context_info) {
     context_info->isolate->LowMemoryNotification();
 }
 
 // FOR DEBUGGING ONLY
-BinaryValue* mr_heap_snapshot(ContextInfo *context_info) {
+LIB_EXPORT BinaryValue * mr_heap_snapshot(ContextInfo *context_info) {
     Isolate* isolate = context_info->isolate;
     Locker lock(isolate);
     Isolate::Scope isolate_scope(isolate);

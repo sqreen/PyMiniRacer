@@ -61,7 +61,7 @@ class Test(unittest.TestCase):
         js_source = "var f = function("
 
         with six.assertRaisesRegex(
-            self, py_mini_racer.JSParseException, '.*Unexpected end of input.*'
+            self, py_mini_racer.JSParseException, '.*Unknown JavaScript error during parse.*'
         ):
             context.eval(js_source)
 

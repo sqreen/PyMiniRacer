@@ -1,6 +1,7 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-"
+import argparse
 import errno
-
+import sys
 import logging
 import os
 import os.path
@@ -10,31 +11,32 @@ import multiprocessing
 from glob import glob
 from os.path import join, dirname, abspath
 from contextlib import contextmanager
+from distutils.dir_util import copy_tree
 
 
 logging.basicConfig()
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
-V8_VERSION = "6.7.288.46"
+V8_VERSION = "branch-heads/7.8"
 
 
-def local_path(path):
+def local_path(path="."):
     """ Return path relative to this file
     """
     current_path = dirname(__file__)
     return abspath(join(current_path, path))
 
 
-VENDOR_PATH = local_path('../../vendor/depot_tools')
 PATCHES_PATH = local_path('../../patches')
 
 
 def call(cmd):
     LOGGER.debug("Calling: '%s' from working directory %s", cmd, os.getcwd())
     current_env = os.environ
-    depot_tools_env = '{}:{}'.format(VENDOR_PATH, os.environ['PATH'])
+    depot_tools_env = os.pathsep.join([local_path("depot_tools"), os.environ['PATH']])
     current_env['PATH'] = depot_tools_env
+    current_env['DEPOT_TOOLS_WIN_TOOLCHAIN'] = '0'
     return subprocess.check_call(cmd, shell=True, env=current_env)
 
 
@@ -54,17 +56,34 @@ def chdir(new_path, make=False):
         os.chdir(old_path)
 
 
-def ensure_v8_src():
+def install_depot_tools():
+    if not os.path.isdir(local_path("depot_tools")):
+        LOGGER.debug("Cloning depot tools")
+        call("git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git {}".format(local_path("depot_tools")))
+    else:
+        LOGGER.debug("Using already cloned depot tools")
+
+
+def prepare_workdir():
+    directories = ["build", "build_overrides", "buildtools", "testing",
+                   "third_party", "tools"]
+    with chdir(local_path()):
+        for item in directories:
+            if not os.path.exists(item):
+                symlink_force(os.path.join("v8", item), item)
+
+
+def ensure_v8_src(revision):
     """ Ensure that v8 src are presents and up-to-date
     """
-    path = local_path('v8')
+    path = local_path()
 
-    if not os.path.isdir(path):
+    if not os.path.isfile(local_path(".gclient")):
         fetch_v8(path)
     else:
         update_v8(path)
 
-    checkout_v8_version(local_path("v8/v8"), V8_VERSION)
+    checkout_v8_version(local_path("v8"), revision)
     dependencies_sync(path)
 
 
@@ -72,7 +91,7 @@ def fetch_v8(path):
     """ Fetch v8
     """
     with chdir(abspath(path), make=True):
-        call("fetch v8")
+        call("fetch --nohooks v8")
 
 
 def update_v8(path):
@@ -82,11 +101,11 @@ def update_v8(path):
         call("gclient fetch")
 
 
-def checkout_v8_version(path, version):
+def checkout_v8_version(path, revision):
     """ Ensure that we have the right version
     """
     with chdir(path):
-        call("git checkout {} -- .".format(version))
+        call("git checkout {} -- .".format(revision))
 
 
 def dependencies_sync(path):
@@ -95,50 +114,76 @@ def dependencies_sync(path):
     with chdir(path):
         call("gclient sync")
 
-def gen_makefiles(path):
-    opts = {
-        'is_component_build': 'false',
-        'v8_monolithic': 'true',
-        'use_gold': 'false',
-        'use_allocator_shim': 'false',
-        'is_debug': 'false',
-        'symbol_level': '0',
-        'strip_debug_info': 'true',
-        'v8_use_external_startup_data': 'false',
-        'v8_enable_i18n_support': 'false',
-        'v8_static_library': 'true',
-        'v8_experimental_extra_library_files': '[]',
-        'v8_extra_library_files': '[]'
-    }
-    joined_opts = ' '.join('{}={}'.format(a, b) for (a, b) in opts.items())
-
-    with chdir(path):
-        call('./tools/dev/v8gen.py -vv x64.release -- ' + joined_opts)
-
-def make(path, cmd_prefix):
-    """ Create a release of v8
+def run_hooks(path):
+    """ Run v8 build hooks
     """
     with chdir(path):
-        call("{} ninja -vv -C out.gn/x64.release -j {} v8_monolith"
-             .format(cmd_prefix, 4))
+        call("gclient runhooks")
+
+def gen_makefiles(build_path):
+    with chdir(local_path()):
+        build_path = local_path(build_path)
+        if not os.path.exists(build_path):
+            os.makedirs(build_path)
+        LOGGER.debug("Writing args.gn in %s", build_path)
+        with open(os.path.join(build_path, "args.gn"), "w") as f:
+            opts = {
+                "proprietary_codecs": "false",
+                "toolkit_views": "false",
+                "use_aura": "false",
+                "use_dbus": "false",
+                "use_gio": "false",
+                "use_glib": "false",
+                "use_ozone": "false",
+                "use_udev": "false",
+                "is_desktop_linux": "false",
+
+                "is_cfi": "false",
+                "is_debug": "false",
+                "is_component_build": "false",
+                "use_gold": "false",
+
+                "symbol_level": "0",
+                "strip_debug_info": "true",
+                "treat_warnings_as_errors": "true",
+                "use_jumbo_build": "true",
+
+                "v8_monolithic": "false",
+                "v8_use_external_startup_data": "false",
+                "v8_enable_i18n_support": "false",
+                "v8_extra_library_files": "[]",
+            }
+            f.write("# This file is auto generated by v8_build.py")
+            f.write("\n".join("{}={}".format(a, b) for (a, b) in opts.items()))
+        call("gn gen {}".format(local_path(build_path)))
+
+def make(build_path, target, cmd_prefix=""):
+    """ Create a release of v8
+    """
+    with chdir(local_path()):
+        call("{} ninja -vv -C {} {}".format(cmd_prefix, local_path(build_path), target))
 
 def patch_v8():
     """ Apply patch on v8
     """
-    path = local_path('v8/v8')
+    path = local_path("v8")
     patches_paths = PATCHES_PATH
     apply_patches(path, patches_paths)
 
 
 def symlink_force(target, link_name):
-    try:
-        os.symlink(target, link_name)
-    except OSError as e:
-        if e.errno == errno.EEXIST:
-            os.remove(link_name)
+    LOGGER.debug("Creating symlink to %s on %s", target, link_name)
+    if sys.platform == "win32":
+        call(["mklink", "/d", abspath(link_name), abspath(target)])
+    else:
+        try:
             os.symlink(target, link_name)
-        else:
-            raise e
+        except OSError as e:
+            if e.errno == errno.EEXIST:
+                os.remove(link_name)
+                os.symlink(target, link_name)
+            else:
+                raise e
 
 
 def fixup_libtinfo(dir):
@@ -171,18 +216,79 @@ def apply_patches(path, patches_path):
             for patch in glob(join(patches_path, '*.patch')):
                 if patch not in applied_patches:
                     call("patch -p1 -N < {}".format(patch))
-
                     applied_patches_file.write(patch + "\n")
 
 
-def build_v8():
-    ensure_v8_src()
+def patch_sysroot():
+    with chdir(local_path("v8/build/linux/debian_sid_amd64-sysroot")):
+        with open("usr/include/glob.h", "r") as f:
+            header = f.read()
+        s, e = header.split("sysroot-creator.sh.", 1)
+        LOGGER.debug("Patching sysroot /usr/include/glob.h")
+        with open("usr/include/glob.h", "w") as f:
+            f.write(s)
+            f.write("sysroot-creator.sh.")
+            f.write("""
+__asm__(".symver glob, glob@GLIBC_2.2.5");
+__asm__(".symver glob64, glob64@GLIBC_2.2.5");
+            """)
+        LOGGER.debug("Patching sysroot /usr/include/string.h")
+        with open("usr/include/string.h", "a") as f:
+            f.write("""
+__asm__(".symver _sys_errlist, _sys_errlist@GLIBC_2.4");
+__asm__(".symver _sys_nerr, _sys_nerr@GLIBC_2.4");
+__asm__(".symver fmemopen, fmemopen@GLIBC_2.2.5");
+__asm__(".symver memcpy, memcpy@GLIBC_2.2.5");
+__asm__(".symver posix_spawn, posix_spawn@GLIBC_2.2.5");
+__asm__(".symver posix_spawnp, posix_spawnp@GLIBC_2.2.5");
+__asm__(".symver sys_errlist, sys_errlist@GLIBC_2.4");
+__asm__(".symver sys_nerr, sys_nerr@GLIBC_2.4");
+            """)
+        with open("usr/include/math.h", "r") as f:
+            header = f.read()
+        s, e = header.split("sysroot-creator.sh.", 1)
+        LOGGER.debug("Patching sysroot /usr/include/math.h")
+        with open("usr/include/math.h", "w") as f:
+            f.write(s)
+            f.write("sysroot-creator.sh.")
+            f.write("""
+__asm__(".symver exp2f, exp2f@GLIBC_2.2.5");
+__asm__(".symver expf, expf@GLIBC_2.2.5");
+__asm__(".symver lgamma, lgamma@GLIBC_2.2.5");
+__asm__(".symver lgammaf, lgammaf@GLIBC_2.2.5");
+__asm__(".symver lgammal, lgammal@GLIBC_2.2.5");
+__asm__(".symver log2f, log2f@GLIBC_2.2.5");
+__asm__(".symver logf, logf@GLIBC_2.2.5");
+__asm__(".symver powf, powf@GLIBC_2.2.5");
+            """)
+
+
+def build_v8(target=None, build_path=None, revision=None, no_build=False):
+    if target is None:
+        target = "v8"
+    if build_path is None:
+        # Must be relative to local_path()
+        build_path = "out"
+    if revision is None:
+        revision = V8_VERSION
+    install_depot_tools()
+    ensure_v8_src(revision)
     patch_v8()
-    checkout_path = local_path('v8/v8')
+    if sys.platform.startswith("linux"):
+        patch_sysroot()
+    prepare_workdir()
+    checkout_path = local_path("v8")
     cmd_prefix = fixup_libtinfo(checkout_path)
-    gen_makefiles(checkout_path)
-    make(checkout_path, cmd_prefix)
+    gen_makefiles(build_path)
+    if not no_build:
+        make(build_path, target, cmd_prefix)
 
 
 if __name__ == '__main__':
-    build_v8()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--target", default="v8", help="Ninja target")
+    parser.add_argument("--build-path", default="out", help="Build destination directory (relative to the path)")
+    parser.add_argument("--v8-revision", default=V8_VERSION)
+    parser.add_argument("--no-build", action="store_true", help="Only prepare workdir")
+    args = parser.parse_args()
+    build_v8(target=args.target, build_path=args.build_path, revision=args.v8_revision, no_build=args.no_build)

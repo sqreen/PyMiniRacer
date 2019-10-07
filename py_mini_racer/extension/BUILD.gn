@@ -1,0 +1,45 @@
+import("//v8/gni/v8.gni")
+
+config("py_mini_racer_config") {
+  include_dirs = [ "//v8" ]
+  configs = [ "//v8:external_config" ]
+  cflags = []
+}
+
+v8_source_set("v8") {
+  deps = [
+    "//v8:v8",
+    "//v8:v8_libbase",
+    "//v8:v8_libplatform",
+    "//v8:v8_libsampler",
+  ]
+  configs = [ ":py_mini_racer_config" ]
+}
+
+v8_source_set("py_mini_racer") {
+  sources = [
+    "mini_racer_extension.cc",
+  ]
+  deps = [
+    ":v8",
+  ]
+  configs = [ ":py_mini_racer_config" ]
+}
+
+v8_static_library("py_mini_racer_static_lib") {
+  output_name = "mini_racer"
+  deps = [
+    ":py_mini_racer",
+    "//build/config:shared_library_deps",
+  ]
+  configs = [ ":py_mini_racer_config" ]
+}
+
+shared_library("py_mini_racer_shared_lib") {
+  output_name = "mini_racer"
+  deps = [
+    ":py_mini_racer",
+    "//build/config:shared_library_deps",
+  ]
+  configs += [ ":py_mini_racer_config" ]
+}

@@ -3,6 +3,7 @@ include CONTRIBUTING.rst
 include HISTORY.rst
 include LICENSE
 include README.rst
+include py_mini_racer/extension/*.gn
 
 recursive-include tests *
 recursive-include requirements *
