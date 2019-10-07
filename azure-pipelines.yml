@@ -31,7 +31,7 @@ jobs:
      inputs:
        versionSpec: '3.6'
        architecture: x64
-   - script: |
+   - powershell: |
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.7.exe -force
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.exe -force
    - template: helpers/release.yml
