@@ -1,0 +1,24 @@
+trigger:
+- master
+
+jobs:
+- job: linux
+  pool: {vmImage: 'Ubuntu-16.04'}
+  steps:
+   - task: UsePythonVersion@0
+     inputs:
+       versionSpec: '3.6'
+       architecture: x64
+   - checkout: self
+   - bash: python3 setup.py sdist --dist-dir wheelhouse
+   - template: helpers/release.yml
+- job: mac
+  pool: {vmImage: 'macOS-10.13'}
+  steps:
+   - bash: sudo xcode-select -s /Applications/Xcode_8.3.3.app/Contents/Developer
+   - task: UsePythonVersion@0
+     inputs:
+       versionSpec: '3.6'
+       architecture: x64
+   - checkout: self
+   - template: helpers/release.yml

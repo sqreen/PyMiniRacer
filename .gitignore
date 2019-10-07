@@ -9,6 +9,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 env/
+venv/
 build/
 develop-eggs/
 dist/
@@ -59,6 +60,7 @@ docs/_build/
 target/
 
 # V8 vendor
-py_mini_racer/ffi/v8/
+py_mini_racer/extension/v8/
+vendor/
 
 *.iml

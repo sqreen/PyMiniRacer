@@ -2,11 +2,10 @@
 
 import os
 import re
+import sys
 
 from wheel import pkginfo
 from auditwheel.wheeltools import InWheelCtx, add_platforms, _dist_info_dir
-
-DIRECTORY = "dist"
 
 def get_filenames(directory):
     """Get all the file to copy"""
@@ -14,11 +13,11 @@ def get_filenames(directory):
         if re.search(r"cp\d{2}mu?-manylinux1_\S+\.whl", filename):
             yield filename
 
-def copy_file(filename):
+def copy_file(filename, destination):
     """Copy the file and put the correct tag"""
 
     print("Updating file %s" % filename)
-    out_dir = os.path.abspath(DIRECTORY)
+    out_dir = os.path.abspath(destination)
 
     tags = filename[:-4].split("-")
 
@@ -27,10 +26,12 @@ def copy_file(filename):
     new_name = "-".join(tags) + ".whl"
     wheel_flag = "-".join(tags[2:])
 
-    with InWheelCtx(os.path.join(DIRECTORY, filename)) as ctx:
+    with InWheelCtx(os.path.join(destination, filename)) as ctx:
         info_fname = os.path.join(_dist_info_dir(ctx.path), 'WHEEL')
         infos = pkginfo.read_pkg_info(info_fname)
-        print("Changing Tag %s to %s" % (infos["Tag"], wheel_flag))
+        print("Current Tags: ", ", ".join([v for k, v in infos.items()
+                                           if k == "Tag"]))
+        print("Adding Tag", wheel_flag)
         del infos['Tag']
         infos.add_header('Tag', wheel_flag)
         pkginfo.write_pkg_info(info_fname, infos)
@@ -40,8 +41,12 @@ def copy_file(filename):
         print("Saving new wheel into %s" % ctx.out_wheel)
 
 def main():
-    for filename in get_filenames(DIRECTORY):
-        copy_file(filename)
+    if len(sys.argv) == 2:
+        directory = sys.argv[1]
+    else:
+        directory = "dist"
+    for filename in get_filenames(directory):
+        copy_file(filename, directory)
 
 if __name__ == "__main__":
     main()

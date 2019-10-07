@@ -5,6 +5,9 @@ Python Mini Racer
 .. image:: https://img.shields.io/pypi/v/py_mini_racer.svg
         :target: https://pypi.python.org/pypi/py_mini_racer
 
+.. image:: https://dev.azure.com/sqreenci/PyMiniRacer/_apis/build/status/sqreen.PyMiniRacer?branchName=master
+        :target: https://dev.azure.com/sqreenci/PyMiniRacer/_build/latest?definitionId=10&branchName=master
+
 Minimal, modern embedded V8 for Python.
 
 * Free software: ISC license
@@ -146,7 +149,14 @@ We're making them available with the following command.
 Build
 -----
 
-You can build v8 with the command:
+First check that your current Python executable is version 2.7. This is required
+by the V8 build system.
+
+.. code:: bash
+    $ python --version
+    Python 2.7.16
+
+You can then build V8 with the command:
 
 .. code:: bash
 
@@ -160,13 +170,18 @@ You can also build the ctype extension:
 
 Which automatically builds v8.
 
-You can generate a wheel with the command:
+You can generate a wheel for whatever Python version with the command:
 
 .. code:: bash
 
-    $ python setup.py bdist_wheel
+    $ python setup.py build_v8  # (for Python 2 and Python 3)
+    $ python setup.py bdist_wheel  # (for Python 2 only)
+    $ python3 setup.py bdist_wheel  # (for Python 3 only)
 
-which builds v8, the extension, and generates a wheel.
+It will then build V8, the extension, and generates a wheel for your current
+Python version. The V8 builds are cached in the ``py_mini_racer/extension/v8/``
+directory.  Please note that you can build Python 3 wheels by reusing the
+cached version of V8 built with Python 2.7.
 
 Notes for building on macOS
 '''''''''''''''''''''''''
@@ -179,15 +194,6 @@ They will allow to build a wheel compatible with former OSX versions.
 If you're having build issues, you may either have to run the build a second time (which will be much faster than the first run) or run the following command before running the first build: 
 
 ``export LDSHARED="clang++ -bundle -undefined dynamic_lookup -arch i386 -arch x86_64"``
-
-Notes for building on Travis
-'''''''''''''''''''''''''
-
-The V8 build is cached in order to make the Travis builds faster.
-
-Whenever V8 is updated, the caches need to be flushed `on Travis here`_.
-
-.. _`on Travis here`: https://travis-ci.org/sqreen/PyMiniRacer/caches
 
 Tests
 -----

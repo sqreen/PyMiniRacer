@@ -1,0 +1,38 @@
+steps:
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '2.7'
+    architecture: x64
+- task: CacheBeta@0
+  inputs:
+    key: v8_libraries | $(Agent.OS) | py_mini_racer/extension/v8_build.py
+    path: py_mini_racer/extension/v8/v8/out.gn/x64.release/obj
+- task: CacheBeta@0
+  inputs:
+    key: v8_includes | $(Agent.OS) | py_mini_racer/extension/v8_build.py
+    path: py_mini_racer/extension/v8/v8/include
+- bash: python setup.py build_v8
+- bash: |
+    pip install cibuildwheel==0.12.0
+    cibuildwheel --output-dir wheelhouse .
+  env:
+    CIBW_SKIP: "*-manylinux1_i686"
+    CIBW_TEST_REQUIRES: mock pytest pytest-azurepipelines
+    CIBW_TEST_COMMAND: pytest {project}/tests
+- bash: |
+    pip3 install auditwheel
+    python3 helpers/wheel_pymalloc.py wheelhouse
+- task: PublishBuildArtifacts@1
+  inputs: {pathtoPublish: "wheelhouse"}
+- task: S3Upload@1
+  condition: and(succeeded(), eq(variables['build.sourceBranch'], 'refs/head/master'))
+  displayName: Publish Wheelhouse to S3
+  inputs:
+    awsCredentials: AWS
+    bucketName: sqreen-pyminiracer-travis-artefact
+    globExpressions: |
+      *.whl
+      *.tar.gz
+    targetFolder: $(Build.SourceVersion)/dist
+    sourceFolder: wheelhouse
+    flattenFolders: true
