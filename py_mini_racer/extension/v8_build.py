@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import errno
-
+import sys
 import logging
 import os
 import os.path
@@ -72,14 +72,14 @@ def fetch_v8(path):
     """ Fetch v8
     """
     with chdir(abspath(path), make=True):
-        call("fetch v8")
+        call("{} fetch.py v8".format(sys.executable))
 
 
 def update_v8(path):
     """ Update v8 repository
     """
     with chdir(path):
-        call("gclient fetch")
+        call("{} gclient.py fetch".format(sys.executable))
 
 
 def checkout_v8_version(path, version):
@@ -93,7 +93,7 @@ def dependencies_sync(path):
     """ Sync v8 build dependencies
     """
     with chdir(path):
-        call("gclient sync")
+        call("{} gclient.py sync".format(sys.executable))
 
 def gen_makefiles(path):
     opts = {
