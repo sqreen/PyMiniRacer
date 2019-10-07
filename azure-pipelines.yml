@@ -10,16 +10,12 @@ jobs:
        versionSpec: '3.6'
        architecture: x64
    - checkout: self
-   - bash: python3 setup.py sdist --dist-dir wheelhouse
+   - bash: python setup.py sdist --dist-dir wheelhouse
    - template: helpers/release.yml
 - job: mac
   pool: {vmImage: 'macOS-10.13'}
   steps:
    - bash: sudo xcode-select -s /Applications/Xcode_8.3.3.app/Contents/Developer
-   - task: UsePythonVersion@0
-     inputs:
-       versionSpec: '3.6'
-       architecture: x64
    - checkout: self
    - template: helpers/release.yml
 - job: windows
@@ -28,15 +24,7 @@ jobs:
    - checkout: self
    - bash: echo "##vso[task.prependpath]$(Build.SourcesDirectory)\\vendor\\depot_tools\\"
    - bash: echo "##vso[task.setvariable variable=DEPOT_TOOLS_WIN_TOOLCHAIN]0"
-   - task: UsePythonVersion@0
-     inputs:
-       versionSpec: '3.6'
-       architecture: x64
    - powershell: |
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.7.exe -force
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.exe -force
-   - bash: |
-       ls C:/hostedtoolcache/windows/Python/2.7.16/x64
-       ls C:/hostedtoolcache/windows/Python/2.7.16/x64/Scripts
-       ls C:/Users/VssAdministrator/AppData/Roaming/Python/Python27/Scripts
    - template: helpers/release.yml
