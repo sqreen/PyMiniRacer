@@ -3,6 +3,8 @@ steps:
   inputs:
     versionSpec: '2.7'
     architecture: x64
+- bash: echo "##vso[task.prependpath]$(Build.SourcesDirectory)\\vendor\\depot_tools\\"
+- bash: echo "##vso[task.setvariable variable=DEPOT_TOOLS_WIN_TOOLCHAIN]0"
 - task: CacheBeta@0
   inputs:
     key: v8_libraries | $(Agent.OS) | py_mini_racer/extension/v8_build.py
