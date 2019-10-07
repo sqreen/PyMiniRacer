@@ -9,6 +9,12 @@
 #include <v8-profiler.h>
 #include <libplatform/libplatform.h>
 
+#ifdef V8_OS_WIN
+# define LIB_EXPORT __declspec(dllexport)
+#else
+# define LIB_EXPORT
+#endif
+
 template<class T> static inline T* xalloc(T*& ptr, size_t x = sizeof(T))
 {
     void *tmp = malloc(x);
@@ -703,34 +709,34 @@ public:
 
 extern "C" {
 
-BinaryValue* mr_eval_context(ContextInfo *context_info, char *str, int len, unsigned long timeout, size_t max_memory) {
+LIB_EXPORT BinaryValue * mr_eval_context(ContextInfo *context_info, char *str, int len, unsigned long timeout, size_t max_memory) {
     BinaryValue *res = MiniRacer_eval_context_unsafe(context_info, str, len, timeout, max_memory);
     return res;
 }
 
-ContextInfo *mr_init_context() {
+LIB_EXPORT ContextInfo * mr_init_context() {
     ContextInfo *res = MiniRacer_init_context();
     return res;
 }
 
-void mr_free_value(BinaryValue *val) {
+LIB_EXPORT void mr_free_value(BinaryValue *val) {
     BinaryValueFree(val);
 }
 
-void mr_free_context(ContextInfo *context_info) {
+LIB_EXPORT void mr_free_context(ContextInfo *context_info) {
     deallocate(context_info);
 }
 
-BinaryValue *mr_heap_stats(ContextInfo *context_info) {
+LIB_EXPORT BinaryValue * mr_heap_stats(ContextInfo *context_info) {
     return heap_stats(context_info);
 }
 
-void mr_low_memory_notification(ContextInfo *context_info) {
+LIB_EXPORT void mr_low_memory_notification(ContextInfo *context_info) {
     context_info->isolate->LowMemoryNotification();
 }
 
 // FOR DEBUGGING ONLY
-BinaryValue* mr_heap_snapshot(ContextInfo *context_info) {
+LIB_EXPORT BinaryValue * mr_heap_snapshot(ContextInfo *context_info) {
     Isolate* isolate = context_info->isolate;
     Locker lock(isolate);
     Isolate::Scope isolate_scope(isolate);
