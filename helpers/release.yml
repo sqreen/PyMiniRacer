@@ -11,7 +11,7 @@ steps:
   inputs:
     key: v8_includes | $(Agent.OS) | py_mini_racer/extension/v8_build.py
     path: py_mini_racer/extension/v8/v8/include
-- bash: python3 setup.py build_v8
+- bash: python3.6 setup.py build_v8
 - bash: |
     pip install cibuildwheel==0.12.0
     cibuildwheel --output-dir wheelhouse .
@@ -20,8 +20,8 @@ steps:
     CIBW_TEST_REQUIRES: mock pytest pytest-azurepipelines
     CIBW_TEST_COMMAND: pytest {project}/tests
 - bash: |
-    pip3 install auditwheel
-    python3 helpers/wheel_pymalloc.py wheelhouse
+    pip3.6 install auditwheel
+    python3.6 helpers/wheel_pymalloc.py wheelhouse
 - task: PublishBuildArtifacts@1
   inputs: {pathtoPublish: "wheelhouse"}
 - task: S3Upload@1
