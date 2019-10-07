@@ -36,7 +36,7 @@ jobs:
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.7.exe -force
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.exe -force
    - bash: |
-       ls C:\hostedtoolcache\windows\Python\2.7.16\x64
-       ls C:\hostedtoolcache\windows\Python\2.7.16\x64\Scripts
-       ls C:\Users\VssAdministrator\AppData\Roaming\Python\Python27\Scripts
+       ls C:/hostedtoolcache/windows/Python/2.7.16/x64
+       ls C:/hostedtoolcache/windows/Python/2.7.16/x64/Scripts
+       ls C:/Users/VssAdministrator/AppData/Roaming/Python/Python27/Scripts
    - template: helpers/release.yml
