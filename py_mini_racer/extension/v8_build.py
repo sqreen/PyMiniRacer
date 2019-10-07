@@ -114,7 +114,7 @@ def gen_makefiles(path):
     joined_opts = ' '.join('{}={}'.format(a, b) for (a, b) in opts.items())
 
     with chdir(path):
-        call(sys.executable + ' tools/dev/v8gen.py -vv x64.release -- ' + joined_opts)
+        call('tools/dev/v8gen.py -vv x64.release -- ' + joined_opts)
 
 def make(path, cmd_prefix):
     """ Create a release of v8
