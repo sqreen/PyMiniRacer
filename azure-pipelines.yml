@@ -22,3 +22,8 @@ jobs:
        architecture: x64
    - checkout: self
    - template: helpers/release.yml
+- job: windows
+  pool: {vmImage: 'vs2017-win2016'}
+  steps:
+   - checkout: self
+   - template: helpers/release.yml
