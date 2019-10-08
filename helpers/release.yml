@@ -15,7 +15,9 @@ steps:
     path: py_mini_racer/extension/v8/v8/include
 - bash: python setup.py build_v8
 - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
-- {task: UsePythonVersion@0, inputs: {versionSpec: '3.4', architecture: x64}, condition: neq(variables['Agent.OS'], 'Windows_NT')}
+- task: UsePythonVersion@0
+  inputs: {versionSpec: '3.4', architecture: x64}
+  condition: neq(variables['Agent.OS'], 'Windows_NT')
 - {task: UsePythonVersion@0, inputs: {versionSpec: '3.5', architecture: x64}}
 - {task: UsePythonVersion@0, inputs: {versionSpec: '3.6', architecture: x64}}
 - {task: UsePythonVersion@0, inputs: {versionSpec: '3.7', architecture: x64}}
