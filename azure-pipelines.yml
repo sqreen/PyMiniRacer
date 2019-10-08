@@ -22,7 +22,10 @@ jobs:
   pool: {vmImage: 'vs2017-win2016'}
   steps:
    - checkout: self
+   - script: choco install vcpython27 -f -y
+     displayName: Install Visual C++ for Python 2.7
    - powershell: |
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.7.exe -force
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.exe -force
+     displayName: Remove extraneous Python Interpreters
    - template: helpers/release.yml
