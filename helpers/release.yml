@@ -26,7 +26,6 @@ steps:
     pip3 install cibuildwheel==0.12.0
     cibuildwheel --output-dir wheelhouse .
   env:
-    CIBW_BEFORE_BUILD_WINDOWS: set
     CIBW_ENVIRONMENT_WINDOWS: "DISTUTILS_USE_SDK=1 MSSdk=1"
     CIBW_TEST_REQUIRES: mock pytest pytest-azurepipelines
     CIBW_TEST_COMMAND: pytest {project}/tests

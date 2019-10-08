@@ -155,7 +155,7 @@ private:
 typedef struct {
     ContextInfo* context_info;
     Local<String>* eval;
-    useconds_t timeout;
+    unsigned long timeout;
     EvalResult* result;
     size_t max_memory;
 } EvalParams;
@@ -557,7 +557,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         char *utf_str, int str_len,
         unsigned long timeout, size_t max_memory)
 {
-    EvalParams eval_params;
+    EvalParams eval_params = { 0 };
     EvalResult eval_result{};
 
     BinaryValue *result = NULL;
@@ -589,7 +589,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         eval_params.timeout = 0;
         eval_params.max_memory = 0;
         if (timeout > 0) {
-            eval_params.timeout = (useconds_t)timeout;
+            eval_params.timeout = timeout;
         }
         if (max_memory > 0) {
             eval_params.max_memory = max_memory;
