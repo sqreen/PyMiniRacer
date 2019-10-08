@@ -121,7 +121,8 @@ def get_raw_static_lib_path():
     if sys.platform == "win32":
         libs = ['v8_monolith.lib']
     else:
-        libs = ['libv8_monolith.a']
+        libs = ['libv8_base.a', 'libv8_snapshot.a', 'libv8_libbase.a',
+                'libv8_libplatform.a', 'libv8_libsampler.a']
     return [libv8_object(static_file) for static_file in libs]
 
 
@@ -227,13 +228,12 @@ class MiniRacerBuildV8(Command):
         if V8_PATH:
             return
 
-        if not check_python_version():
-            msg = """py_mini_racer cannot build V8 in the current configuration.
-            The V8 build system requires the python executable to be Python 2.7.
-            See also: https://github.com/sqreen/PyMiniRacer#build"""
-            raise Exception(msg)
-
         if not is_v8_built():
+            if not check_python_version():
+                msg = """py_mini_racer cannot build V8 in the current configuration.
+                The V8 build system requires the python executable to be Python 2.7.
+                See also: https://github.com/sqreen/PyMiniRacer#build"""
+                raise Exception(msg)
 
             if not is_depot_tools_checkout():
                 print("cloning depot tools submodule")
