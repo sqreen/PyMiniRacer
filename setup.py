@@ -104,7 +104,6 @@ def libv8_object(object_name):
 
     if not isfile(filename):
         filename = join(V8_LIB_DIRECTORY, 'out.gn/x64.release/obj/{}'.format(object_name))
-
     return filename
 
 
@@ -123,6 +122,7 @@ def get_raw_static_lib_path():
         V8_STATIC_LIBRARIES = ['libv8_monolith.lib']
     else:
         V8_STATIC_LIBRARIES = ['libv8_monolith.a']
+    print(os.listdir(join(V8_LIB_DIRECTORY, 'out.gn/x64.release/obj/')))
     return [libv8_object(static_file) for static_file in V8_STATIC_LIBRARIES]
 
 
