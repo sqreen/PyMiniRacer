@@ -137,15 +137,21 @@ def get_static_lib_paths():
         libs += ['-Wl,--end-group']
     return libs
 
-EXTRA_LINK_ARGS = [
-    '-ldl',
-    '-fstack-protector',
-]
-EXTRA_COMPILE_ARGS = [
-    '-std=c++11',
-    '-fpermissive',
-    '-fno-common'
-]
+if sys.platform == "win32":
+    # Windows flags
+    EXTRA_LINK_ARGS = []
+    EXTRA_COMPILE_ARGS = []
+else:
+    # Unix flags
+    EXTRA_LINK_ARGS = [
+        '-ldl',
+        '-fstack-protector',
+    ]
+    EXTRA_COMPILE_ARGS = [
+        '-std=c++11',
+        '-fpermissive',
+        '-fno-common'
+    ]
 
 # Per platform customizations
 if sys.platform[:6] == "darwin":
