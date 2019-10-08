@@ -69,7 +69,6 @@ def local_path(path):
 
 
 V8_LIB_DIRECTORY = local_path('py_mini_racer/extension/v8/v8')
-V8_STATIC_LIBRARIES = ['libv8_monolith.a']
 
 
 def is_v8_built():
@@ -120,6 +119,10 @@ def get_raw_static_lib_path():
     """ Return the list of the static libraries files ONLY, use
     get_static_lib_paths to get the right compilation flags
     """
+    if sys.platform == "win32":
+        V8_STATIC_LIBRARIES = ['libv8_monolith.lib']
+    else:
+        V8_STATIC_LIBRARIES = ['libv8_monolith.a']
     return [libv8_object(static_file) for static_file in V8_STATIC_LIBRARIES]
 
 
