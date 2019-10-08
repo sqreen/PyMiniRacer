@@ -139,8 +139,8 @@ def get_static_lib_paths():
 
 if sys.platform == "win32":
     # Windows flags
-    EXTRA_LINK_ARGS = ['/MT']
-    EXTRA_COMPILE_ARGS = ['/MT', '/D_ITERATOR_DEBUG_LEVEL=0']
+    EXTRA_LINK_ARGS = ['/MTd']
+    EXTRA_COMPILE_ARGS = ['/MTd', '/D_ITERATOR_DEBUG_LEVEL=0']
 else:
     # Unix flags
     EXTRA_LINK_ARGS = [
