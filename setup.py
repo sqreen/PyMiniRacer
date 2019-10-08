@@ -160,7 +160,7 @@ if sys.platform[:6] == "darwin":
     EXTRA_COMPILE_ARGS += ['-mmacosx-version-min=10.9', '-stdlib=libc++']
     EXTRA_LINK_ARGS    += ['-lpthread', '-mmacosx-version-min=10.9', '-stdlib=libc++']
 elif sys.platform.startswith('linux'):
-    EXTRA_COMPILE_ARGS += ['-rdynamic']
+    EXTRA_COMPILE_ARGS += ['-nostdlib', '-rdynamic']
     EXTRA_LINK_ARGS    += ['-lrt']
 
 
