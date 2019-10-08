@@ -1,10 +1,9 @@
+#include <thread>
+#include <chrono>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <pthread.h>
-
 #include <v8.h>
 #include <v8-profiler.h>
 #include <libplatform/libplatform.h>
@@ -191,13 +190,13 @@ static void init_v8() {
     }
 }
 
-static void* breaker(void *d) {
+static void breaker(std::timed_mutex& breaker_mutex, void * d) {
   EvalParams* data = (EvalParams*)d;
-  usleep(data->timeout*1000);
-  pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
-  data->result->timed_out = true;
-  data->context_info->isolate->TerminateExecution();
-  return NULL;
+
+  if (!breaker_mutex.try_lock_for(std::chrono::milliseconds(data->timeout))) {
+    data->result->timed_out = true;
+    data->context_info->isolate->TerminateExecution();
+  }
 }
 
 static void* nogvl_context_eval(void* arg) {
@@ -230,12 +229,14 @@ static void* nogvl_context_eval(void* arg) {
         result->message->Reset(isolate, trycatch.Exception()->ToString());
     } else {
 
-        pthread_t breaker_thread = 0;
+        std::timed_mutex breaker_mutex;
+        std::thread breaker_thread;
 
         // timeout limit
         auto timeout = eval_params->timeout;
         if (timeout > 0) {
-            pthread_create(&breaker_thread, NULL, breaker, (void*)eval_params);
+            breaker_mutex.lock();
+            breaker_thread = std::thread(&breaker, std::ref(breaker_mutex), (void *) eval_params);
         }
         // memory limit
         if (eval_params->max_memory > 0) {
@@ -246,8 +247,8 @@ static void* nogvl_context_eval(void* arg) {
         MaybeLocal<Value> maybe_value = parsed_script.ToLocalChecked()->Run(context);
 
         if (timeout > 0) {
-            pthread_cancel(breaker_thread);
-            pthread_join(breaker_thread, NULL);
+            breaker_mutex.unlock();
+            breaker_thread.join();
         }
 
         result->executed = !maybe_value.IsEmpty();
