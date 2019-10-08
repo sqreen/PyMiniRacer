@@ -145,6 +145,7 @@ if sys.platform == "win32":
 else:
     # Unix flags
     EXTRA_LINK_ARGS = [
+        '-std=c++11',
         '-ldl',
         '-fstack-protector',
     ]
