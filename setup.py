@@ -121,8 +121,7 @@ def get_raw_static_lib_path():
     if sys.platform == "win32":
         libs = ['v8_monolith.lib']
     else:
-        libs = ['libv8_base.a', 'libv8_snapshot.a', 'libv8_libbase.a',
-                'libv8_libplatform.a', 'libv8_libsampler.a']
+        libs = ['libv8_monolith.a']
     return [libv8_object(static_file) for static_file in libs]
 
 
@@ -140,8 +139,8 @@ def get_static_lib_paths():
 
 if sys.platform == "win32":
     # Windows flags
-    EXTRA_LINK_ARGS = []
-    EXTRA_COMPILE_ARGS = []
+    EXTRA_LINK_ARGS = ['/MT']
+    EXTRA_COMPILE_ARGS = ['/MT', '/D_ITERATOR_DEBUG_LEVEL=0']
 else:
     # Unix flags
     EXTRA_LINK_ARGS = [
