@@ -119,11 +119,10 @@ def get_raw_static_lib_path():
     get_static_lib_paths to get the right compilation flags
     """
     if sys.platform == "win32":
-        V8_STATIC_LIBRARIES = ['libv8_monolith.lib']
+        libs = ['v8_monolith.lib']
     else:
-        V8_STATIC_LIBRARIES = ['libv8_monolith.a']
-    print(os.listdir(join(V8_LIB_DIRECTORY, 'out.gn/x64.release/obj/')))
-    return [libv8_object(static_file) for static_file in V8_STATIC_LIBRARIES]
+        libs = ['libv8_monolith.a']
+    return [libv8_object(static_file) for static_file in libs]
 
 
 def get_static_lib_paths():
