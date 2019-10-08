@@ -21,12 +21,14 @@ steps:
 - {task: UsePythonVersion@0, inputs: {versionSpec: '3.5', architecture: x64}}
 - {task: UsePythonVersion@0, inputs: {versionSpec: '3.6', architecture: x64}}
 - {task: UsePythonVersion@0, inputs: {versionSpec: '3.7', architecture: x64}}
+- script: |
+    call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 & set
+  condition: eq(variables['Agent.OS'], 'Windows_NT')
 - bash: |
     pip3 install cibuildwheel==0.12.0
     cibuildwheel --output-dir wheelhouse .
   env:
-    CIBW_BEFORE_BUILD_WINDOWS: |
-      call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 & set & cl.exe /version
+    CIBW_BEFORE_BUILD_WINDOWS: set
     CIBW_ENVIRONMENT_WINDOWS: "DISTUTILS_USE_SDK=1 MSSdk=1"
     CIBW_SKIP: "*-manylinux1_i686"
     CIBW_TEST_REQUIRES: mock pytest pytest-azurepipelines
