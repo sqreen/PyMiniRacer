@@ -29,7 +29,7 @@ steps:
     CIBW_TEST_REQUIRES: mock pytest pytest-azurepipelines
     CIBW_TEST_COMMAND: pytest {project}/tests
 - bash: |
-    pip3 install auditwheel
+    pip3.6 install auditwheel
     python3.6 helpers/wheel_pymalloc.py wheelhouse
 - task: PublishBuildArtifacts@1
   inputs: {pathtoPublish: "wheelhouse"}
