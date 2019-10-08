@@ -162,7 +162,7 @@ if sys.platform[:6] == "darwin":
     EXTRA_LINK_ARGS    += ['-lpthread', '-mmacosx-version-min=10.9', '-stdlib=libc++']
 elif sys.platform.startswith('linux'):
     EXTRA_COMPILE_ARGS += ['-rdynamic']
-    EXTRA_LINK_ARGS    += ['-lrt', '-static-libstdc++']
+    EXTRA_LINK_ARGS    += ['-lrt']
 
 
 PY_MINI_RACER_EXTENSION = Extension(
