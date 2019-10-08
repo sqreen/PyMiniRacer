@@ -23,7 +23,7 @@ jobs:
   steps:
    - checkout: self
    - script: |
-       call C:\Program Files (x86)\Microsoft Visual Studio\2015\Enterprise\VC\Auxiliary\Build\vcvarsall.bat x64
+       call "C:\Program Files (x86)\Microsoft Visual Studio\2015\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
    - powershell: |
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.7.exe -force
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.exe -force
