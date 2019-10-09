@@ -13,7 +13,7 @@ steps:
   inputs:
     key: v8_includes | $(Agent.OS) | py_mini_racer/extension/v8_build.py
     path: py_mini_racer/extension/v8/include
-- bash: python setup.py build_v8
+- bash: python setup.py build_ext
 - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
 - task: UsePythonVersion@0
   inputs: {versionSpec: '3.4', architecture: x64}

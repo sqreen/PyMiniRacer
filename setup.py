@@ -72,7 +72,17 @@ def check_python_version():
     """ Check that the python executable is Python 2.7.
     """
     output = check_output(['python', '--version'], stderr=STDOUT)
-    return output.strip().decode().startswith('Python 2.7')
+    if not output.strip().decode().startswith('Python 2.7'):
+        msg = """py_mini_racer cannot build V8 in the current configuration.
+        The V8 build system requires the python executable to be Python 2.7.
+        See also: https://github.com/sqreen/PyMiniRacer#build"""
+        raise Exception(msg)
+
+
+def install_depot_tools():
+    if not is_depot_tools_checkout():
+        print("cloning depot tools submodule")
+        check_call(['git', 'clone', 'https://chromium.googlesource.com/chromium/tools/depot_tools.git', 'vendor/depot_tools'])
 
 
 def is_depot_tools_checkout():
@@ -161,16 +171,8 @@ class MiniRacerBuildV8(Command):
             print("v8 was already built")
             return
 
-        if not check_python_version():
-            msg = """py_mini_racer cannot build V8 in the current configuration.
-            The V8 build system requires the python executable to be Python 2.7.
-            See also: https://github.com/sqreen/PyMiniRacer#build"""
-            raise Exception(msg)
-
-        if not is_depot_tools_checkout():
-            print("cloning depot tools submodule")
-            check_call(['git', 'clone', 'https://chromium.googlesource.com/chromium/tools/depot_tools.git', 'vendor/depot_tools'])
-
+        check_python_version()
+        install_depot_tools()
         print("building {}".format(self.target or "v8"))
         build_v8(self.target)
 
@@ -214,6 +216,6 @@ setup(
     tests_require=test_requirements,
     cmdclass={
         "build_ext": MiniRacerBuildExt,
-        'build_v8': MiniRacerBuildV8,
+        "build_v8": MiniRacerBuildV8,
     }
 )
