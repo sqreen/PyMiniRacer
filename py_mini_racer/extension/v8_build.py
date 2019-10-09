@@ -100,10 +100,11 @@ def gen_makefiles(build_path):
     with chdir(local_path()):
         call("gn gen {}".format(build_path))
 
-def make(path, target, cmd_prefix=""):
+def make(build_path, target, cmd_prefix=""):
     """ Create a release of v8
     """
-    call("{} ninja -vv -C {} {}".format(cmd_prefix, path, target))
+    with chdir(local_path()):
+        call("{} ninja -vv -C {} {}".format(cmd_prefix, build_path, target))
 
 def patch_v8():
     """ Apply patch on v8
@@ -162,7 +163,8 @@ def build_v8(target=None, build_path=None):
     if target is None:
         target = "v8"
     if build_path is None:
-        build_path = local_path("out")
+        # Must be relative to local_path()
+        build_path = "out"
     ensure_v8_src()
     patch_v8()
     checkout_path = local_path("v8")

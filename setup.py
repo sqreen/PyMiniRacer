@@ -146,13 +146,11 @@ class MiniRacerBuildV8(Command):
     user_options = [
       # The format is (long option, short option, description).
       ('target=', None, 'Build this target (default is v8)'),
-      ('build-temp=', None, 'Build in this directory (default is py_mini_racer/extension/out)'),
     ]
 
     def initialize_options(self):
         """Set default values for options."""
         self.target = None
-        self.build_temp = None
 
     def finalize_options(self):
         """Post-process options."""
@@ -173,8 +171,8 @@ class MiniRacerBuildV8(Command):
             print("cloning depot tools submodule")
             check_call(['git', 'clone', 'https://chromium.googlesource.com/chromium/tools/depot_tools.git', 'vendor/depot_tools'])
 
-        print("building {}".format(self.target))
-        build_v8(self.target, self.build_temp)
+        print("building {}".format(self.target or "v8"))
+        build_v8(self.target)
 
 
 setup(
