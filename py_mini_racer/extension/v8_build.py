@@ -149,14 +149,18 @@ def apply_patches(path, patches_path):
         if not os.path.isfile('.applied_patches'):
             open('.applied_patches', 'w').close()
 
+        patched = False
         with open('.applied_patches', 'r+') as applied_patches_file:
             applied_patches = set(applied_patches_file.read().splitlines())
 
             for patch in glob(join(patches_path, '*.patch')):
                 if patch not in applied_patches:
                     call("patch -p1 -N < {}".format(patch))
-
                     applied_patches_file.write(patch + "\n")
+                    patched = True
+
+        if patched:
+            dependencies_sync(path)
 
 
 def build_v8(target=None, build_path=None):

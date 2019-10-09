@@ -129,10 +129,12 @@ class MiniRacerBuildExt(build_ext):
         try:
             self.debug = True
             src = os.path.join(local_path_v8("out"), self.get_filename())
-            dest = os.path.join(self.build_lib, self.get_ext_filename("_v8"))
             if not os.path.isfile(src):
                 self.reinitialize_command("build_v8", target="py_mini_racer_shared_lib")
                 self.run_command("build_v8")
+            if not os.path.exists(self.build_lib):
+                os.makedirs(self.build_lib)
+            dest = os.path.join(self.build_lib, self.get_ext_filename("_v8"))
             copy_file(src, dest)
         except Exception as e:
             traceback.print_exc()
