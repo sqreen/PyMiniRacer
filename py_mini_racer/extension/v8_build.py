@@ -96,6 +96,12 @@ def dependencies_sync(path):
     with chdir(path):
         call("gclient sync")
 
+def run_hooks(path):
+    """ Run v8 build hooks
+    """
+    with chdir(path):
+        call("gclient runhooks")
+
 def gen_makefiles(build_path):
     with chdir(local_path()):
         call("gn gen {}".format(build_path))
@@ -160,7 +166,7 @@ def apply_patches(path, patches_path):
                     patched = True
 
         if patched:
-            dependencies_sync(path)
+            run_hooks(path)
 
 
 def build_v8(target=None, build_path=None):
