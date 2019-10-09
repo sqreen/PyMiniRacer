@@ -19,7 +19,7 @@ LOGGER.setLevel(logging.DEBUG)
 V8_VERSION = "6.7.288.46"
 
 
-def local_path(path):
+def local_path(path="."):
     """ Return path relative to this file
     """
     current_path = dirname(__file__)
@@ -58,14 +58,14 @@ def chdir(new_path, make=False):
 def ensure_v8_src():
     """ Ensure that v8 src are presents and up-to-date
     """
-    path = local_path('v8')
+    path = local_path()
 
-    if not os.path.isdir(path):
+    if not os.path.isfile(local_path(".gclient")):
         fetch_v8(path)
     else:
         update_v8(path)
 
-    checkout_v8_version(local_path("v8/v8"), V8_VERSION)
+    checkout_v8_version(local_path("v8"), V8_VERSION)
     dependencies_sync(path)
 
 
@@ -73,7 +73,7 @@ def fetch_v8(path):
     """ Fetch v8
     """
     with chdir(abspath(path), make=True):
-        call("fetch v8")
+        call("fetch --nohooks v8")
 
 
 def update_v8(path):
@@ -96,37 +96,19 @@ def dependencies_sync(path):
     with chdir(path):
         call("gclient sync")
 
-def gen_makefiles(path):
-    opts = {
-        'is_component_build': 'false',
-        'v8_monolithic': 'true',
-        'use_gold': 'false',
-        'use_allocator_shim': 'false',
-        'is_debug': 'false',
-        'symbol_level': '0',
-        'strip_debug_info': 'true',
-        'v8_use_external_startup_data': 'false',
-        'v8_enable_i18n_support': 'false',
-        'v8_static_library': 'true',
-        'v8_experimental_extra_library_files': '[]',
-        'v8_extra_library_files': '[]'
-    }
-    joined_opts = ' '.join('{}={}'.format(a, b) for (a, b) in opts.items())
+def gen_makefiles(build_path):
+    with chdir(local_path()):
+        call("gn gen {}".format(build_path))
 
-    with chdir(path):
-        call('python tools/dev/v8gen.py -vv x64.release -- ' + joined_opts)
-
-def make(path, cmd_prefix):
+def make(path, target, cmd_prefix=""):
     """ Create a release of v8
     """
-    with chdir(path):
-        call("{} ninja -vv -C out.gn/x64.release -j {} v8_monolith"
-             .format(cmd_prefix, 4))
+    call("{} ninja -vv -C {} {}".format(cmd_prefix, path, target))
 
 def patch_v8():
     """ Apply patch on v8
     """
-    path = local_path('v8/v8')
+    path = local_path("v8")
     patches_paths = PATCHES_PATH
     apply_patches(path, patches_paths)
 
@@ -176,14 +158,21 @@ def apply_patches(path, patches_path):
                     applied_patches_file.write(patch + "\n")
 
 
-def build_v8():
+def build_v8(target=None, build_path=None):
+    if target is None:
+        target = "v8"
+    if build_path is None:
+        build_path = local_path("out")
     ensure_v8_src()
     patch_v8()
-    checkout_path = local_path('v8/v8')
+    checkout_path = local_path("v8")
     cmd_prefix = fixup_libtinfo(checkout_path)
-    gen_makefiles(checkout_path)
-    make(checkout_path, cmd_prefix)
+    gen_makefiles(build_path)
+    make(build_path, target, cmd_prefix)
 
 
 if __name__ == '__main__':
-    build_v8()
+    build_v8(
+        sys.argv[1] if len(sys.argv) > 1 else None,
+        sys.argv[2] if len(sys.argv) == 2 else None
+    )

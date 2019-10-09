@@ -1,0 +1,19 @@
+buildconfig = "//build/config/BUILDCONFIG.gn"
+
+default_args = {
+  is_debug = false
+  is_component_build = true
+  use_gold = false
+  use_allocator_shim = false
+
+  symbol_level = 0
+  strip_debug_info = true
+  treat_warnings_as_errors = true
+
+  v8_monolithic = false
+  v8_use_external_startup_data = false
+  v8_enable_i18n_support = false
+  v8_static_library = false
+  v8_experimental_extra_library_files = []
+  v8_extra_library_files=[]
+}

@@ -270,9 +270,9 @@ static void* nogvl_context_eval(void* arg) {
                     result->message->Reset(isolate, tmp);
                 }
 
-                if (!trycatch.StackTrace().IsEmpty()) {
+                if (!trycatch.StackTrace(context).IsEmpty()) {
                     result->backtrace = new Persistent<Value>();
-                    result->backtrace->Reset(isolate, trycatch.StackTrace()->ToString());
+                    result->backtrace->Reset(isolate, trycatch.StackTrace(context).ToLocalChecked()->ToString());
                 }
             }
         } else {
@@ -557,7 +557,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         char *utf_str, int str_len,
         unsigned long timeout, size_t max_memory)
 {
-    EvalParams eval_params = { 0 };
+    EvalParams eval_params;
     EvalResult eval_result{};
 
     BinaryValue *result = NULL;

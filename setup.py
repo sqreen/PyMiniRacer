@@ -23,10 +23,10 @@ except ImportError:
     from distutils.command.build_ext import build_ext
     from distutils.command.install import install
 
-import py_mini_racer
-from py_mini_racer.extension.v8_build import build_v8
+from py_mini_racer import __version__
+from py_mini_racer.extension.v8_build import build_v8, \
+    local_path as local_path_v8
 
-V8_PATH = os.environ.get("PY_MINI_RACER_V8_PATH")
 
 with codecs.open('README.rst', 'r', encoding='utf8') as readme_file:
     readme = readme_file.read()
@@ -68,18 +68,6 @@ def local_path(path):
     return abspath(join(current_path, path))
 
 
-V8_LIB_DIRECTORY = local_path('py_mini_racer/extension/v8/v8')
-
-
-def is_v8_built():
-    """ Check if v8 has been built
-    """
-    if V8_PATH:
-        return True
-    return all(isfile(filepath) for filepath in chain(
-        get_raw_static_lib_path(), get_include_path()))
-
-
 def check_python_version():
     """ Check that the python executable is Python 2.7.
     """
@@ -93,111 +81,49 @@ def is_depot_tools_checkout():
     return isdir(local_path('vendor/depot_tools'))
 
 
-def libv8_object(object_name):
-    """ Return a path for object_name which is OS independent
+def is_v8_built():
+    """ Return True if V8 was already built
     """
-
-    filename = join(V8_LIB_DIRECTORY, 'out.gn/x64.release/obj/{}'.format(object_name))
-
-    if not isfile(filename):
-        filename = join(local_path('vendor/v8/out.gn/libv8/obj/{}'.format(object_name)))
-
-    if not isfile(filename):
-        filename = join(V8_LIB_DIRECTORY, 'out.gn/x64.release/obj/{}'.format(object_name))
-    return filename
+    files = ["libv8_base.a"]
+    return all([os.path.isfile(local_path_v8(os.path.join(
+        "out", "obj", "v8", f))) for f in files])
 
 
-def get_include_path():
-    """ Return the V8 header files
-    """
-    headers = ["v8.h"]
-    return [join(V8_LIB_DIRECTORY, "include", header) for header in headers]
+class V8Extension(Extension):
 
-
-def get_raw_static_lib_path():
-    """ Return the list of the static libraries files ONLY, use
-    get_static_lib_paths to get the right compilation flags
-    """
-    if sys.platform == "win32":
-        libs = ['v8_monolith.lib']
-    else:
-        libs = ['libv8_monolith.a']
-    return [libv8_object(static_file) for static_file in libs]
-
-
-def get_static_lib_paths():
-    """ Return the required static libraries path
-    """
-    libs = []
-    is_linux = sys.platform.startswith('linux')
-    if is_linux:
-        libs += ['-Wl,--start-group']
-    libs += get_raw_static_lib_path()
-    if is_linux:
-        libs += ['-Wl,--end-group']
-    return libs
-
-if sys.platform == "win32":
-    # Windows flags
-    EXTRA_LINK_ARGS = ['/MTd']
-    EXTRA_COMPILE_ARGS = ['/MTd', '/D_ITERATOR_DEBUG_LEVEL=0']
-else:
-    # Unix flags
-    EXTRA_LINK_ARGS = [
-        '-std=c++11',
-        '-ldl',
-        '-fstack-protector',
-    ]
-    EXTRA_COMPILE_ARGS = [
-        '-std=c++11',
-        '-fpermissive',
-        '-fno-common'
-    ]
-
-# Per platform customizations
-if sys.platform[:6] == "darwin":
-    # XXX: do we support older verions? If so, we may need to compile libv8
-    # against stdlibc++ and change the flags here as well
-    EXTRA_COMPILE_ARGS += ['-mmacosx-version-min=10.9', '-stdlib=libc++']
-    EXTRA_LINK_ARGS    += ['-lpthread', '-mmacosx-version-min=10.9', '-stdlib=libc++']
-elif sys.platform.startswith('linux'):
-    EXTRA_COMPILE_ARGS += ['-rdynamic']
-    EXTRA_LINK_ARGS    += ['-lrt']
-
-
-PY_MINI_RACER_EXTENSION = Extension(
-    name="py_mini_racer._v8",
-    language='c++',
-    sources=['py_mini_racer/extension/mini_racer_extension.cc'],
-    include_dirs=[V8_LIB_DIRECTORY, join(V8_LIB_DIRECTORY, 'include'), local_path('vendor/v8/include')],
-    extra_objects=get_static_lib_paths(),
-    extra_compile_args=EXTRA_COMPILE_ARGS,
-    extra_link_args=EXTRA_LINK_ARGS
-)
+    def __init__(self, dest_module, cmakelists_dir=".", target=None, options=None, sources=[], **kwa):
+        Extension.__init__(self, dest_module, sources=sources, **kwa)
+        self.cmakelists_dir = os.path.abspath(cmakelists_dir)
+        self.target = target
+        self.options = options
 
 
 class MiniRacerBuildExt(build_ext):
 
-    def get_ext_filename(self, ext_name):
-        """ Return a filename without Python ABI in the name
-        """
-        ext_path = ext_name.split(".")
-        return os.path.join(*ext_path) + ".so"
+    def get_filename(self):
+        if os.name == "posix" and sys.platform == "darwin":
+            prefix, ext = "lib", ".dylib"
+        elif sys.platform == "win32":
+            prefix, ext = "", ".dll"
+        else:
+            prefix, ext = "lib", ".so"
+        return prefix + "mini_racer" + ext
 
-    def build_extension(self, ext):
-        """ Compile manually the py_mini_racer extension, bypass setuptools
-        """
+    def get_ext_filename(self, name):
+        ext = ".so"
+        parts = name.split(".")
+        last = parts.pop(-1) + ext
+        return os.path.join(*(parts + [last]))
+
+    def build_extensions(self):
         try:
-            if not is_v8_built():
-                self.run_command('build_v8')
-
             self.debug = True
-            if V8_PATH:
-                dest_filename = join(self.build_lib, "py_mini_racer")
-                copy_file(V8_PATH, dest_filename, verbose=self.verbose, dry_run=self.dry_run)
-            else:
-                build_ext.build_extension(self, ext)
-
+            src = os.path.join(local_path_v8("out"), self.get_filename())
+            dest = os.path.join(self.build_lib, self.get_ext_filename("_v8"))
+            if not os.path.isfile(src):
+                self.reinitialize_command("build_v8", target="py_mini_racer_shared_lib")
+                self.run_command("build_v8")
+            copy_file(src, dest)
         except Exception as e:
             traceback.print_exc()
 
@@ -211,44 +137,49 @@ class MiniRacerBuildExt(build_ext):
             raise Exception(err_msg % repr(e))
 
 
+PY_MINI_RACER_EXTENSION = V8Extension("py_mini_racer._v8")
+
+
 class MiniRacerBuildV8(Command):
 
     description = 'Compile vendored v8'
     user_options = [
+      # The format is (long option, short option, description).
+      ('target=', None, 'Build this target (default is v8)'),
+      ('build-temp=', None, 'Build in this directory (default is py_mini_racer/extension/out)'),
     ]
 
     def initialize_options(self):
         """Set default values for options."""
+        self.target = None
+        self.build_temp = None
 
     def finalize_options(self):
         """Post-process options."""
         pass
 
     def run(self):
-        if V8_PATH:
+        if (self.target is None or self.target == "v8") and is_v8_built():
+            print("v8 was already built")
             return
 
-        if not is_v8_built():
-            if not check_python_version():
-                msg = """py_mini_racer cannot build V8 in the current configuration.
-                The V8 build system requires the python executable to be Python 2.7.
-                See also: https://github.com/sqreen/PyMiniRacer#build"""
-                raise Exception(msg)
+        if not check_python_version():
+            msg = """py_mini_racer cannot build V8 in the current configuration.
+            The V8 build system requires the python executable to be Python 2.7.
+            See also: https://github.com/sqreen/PyMiniRacer#build"""
+            raise Exception(msg)
 
-            if not is_depot_tools_checkout():
-                print("cloning depot tools submodule")
-                # Clone the depot_tools repository, easier than using submodules
-                check_call(['git', 'init'])
-                check_call(['git', 'clone', 'https://chromium.googlesource.com/chromium/tools/depot_tools.git', 'vendor/depot_tools'])
+        if not is_depot_tools_checkout():
+            print("cloning depot tools submodule")
+            check_call(['git', 'clone', 'https://chromium.googlesource.com/chromium/tools/depot_tools.git', 'vendor/depot_tools'])
 
-            print("building v8")
-            build_v8()
-        else:
-            print("v8 is already built")
+        print("building {}".format(self.target))
+        build_v8(self.target, self.build_temp)
+
 
 setup(
     name='py_mini_racer',
-    version=py_mini_racer.__version__,
+    version=__version__,
     description="Minimal, modern embedded V8 for Python.",
     long_description=readme + '\n\n' + history,
     long_description_content_type='text/markdown',
@@ -284,7 +215,7 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     cmdclass={
-        'build_ext': MiniRacerBuildExt,
+        "build_ext": MiniRacerBuildExt,
         'build_v8': MiniRacerBuildV8,
     }
 )

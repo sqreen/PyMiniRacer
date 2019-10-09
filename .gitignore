@@ -60,7 +60,10 @@ docs/_build/
 target/
 
 # V8 vendor
-py_mini_racer/extension/v8/
+py_mini_racer/extension/.cipd
+py_mini_racer/extension/.gclient*
+py_mini_racer/extension/v8
+py_mini_racer/extension/out
 vendor/
 
 *.iml

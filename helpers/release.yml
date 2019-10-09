@@ -8,11 +8,11 @@ steps:
 - task: CacheBeta@0
   inputs:
     key: v8_libraries | $(Agent.OS) | py_mini_racer/extension/v8_build.py
-    path: py_mini_racer/extension/v8/v8/out.gn/x64.release/obj
+    path: py_mini_racer/extension/out
 - task: CacheBeta@0
   inputs:
     key: v8_includes | $(Agent.OS) | py_mini_racer/extension/v8_build.py
-    path: py_mini_racer/extension/v8/v8/include
+    path: py_mini_racer/extension/v8/include
 - bash: python setup.py build_v8
 - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
 - task: UsePythonVersion@0
@@ -25,7 +25,7 @@ steps:
     pip3 install cibuildwheel==0.12.0
     cibuildwheel --output-dir wheelhouse .
   env:
-    CIBW_SKIP: "*-manylinux1_i686 cp27-win*"
+    CIBW_SKIP: "*-manylinux1_i686"
     CIBW_TEST_REQUIRES: mock pytest pytest-azurepipelines
     CIBW_TEST_COMMAND: pytest {project}/tests
 - bash: |
