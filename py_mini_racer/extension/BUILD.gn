@@ -30,6 +30,6 @@ shared_library("py_mini_racer_shared_lib") {
   output_name = "mini_racer"
   deps = [
     ":py_mini_racer",
+    "//build/config:exe_and_shlib_deps",
   ]
-  configs += [ ":py_mini_racer_config" ]
 }

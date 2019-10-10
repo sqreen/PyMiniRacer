@@ -91,51 +91,67 @@ def is_depot_tools_checkout():
     return isdir(local_path('vendor/depot_tools'))
 
 
+
+def lib_filename(name, static=False):
+    if os.name == "posix" and sys.platform == "darwin":
+        prefix = "lib"
+        if static:
+            ext = ".a"
+        else:
+            ext = ".dylib"
+    elif sys.platform == "win32":
+        prefix = ""
+        if static:
+            ext = ".lib"
+        else:
+            ext = ".dll"
+    else:
+        prefix = "lib"
+        if static:
+            ext = ".a"
+        else:
+            ext = ".so"
+    return prefix + name + ext
+
+
 def is_v8_built():
     """ Return True if V8 was already built
     """
-    files = ["libv8_base.a"]
+    names = ["v8_base"]
     return all([os.path.isfile(local_path_v8(os.path.join(
-        "out", "obj", "v8", f))) for f in files])
+        "out", "obj", "v8", lib_filename(f, static=True)))) for f in files])
 
 
 class V8Extension(Extension):
 
-    def __init__(self, dest_module, cmakelists_dir=".", target=None, options=None, sources=[], **kwa):
+    def __init__(self, dest_module, target, lib, sources=[], **kwa):
         Extension.__init__(self, dest_module, sources=sources, **kwa)
-        self.cmakelists_dir = os.path.abspath(cmakelists_dir)
         self.target = target
-        self.options = options
+        self.lib = lib
 
 
 class MiniRacerBuildExt(build_ext):
 
-    def get_filename(self):
-        if os.name == "posix" and sys.platform == "darwin":
-            prefix, ext = "lib", ".dylib"
-        elif sys.platform == "win32":
-            prefix, ext = "", ".dll"
-        else:
-            prefix, ext = "lib", ".so"
-        return prefix + "mini_racer" + ext
-
     def get_ext_filename(self, name):
+        # XXX the filename is the same for all platforms for now
         ext = ".so"
         parts = name.split(".")
         last = parts.pop(-1) + ext
         return os.path.join(*(parts + [last]))
 
     def build_extensions(self):
+        self.debug = True
         try:
-            self.debug = True
-            src = os.path.join(local_path_v8("out"), self.get_filename())
-            if not os.path.isfile(src):
-                self.reinitialize_command("build_v8", target="py_mini_racer_shared_lib")
-                self.run_command("build_v8")
-            if not os.path.exists(self.build_lib):
-                os.makedirs(self.build_lib)
-            dest = os.path.join(self.build_lib, self.get_ext_filename("_v8"))
-            copy_file(src, dest)
+            for ext in self.extensions:
+                src = os.path.join(ext.lib)
+                if not os.path.isfile(src):
+                    self.reinitialize_command("build_v8", target=ext.target)
+                    self.run_command("build_v8")
+                dest = self.get_ext_fullpath(ext.name)
+                dest_dir = os.path.dirname(dest)
+                if not os.path.exists(dest_dir):
+                    os.makedirs(dest_dir)
+                copy_file(src, dest)
         except Exception as e:
             traceback.print_exc()
 
@@ -149,7 +165,11 @@ class MiniRacerBuildExt(build_ext):
             raise Exception(err_msg % repr(e))
 
 
-PY_MINI_RACER_EXTENSION = V8Extension("py_mini_racer._v8")
+PY_MINI_RACER_EXTENSION = V8Extension(
+    "py_mini_racer._v8",
+    "py_mini_racer_shared_lib",
+    local_path_v8(os.path.join("out", lib_filename("mini_racer")))
+)
 
 
 class MiniRacerBuildV8(Command):
