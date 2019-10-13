@@ -34,11 +34,12 @@ PATCHES_PATH = local_path('../../patches')
 def call(cmd):
     LOGGER.debug("Calling: '%s' from working directory %s", cmd, os.getcwd())
     current_env = os.environ
-    depot_tools_env = '{}:{}'.format(VENDOR_PATH, os.environ['PATH'])
+    depot_tools_env = '{}{}{}'.format(VENDOR_PATH, os.pathsep, os.environ['PATH'])
     current_env['PATH'] = depot_tools_env
     current_env['DEPOT_TOOLS_WIN_TOOLCHAIN'] = '0'
-    python_path = '{}:{}'.format(local_path("v8/build"), os.environ.get('PYTHONPATH', ''))
+    python_path = '{}{}{}'.format(local_path("build"), os.pathsep, os.environ.get('PYTHONPATH', ''))
     current_env['PYTHONPATH'] = python_path
+    sys.path.append(local_path("build"))
     return subprocess.check_call(cmd, shell=True, env=current_env)
 
 
@@ -116,10 +117,6 @@ def run_hooks(path):
 
 def gen_makefiles(build_path):
     with chdir(local_path()):
-        print("v8/build/config/BUILDCONFIG.gn %d", os.path.isfile("v8/build/config/BUILDCONFIG.gn"))
-        print("build/config/BUILDCONFIG.gn %d", os.path.isfile("build/config/BUILDCONFIG.gn"))
-        print("build/config/BUILDCONFIG.gn windows %d", os.path.isfile(os.path.join("build", "config", "BUILDCONFIG.gn")))
-        call("gn --version")
         call("gn gen {}".format(build_path))
 
 def make(build_path, target, cmd_prefix=""):
