@@ -105,6 +105,10 @@ def run_hooks(path):
 
 def gen_makefiles(build_path):
     with chdir(local_path()):
+        print("v8/build/config/BUILDCONFIG.gn %d", os.path.isfile("v8/build/config/BUILDCONFIG.gn"))
+        print("build/config/BUILDCONFIG.gn %d", os.path.isfile("build/config/BUILDCONFIG.gn"))
+        print("build/config/BUILDCONFIG.gn windows %d", os.path.isfile(os.path.join("build", "config", "BUILDCONFIG.gn")))
+        call("gn --version")
         call("gn gen {}".format(build_path))
 
 def make(build_path, target, cmd_prefix=""):
