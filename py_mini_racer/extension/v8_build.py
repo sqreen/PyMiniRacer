@@ -56,7 +56,7 @@ def chdir(new_path, make=False):
         os.chdir(old_path)
 
 
-def prepare_src():
+def prepare_symlinks():
     with chdir(local_path()):
         symlink_force("v8/build", "build")
         symlink_force("v8/build_overrides", "build_overrides")
@@ -136,14 +136,17 @@ def patch_v8():
 
 
 def symlink_force(target, link_name):
-    try:
-        os.symlink(target, link_name)
-    except OSError as e:
-        if e.errno == errno.EEXIST:
-            os.remove(link_name)
+    if hasattr(os, "symlink"):
+        try:
             os.symlink(target, link_name)
-        else:
-            raise e
+        except OSError as e:
+            if e.errno == errno.EEXIST:
+                os.remove(link_name)
+                os.symlink(target, link_name)
+            else:
+                raise e
+    else:
+        call(["mlink", "/d", abspath(link_name), abspath(target)])
 
 
 def fixup_libtinfo(dir):
@@ -192,9 +195,9 @@ def build_v8(target=None, build_path=None, revision=None):
         build_path = "out"
     if revision is None:
         revision = V8_VERSION
-    prepare_src()
     ensure_v8_src(revision)
     patch_v8()
+    prepare_symlinks()
     checkout_path = local_path("v8")
     cmd_prefix = fixup_libtinfo(checkout_path)
     gen_makefiles(build_path)
