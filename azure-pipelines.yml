@@ -15,7 +15,7 @@ jobs:
 - job: mac
   pool: {vmImage: 'macOS-10.13'}
   steps:
-   - bash: sudo xcode-select -s /Applications/Xcode_8.3.3.app/Contents/Developer
+   - bash: sudo xcode-select -s /Applications/Xcode_9.4.1.app/Contents/Developer
    - checkout: self
    - template: helpers/release.yml
 - job: windows
