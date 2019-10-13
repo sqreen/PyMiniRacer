@@ -146,7 +146,7 @@ def symlink_force(target, link_name):
             else:
                 raise e
     else:
-        call(["mlink", "/d", abspath(link_name), abspath(target)])
+        call(["mklink", "/d", abspath(link_name), abspath(target)])
 
 
 def fixup_libtinfo(dir):
