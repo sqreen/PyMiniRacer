@@ -114,14 +114,6 @@ def lib_filename(name, static=False):
     return prefix + name + ext
 
 
-def is_v8_built():
-    """ Return True if V8 was already built
-    """
-    names = ["v8_base"]
-    return all([os.path.isfile(local_path_v8(os.path.join(
-        "out", "obj", "v8", lib_filename(f, static=True)))) for f in files])
-
-
 class V8Extension(Extension):
 
     def __init__(self, dest_module, target, lib, sources=[], **kwa):
@@ -145,8 +137,10 @@ class MiniRacerBuildExt(build_ext):
             for ext in self.extensions:
                 src = os.path.join(ext.lib)
                 if not os.path.isfile(src):
-                    self.reinitialize_command("build_v8", target=ext.target)
-                    self.run_command("build_v8")
+                    check_python_version()
+                    install_depot_tools()
+                    print("building {}".format(ext.target))
+                    build_v8(ext.target)
                 dest = self.get_ext_fullpath(ext.name)
                 dest_dir = os.path.dirname(dest)
                 if not os.path.exists(dest_dir):
@@ -170,33 +164,6 @@ PY_MINI_RACER_EXTENSION = V8Extension(
     "py_mini_racer_shared_lib",
     local_path_v8(os.path.join("out", lib_filename("mini_racer")))
 )
-
-
-class MiniRacerBuildV8(Command):
-
-    description = 'Compile vendored v8'
-    user_options = [
-      # The format is (long option, short option, description).
-      ('target=', None, 'Build this target (default is v8)'),
-    ]
-
-    def initialize_options(self):
-        """Set default values for options."""
-        self.target = None
-
-    def finalize_options(self):
-        """Post-process options."""
-        pass
-
-    def run(self):
-        if (self.target is None or self.target == "v8") and is_v8_built():
-            print("v8 was already built")
-            return
-
-        check_python_version()
-        install_depot_tools()
-        print("building {}".format(self.target or "v8"))
-        build_v8(self.target)
 
 
 setup(
@@ -238,6 +205,5 @@ setup(
     tests_require=test_requirements,
     cmdclass={
         "build_ext": MiniRacerBuildExt,
-        "build_v8": MiniRacerBuildV8,
     }
 )

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import argparse
 import errno
 import sys
 import logging
@@ -16,7 +17,7 @@ logging.basicConfig()
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
-V8_VERSION = "7.7.299.13"
+V8_VERSION = "branch-heads/7.7"
 
 
 def local_path(path="."):
@@ -55,7 +56,7 @@ def chdir(new_path, make=False):
         os.chdir(old_path)
 
 
-def ensure_v8_src():
+def ensure_v8_src(revision):
     """ Ensure that v8 src are presents and up-to-date
     """
     path = local_path()
@@ -65,7 +66,7 @@ def ensure_v8_src():
     else:
         update_v8(path)
 
-    checkout_v8_version(local_path("v8"), V8_VERSION)
+    checkout_v8_version(local_path("v8"), revision)
     dependencies_sync(path)
 
 
@@ -83,11 +84,11 @@ def update_v8(path):
         call("gclient fetch")
 
 
-def checkout_v8_version(path, version):
+def checkout_v8_version(path, revision):
     """ Ensure that we have the right version
     """
     with chdir(path):
-        call("git checkout {} -- .".format(version))
+        call("git checkout {} -- .".format(revision))
 
 
 def dependencies_sync(path):
@@ -169,13 +170,15 @@ def apply_patches(path, patches_path):
             run_hooks(path)
 
 
-def build_v8(target=None, build_path=None):
+def build_v8(target=None, build_path=None, revision=None):
     if target is None:
         target = "v8"
     if build_path is None:
         # Must be relative to local_path()
         build_path = "out"
-    ensure_v8_src()
+    if revision is None:
+        revision = V8_VERSION
+    ensure_v8_src(revision)
     patch_v8()
     checkout_path = local_path("v8")
     cmd_prefix = fixup_libtinfo(checkout_path)
@@ -184,7 +187,9 @@ def build_v8(target=None, build_path=None):
 
 
 if __name__ == '__main__':
-    build_v8(
-        sys.argv[1] if len(sys.argv) >= 2 else None,
-        sys.argv[2] if len(sys.argv) == 3 else None
-    )
+    parser = argparse.ArgumentParser()
+    parser.add_argument("target", default="v8", help="Ninja target")
+    parser.add_argument("--build-path", default="out", help="Build destination directory (relative to the path)")
+    parser.add_argument("--v8-revision", default=V8_VERSION)
+    args = parser.parse_args()
+    build_v8(target=args.target, build_path=args.build_path, revision=args.v8_revision)
