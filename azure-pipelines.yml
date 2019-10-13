@@ -20,6 +20,7 @@ jobs:
 - job: windows
   pool: {vmImage: 'vs2017-win2016'}
   steps:
+   - script: git config --global core.symlinks true
    - checkout: self
    - powershell: |
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.7.exe -force

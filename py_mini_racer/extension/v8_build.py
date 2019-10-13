@@ -56,6 +56,16 @@ def chdir(new_path, make=False):
         os.chdir(old_path)
 
 
+def prepare_src():
+    with chdir(local_path()):
+        symlink_force("v8/build", "build")
+        symlink_force("v8/build_overrides", "build_overrides")
+        symlink_force("v8/buildtools", "buildtools")
+        symlink_force("v8/testing", "testing")
+        symlink_force("v8/third_party", "third_party")
+        symlink_force("v8/tools", "tools")
+
+
 def ensure_v8_src(revision):
     """ Ensure that v8 src are presents and up-to-date
     """
@@ -182,6 +192,7 @@ def build_v8(target=None, build_path=None, revision=None):
         build_path = "out"
     if revision is None:
         revision = V8_VERSION
+    prepare_src()
     ensure_v8_src(revision)
     patch_v8()
     checkout_path = local_path("v8")
@@ -192,7 +203,7 @@ def build_v8(target=None, build_path=None, revision=None):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("target", default="v8", help="Ninja target")
+    parser.add_argument("--target", default="v8", help="Ninja target")
     parser.add_argument("--build-path", default="out", help="Build destination directory (relative to the path)")
     parser.add_argument("--v8-revision", default=V8_VERSION)
     args = parser.parse_args()

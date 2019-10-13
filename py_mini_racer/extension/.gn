@@ -9,6 +9,7 @@ default_args = {
   symbol_level = 0
   strip_debug_info = true
   treat_warnings_as_errors = true
+  use_jumbo_build = true
 
   v8_monolithic = false
   v8_use_external_startup_data = false
