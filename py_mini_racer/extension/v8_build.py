@@ -57,13 +57,12 @@ def chdir(new_path, make=False):
 
 
 def prepare_symlinks():
+    directories = ["build", "build_overrides", "buildtools", "testing",
+                   "third_party", "tools"]
     with chdir(local_path()):
-        symlink_force("v8/build", "build")
-        symlink_force("v8/build_overrides", "build_overrides")
-        symlink_force("v8/buildtools", "buildtools")
-        symlink_force("v8/testing", "testing")
-        symlink_force("v8/third_party", "third_party")
-        symlink_force("v8/tools", "tools")
+        for item in directories:
+            if not os.path.exists(item):
+                symlink_force(os.path.join("v8", item), item)
 
 
 def ensure_v8_src(revision):
