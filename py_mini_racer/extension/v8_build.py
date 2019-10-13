@@ -37,6 +37,8 @@ def call(cmd):
     depot_tools_env = '{}:{}'.format(VENDOR_PATH, os.environ['PATH'])
     current_env['PATH'] = depot_tools_env
     current_env['DEPOT_TOOLS_WIN_TOOLCHAIN'] = '0'
+    python_path = '{}:{}'.format(local_path("v8/build"), os.environ.get('PYTHONPATH', ''))
+    current_env['PYTHONPATH'] = python_path
     return subprocess.check_call(cmd, shell=True, env=current_env)
 
 
