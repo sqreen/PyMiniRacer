@@ -17,7 +17,7 @@ logging.basicConfig()
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
-V8_VERSION = "branch-heads/7.7"
+V8_VERSION = "branch-heads/7.8"
 
 
 def local_path(path="."):
