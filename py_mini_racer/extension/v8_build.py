@@ -16,7 +16,7 @@ logging.basicConfig()
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
-V8_VERSION = "6.7.288.46"
+V8_VERSION = "7.7.299.13"
 
 
 def local_path(path="."):
@@ -185,6 +185,6 @@ def build_v8(target=None, build_path=None):
 
 if __name__ == '__main__':
     build_v8(
-        sys.argv[1] if len(sys.argv) > 1 else None,
-        sys.argv[2] if len(sys.argv) == 2 else None
+        sys.argv[1] if len(sys.argv) >= 2 else None,
+        sys.argv[2] if len(sys.argv) == 3 else None
     )

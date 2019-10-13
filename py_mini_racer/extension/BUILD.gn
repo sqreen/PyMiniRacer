@@ -26,10 +26,20 @@ v8_source_set("py_mini_racer") {
   configs = [ ":py_mini_racer_config" ]
 }
 
+v8_static_library("py_mini_racer_static_lib") {
+  output_name = "mini_racer"
+  deps = [
+    ":py_mini_racer",
+    "//build/config:shared_library_deps",
+  ]
+  configs = [ ":py_mini_racer_config" ]
+}
+
 shared_library("py_mini_racer_shared_lib") {
   output_name = "mini_racer"
   deps = [
     ":py_mini_racer",
-    "//build/config:exe_and_shlib_deps",
+    "//build/config:shared_library_deps",
   ]
+  configs += [ ":py_mini_racer_config" ]
 }

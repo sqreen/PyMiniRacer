@@ -11,9 +11,11 @@
 
 #ifdef V8_OS_WIN
 # define LIB_EXPORT __declspec(dllexport)
-#else
-# define LIB_EXPORT
+#else  // V8_OS_WIN
+# define LIB_EXPORT __attribute__ ((visibility("default")))
 #endif
+
+
 
 template<class T> static inline T* xalloc(T*& ptr, size_t x = sizeof(T))
 {
@@ -165,7 +167,8 @@ enum IsolateFlags {
     MEM_SOFTLIMIT_REACHED,
 };
 
-static Platform* current_platform = NULL;
+static std::unique_ptr<Platform> current_platform = NULL;
+static std::mutex platform_lock;
 
 static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
     if((bool)isolate->GetData(MEM_SOFTLIMIT_REACHED)) return;
@@ -183,12 +186,19 @@ static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
 }
 
 static void init_v8() {
+    // no need to wait for the lock if already initialized
+    if (current_platform != NULL) return;
+
+    platform_lock.lock();
+
     if (current_platform == NULL) {
         V8::InitializeICU();
-        current_platform = platform::CreateDefaultPlatform();
-        V8::InitializePlatform(current_platform);
+        current_platform = platform::NewDefaultPlatform();
+        V8::InitializePlatform(current_platform.get());
         V8::Initialize();
     }
+
+    platform_lock.unlock();
 }
 
 static void breaker(std::timed_mutex& breaker_mutex, void * d) {
@@ -227,7 +237,7 @@ static void* nogvl_context_eval(void* arg) {
 
     if (!result->parsed) {
         result->message = new Persistent<Value>();
-        result->message->Reset(isolate, trycatch.Exception()->ToString());
+        result->message->Reset(isolate, trycatch.Exception());
     } else {
 
         std::timed_mutex breaker_mutex;
@@ -257,22 +267,45 @@ static void* nogvl_context_eval(void* arg) {
             if (trycatch.HasCaught()) {
                 if (!trycatch.Exception()->IsNull()) {
                     result->message = new Persistent<Value>();
-                    result->message->Reset(isolate, trycatch.Exception()->ToString());
+			Local<Message> message = trycatch.Message();
+			char buf[1000];
+			int len, line, column;
+
+			if (!message->GetLineNumber(context).To(&line)) {
+			  line = 0;
+			}
+
+			if (!message->GetStartColumn(context).To(&column)) {
+			  column = 0;
+			}
+
+			len = snprintf(buf, sizeof(buf), "%s at %s:%i:%i", *String::Utf8Value(isolate, message->Get()),
+				       *String::Utf8Value(isolate, message->GetScriptResourceName()->ToString(context).ToLocalChecked()),
+				       line,
+				       column);
+
+			if ((size_t) len >= sizeof(buf)) {
+			    len = sizeof(buf) - 1;
+			    buf[len] = '\0';
+			}
+
+			Local<String> v8_message = String::NewFromUtf8(isolate, buf, NewStringType::kNormal, len).ToLocalChecked();
+			result->message->Reset(isolate, v8_message);
                 } else if(trycatch.HasTerminated()) {
                     result->terminated = true;
                     result->message = new Persistent<Value>();
                     Local<String> tmp;
                     if (result->timed_out) {
-                        tmp = String::NewFromUtf8(isolate, "JavaScript was terminated by timeout");
+                        tmp = String::NewFromUtf8(isolate, "JavaScript was terminated by timeout").ToLocalChecked();
                     } else {
-                        tmp = String::NewFromUtf8(isolate, "JavaScript was terminated");
+                        tmp = String::NewFromUtf8(isolate, "JavaScript was terminated").ToLocalChecked();
                     }
                     result->message->Reset(isolate, tmp);
                 }
 
                 if (!trycatch.StackTrace(context).IsEmpty()) {
                     result->backtrace = new Persistent<Value>();
-                    result->backtrace->Reset(isolate, trycatch.StackTrace(context).ToLocalChecked()->ToString());
+                    result->backtrace->Reset(isolate, trycatch.StackTrace(context).ToLocalChecked()->ToString(context).ToLocalChecked());
                 }
             }
         } else {
@@ -373,14 +406,11 @@ err:
 }
 
 
-static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
-                                         Handle<Value> &value)
+static BinaryValue *convert_v8_to_binary(Isolate * isolate,
+		                         Local<Context> context,
+                                         Local<Value> value)
 {
-    Local<Context> context = context_info->context->Get(context_info->isolate);
-
-    Context::Scope context_scope(context);
-
-    Isolate *isolate = context_info->isolate;
+	Isolate::Scope isolate_scope(isolate);
     HandleScope scope(isolate);
 
     BinaryValue *res = new (xalloc(res)) BinaryValue();
@@ -391,7 +421,7 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
 
     else if (value->IsInt32()) {
         res->type = type_integer;
-        auto val = value->Uint32Value();
+        auto val = value->Uint32Value(context).ToChecked();
         res->int_val = val;
     }
 
@@ -399,7 +429,7 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
     // http://www.ecma-international.org/ecma-262/5.1/#sec-4.3.19
     else if (value->IsNumber()) {
         res->type = type_double;
-        double val = value->NumberValue();
+        double val = value->NumberValue(context).ToChecked();
         res->double_val = val;
     }
 
@@ -417,8 +447,8 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
         res->array_val = ary;
 
         for(uint32_t i = 0; i < arr->Length(); i++) {
-            Local<Value> element = arr->Get(i);
-            BinaryValue *bin_value = convert_v8_to_binary(context_info, element);
+            Local<Value> element = arr->Get(context, i).ToLocalChecked();
+            BinaryValue *bin_value = convert_v8_to_binary(isolate, context, element);
             if (bin_value == NULL) {
                 goto err;
             }
@@ -448,7 +478,7 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
 
         TryCatch trycatch(isolate);
 
-        Local<Object> object = value->ToObject();
+        Local<Object> object = value->ToObject(context).ToLocalChecked();
         MaybeLocal<Array> maybe_props = object->GetOwnPropertyNames(context);
         if (!maybe_props.IsEmpty()) {
             Local<Array> props = maybe_props.ToLocalChecked();
@@ -460,18 +490,22 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
             }
 
             for (uint32_t i = 0; i < hash_len; i++) {
-                Local<Value> pkey = props->Get(i);
-                Local<Value> pvalue = object->Get(pkey);
-                // this may have failed due to Get raising
 
-                if (trycatch.HasCaught()) {
+                MaybeLocal<Value> maybe_pkey = props->Get(context, i);
+                if (maybe_pkey.IsEmpty()) {
+			goto err;
+		}
+		Local<Value> pkey = maybe_pkey.ToLocalChecked();
+                MaybeLocal<Value> maybe_pvalue = object->Get(context, pkey);
+                // this may have failed due to Get raising
+                if (maybe_pvalue.IsEmpty() || trycatch.HasCaught()) {
                     // TODO: factor out code converting exception in
                     //       nogvl_context_eval() and use it here/?
                     goto err;
                 }
 
-                BinaryValue *bin_key = convert_v8_to_binary(context_info, pkey);
-                BinaryValue *bin_value = convert_v8_to_binary(context_info, pvalue);
+                BinaryValue *bin_key = convert_v8_to_binary(isolate, context, pkey);
+                BinaryValue *bin_value = convert_v8_to_binary(isolate, context, maybe_pvalue.ToLocalChecked());
 
                 if (!bin_key || !bin_value) {
                     BinaryValueFree(bin_key);
@@ -487,13 +521,13 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
     }
 
     else {
-        Local<String> rstr = value->ToString();
+        Local<String> rstr = value->ToString(context).ToLocalChecked();
 
         res->type = type_str_utf8;
-        res->len = size_t(rstr->Utf8Length()); // in bytes
+        res->len = size_t(rstr->Utf8Length(isolate)); // in bytes
         size_t capacity = res->len + 1;
         res->str_val = xalloc(res->str_val, capacity);
-        rstr->WriteUtf8(res->str_val);
+        rstr->WriteUtf8(isolate, res->str_val);
     }
     return res;
 
@@ -502,6 +536,16 @@ err:
     return NULL;
 }
 
+
+static BinaryValue *convert_v8_to_binary(Isolate * isolate,
+		                         const Persistent<Context> & context,
+                                         Local<Value> value)
+{
+    HandleScope scope(isolate);
+    return convert_v8_to_binary(isolate,
+                                Local<Context>::New(isolate, context),
+                                value);
+}
 
 static void deallocate(void * data) {
     ContextInfo* context_info = (ContextInfo*)data;
@@ -552,6 +596,8 @@ ContextInfo *MiniRacer_init_context()
     return context_info;
 }
 
+#include <unistd.h>
+
 static BinaryValue* MiniRacer_eval_context_unsafe(
         ContextInfo *context_info,
         char *utf_str, int str_len,
@@ -600,13 +646,15 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         if (eval_result.message) {
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.message);
-            bmessage = convert_v8_to_binary(context_info, tmp);
+
+            bmessage = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
         }
 
         if (eval_result.backtrace) {
+
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.backtrace);
-            bbacktrace = convert_v8_to_binary(context_info, tmp);
+            bbacktrace = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
         }
     }
 
@@ -676,7 +724,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         HandleScope handle_scope(context_info->isolate);
 
         Local<Value> tmp = Local<Value>::New(context_info->isolate, *eval_result.value);
-        result = convert_v8_to_binary(context_info, tmp);
+        result = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
     }
 
     BinaryValueFree(bmessage);
