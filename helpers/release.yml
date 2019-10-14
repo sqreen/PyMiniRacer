@@ -1,11 +1,5 @@
 steps:
 - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
-- task: UsePythonVersion@0
-  inputs: {versionSpec: '3.4', architecture: x64}
-  condition: ne(variables['Agent.OS'], 'Windows_NT')
-- {task: UsePythonVersion@0, inputs: {versionSpec: '3.5', architecture: x64}}
-- {task: UsePythonVersion@0, inputs: {versionSpec: '3.6', architecture: x64}}
-- {task: UsePythonVersion@0, inputs: {versionSpec: '3.7', architecture: x64}}
 - bash: echo "##vso[task.prependpath]$(Build.SourcesDirectory)\\py_mini_racer\\extension\\depot_tools\\"
 - bash: echo "##vso[task.setvariable variable=DEPOT_TOOLS_WIN_TOOLCHAIN]0"
 - task: CacheBeta@0
@@ -17,6 +11,12 @@ steps:
     key: depot_tools | $(Agent.OS)
     path: py_mini_racer/extension/depot_tools
 - script: python setup.py build_ext
+- task: UsePythonVersion@0
+  inputs: {versionSpec: '3.4', architecture: x64}
+  condition: ne(variables['Agent.OS'], 'Windows_NT')
+- {task: UsePythonVersion@0, inputs: {versionSpec: '3.5', architecture: x64}}
+- {task: UsePythonVersion@0, inputs: {versionSpec: '3.6', architecture: x64}}
+- {task: UsePythonVersion@0, inputs: {versionSpec: '3.7', architecture: x64}}
 - task: PublishBuildArtifacts@1
   inputs: {pathtoPublish: "py_mini_racer/_v8.so"}
 - script: |
