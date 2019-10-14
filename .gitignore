@@ -64,6 +64,13 @@ py_mini_racer/extension/.cipd
 py_mini_racer/extension/.gclient*
 py_mini_racer/extension/v8
 py_mini_racer/extension/out
-vendor/
+py_mini_racer/extension/depot_tools
+py_mini_racer/extension/build
+py_mini_racer/extension/build_overrides
+py_mini_racer/extension/buildtools
+py_mini_racer/extension/old_v8_test_wasm-js.git/
+py_mini_racer/extension/testing
+py_mini_racer/extension/third_party
+py_mini_racer/extension/tools
 
 *.iml
