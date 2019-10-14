@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-"
 import argparse
 import errno
 import sys
@@ -11,6 +11,7 @@ import multiprocessing
 from glob import glob
 from os.path import join, dirname, abspath
 from contextlib import contextmanager
+from distutils.dir_util import copy_tree
 
 
 logging.basicConfig()
@@ -56,13 +57,16 @@ def chdir(new_path, make=False):
         os.chdir(old_path)
 
 
-def prepare_symlinks():
-    directories = ["build", "build_overrides", "buildtools", "testing",
+def prepare_workdir():
+    link_directories = ["build_overrides", "buildtools", "testing",
                    "third_party", "tools"]
     with chdir(local_path()):
-        for item in directories:
+        for item in link_directories:
             if not os.path.exists(item):
                 symlink_force(os.path.join("v8", item), item)
+        if os.path.islink("build"):
+            os.unlink("build")
+        copy_tree(os.path.join("v8", "build"), "build")
 
 
 def ensure_v8_src(revision):
@@ -131,6 +135,7 @@ def patch_v8():
 
 
 def symlink_force(target, link_name):
+    LOGGER.debug("Creating symlink to %s on %s", target, link_name)
     if hasattr(os, "symlink"):
         try:
             os.symlink(target, link_name)
@@ -192,7 +197,7 @@ def build_v8(target=None, build_path=None, revision=None):
         revision = V8_VERSION
     ensure_v8_src(revision)
     patch_v8()
-    prepare_symlinks()
+    prepare_workdir()
     checkout_path = local_path("v8")
     cmd_prefix = fixup_libtinfo(checkout_path)
     gen_makefiles(build_path)
