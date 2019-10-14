@@ -15,12 +15,14 @@ steps:
 - task: CacheBeta@0
   inputs:
     key: depot_tools | $(Agent.OS)
-    path: vendor/depot_tools
+    path: py_mini_racer/extension/depot_tools
+- script: python setup.py build_ext
+- task: PublishBuildArtifacts@1
+  inputs: {pathtoPublish: "py_mini_racer/_v8.so"}
 - script: |
     pip3.6 install cibuildwheel==0.12.0
     cibuildwheel --output-dir wheelhouse .
   env:
-    CIBW_BEFORE_BUILD: python setup.py build_ext
     CIBW_SKIP: "*-manylinux1_i686"
     CIBW_TEST_REQUIRES: mock pytest pytest-azurepipelines
     CIBW_TEST_COMMAND: pytest {project}/tests
