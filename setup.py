@@ -122,15 +122,18 @@ class MiniRacerBuildExt(build_ext):
         try:
             for ext in self.extensions:
                 src = os.path.join(ext.lib)
-                if not os.path.isfile(src):
+                dest = self.get_ext_fullpath(ext.name)
+                if not os.path.isfile(dest) and not os.path.isfile(src):
                     check_python_version()
                     print("building {}".format(ext.target))
                     build_v8(ext.target)
-                dest = self.get_ext_fullpath(ext.name)
-                dest_dir = os.path.dirname(dest)
-                if not os.path.exists(dest_dir):
-                    os.makedirs(dest_dir)
-                copy_file(src, dest)
+                if not os.path.isfile(dest):
+                    dest_dir = os.path.dirname(dest)
+                    if not os.path.exists(dest_dir):
+                        os.makedirs(dest_dir)
+                    copy_file(src, dest)
+                else:
+                    print("Nothing to build")
         except Exception as e:
             traceback.print_exc()
 
