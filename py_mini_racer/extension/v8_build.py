@@ -113,14 +113,13 @@ def run_hooks(path):
         call("gclient runhooks")
 
 def gen_makefiles(build_path):
-    with chdir(local_path("v8")):
+    with chdir(local_path()):
         call("gn gen {}".format(local_path(build_path)))
 
 def make(build_path, target, cmd_prefix=""):
     """ Create a release of v8
     """
-    with chdir(local_path("v8")):
-        call("{} ninja -vv -C {} -t targets all".format(cmd_prefix, local_path(build_path)))
+    with chdir(local_path()):
         call("{} ninja -vv -C {} {}".format(cmd_prefix, local_path(build_path), target))
 
 def patch_v8():
