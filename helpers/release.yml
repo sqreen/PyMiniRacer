@@ -10,7 +10,7 @@ steps:
 #  inputs:
 #    key: depot_tools | $(Agent.OS)
 #    path: py_mini_racer/extension/depot_tools
-- script: python setup.py build_ext
+- script: python setup.py develop
 - task: PublishBuildArtifacts@1
   inputs: {pathtoPublish: "build"}
 - task: UsePythonVersion@0
