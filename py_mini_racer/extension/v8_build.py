@@ -205,8 +205,8 @@ def build_v8(target=None, build_path=None, revision=None, no_build=False):
     prepare_workdir()
     checkout_path = local_path("v8")
     cmd_prefix = fixup_libtinfo(checkout_path)
+    gen_makefiles(build_path)
     if not no_build:
-        gen_makefiles(build_path)
         make(build_path, target, cmd_prefix)
 
 

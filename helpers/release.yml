@@ -13,7 +13,7 @@ steps:
 - script: python py_mini_racer/extension/v8_build.py --no-build
   condition: eq(variables['Agent.OS'], 'Linux')
 - script: python setup.py build_ext
-  condition: eq(variables['Agent.OS'], 'Windows_NT')
+  condition: ne(variables['Agent.OS'], 'Linux')
 - task: UsePythonVersion@0
   inputs: {versionSpec: '3.4', architecture: x64}
   condition: ne(variables['Agent.OS'], 'Windows_NT')
@@ -24,7 +24,9 @@ steps:
     pip3.6 install cibuildwheel==0.12.0
     cibuildwheel --output-dir wheelhouse .
   env:
-    CIBW_BEFORE_BUILD: python setup.py build_ext
+    CIBW_BEFORE_BUILD_LINUX: "python setup.py build_ext && git clean -ffdx py_mini_racer/extension"
+    CIBW_BEFORE_BUILD_WINDOWS: git clean -ffdx py_mini_racer/extension
+    CIBW_BEFORE_BUILD_MACOS: git clean -ffdx py_mini_racer/extension
     CIBW_SKIP: "*-manylinux1_i686"
     CIBW_TEST_REQUIRES: mock pytest pytest-azurepipelines
     CIBW_TEST_COMMAND: pytest {project}/tests
