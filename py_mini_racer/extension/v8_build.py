@@ -28,14 +28,13 @@ def local_path(path="."):
     return abspath(join(current_path, path))
 
 
-VENDOR_PATH = local_path('../../vendor/depot_tools')
 PATCHES_PATH = local_path('../../patches')
 
 
 def call(cmd):
     LOGGER.debug("Calling: '%s' from working directory %s", cmd, os.getcwd())
     current_env = os.environ
-    depot_tools_env = "".join([VENDOR_PATH, os.pathsep, os.environ['PATH']])
+    depot_tools_env = os.pathsep.join([local_path("depot_tools"), os.environ['PATH']])
     current_env['PATH'] = depot_tools_env
     current_env['DEPOT_TOOLS_WIN_TOOLCHAIN'] = '0'
     return subprocess.check_call(cmd, shell=True, env=current_env)
@@ -55,6 +54,14 @@ def chdir(new_path, make=False):
         yield os.chdir(new_path)
     finally:
         os.chdir(old_path)
+
+
+def install_depot_tools():
+    if not os.path.isdir(local_path("depot_tools")):
+        LOGGER.debug("Cloning depot tools")
+        call(['git', 'clone', 'https://chromium.googlesource.com/chromium/tools/depot_tools.git', local_path()])
+    else:
+        LOGGER.debug("Using already cloned depot tools")
 
 
 def prepare_workdir():
@@ -192,6 +199,7 @@ def build_v8(target=None, build_path=None, revision=None):
         build_path = "out"
     if revision is None:
         revision = V8_VERSION
+    install_depot_tools()
     ensure_v8_src(revision)
     patch_v8()
     prepare_workdir()

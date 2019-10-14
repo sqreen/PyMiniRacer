@@ -78,20 +78,6 @@ def check_python_version():
         See also: https://github.com/sqreen/PyMiniRacer#build"""
         raise Exception(msg)
 
-
-def install_depot_tools():
-    if not is_depot_tools_checkout():
-        print("cloning depot tools submodule")
-        check_call(['git', 'clone', 'https://chromium.googlesource.com/chromium/tools/depot_tools.git', 'vendor/depot_tools'])
-
-
-def is_depot_tools_checkout():
-    """ Check if the depot tools submodule has been checkouted
-    """
-    return isdir(local_path('vendor/depot_tools'))
-
-
-
 def lib_filename(name, static=False):
     if os.name == "posix" and sys.platform == "darwin":
         prefix = "lib"
@@ -138,7 +124,6 @@ class MiniRacerBuildExt(build_ext):
                 src = os.path.join(ext.lib)
                 if not os.path.isfile(src):
                     check_python_version()
-                    install_depot_tools()
                     print("building {}".format(ext.target))
                     build_v8(ext.target)
                 dest = self.get_ext_fullpath(ext.name)
