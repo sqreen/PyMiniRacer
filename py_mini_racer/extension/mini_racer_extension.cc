@@ -596,8 +596,6 @@ ContextInfo *MiniRacer_init_context()
     return context_info;
 }
 
-#include <unistd.h>
-
 static BinaryValue* MiniRacer_eval_context_unsafe(
         ContextInfo *context_info,
         char *utf_str, int str_len,
