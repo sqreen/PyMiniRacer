@@ -12,7 +12,7 @@ steps:
 #    path: py_mini_racer/extension/depot_tools
 - script: python setup.py build_ext
 - task: PublishBuildArtifacts@1
-  inputs: {pathtoPublish: "py_mini_racer/_v8.so"}
+  inputs: {pathtoPublish: "build"}
 - task: UsePythonVersion@0
   inputs: {versionSpec: '3.4', architecture: x64}
   condition: ne(variables['Agent.OS'], 'Windows_NT')
