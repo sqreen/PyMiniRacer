@@ -2,18 +2,17 @@ steps:
 - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
 - bash: echo "##vso[task.prependpath]$(Build.SourcesDirectory)\\py_mini_racer\\extension\\depot_tools\\"
 - bash: echo "##vso[task.setvariable variable=DEPOT_TOOLS_WIN_TOOLCHAIN]0"
-- task: CacheBeta@0
-  inputs:
-    key: v8_build_dir | $(Agent.OS)
-    path: py_mini_racer/extension/out
-- task: CacheBeta@0
-  inputs:
-    key: depot_tools | $(Agent.OS)
-    path: py_mini_racer/extension/depot_tools
-- script: python py_mini_racer/extension/v8_build.py --no-build
-  condition: eq(variables['Agent.OS'], 'Linux')
+#- task: CacheBeta@0
+#  inputs:
+#    key: v8_build_dir | $(Agent.OS)
+#    path: py_mini_racer/extension/out
+#- task: CacheBeta@0
+#  inputs:
+#    key: depot_tools | $(Agent.OS)
+#    path: py_mini_racer/extension/depot_tools
 - script: python setup.py build_ext
-  condition: ne(variables['Agent.OS'], 'Linux')
+- task: PublishBuildArtifacts@1
+  inputs: {pathtoPublish: "py_mini_racer/_v8.so"}
 - task: UsePythonVersion@0
   inputs: {versionSpec: '3.4', architecture: x64}
   condition: ne(variables['Agent.OS'], 'Windows_NT')
@@ -24,11 +23,8 @@ steps:
     pip3.6 install cibuildwheel==0.12.0
     cibuildwheel --output-dir wheelhouse .
   env:
-    CIBW_BEFORE_BUILD_LINUX: "python setup.py build_ext && git clean -ffdx py_mini_racer/extension"
-    CIBW_BEFORE_BUILD_WINDOWS: git clean -ffdx py_mini_racer/extension
-    CIBW_BEFORE_BUILD_MACOS: git clean -ffdx py_mini_racer/extension
+    CIBW_BEFORE_BUILD: "git clean -ffdx py_mini_racer/extension || true"
     CIBW_SKIP: "*-manylinux1_i686"
-    CIBW_MANYLINUX1_X86_64_IMAGE: quay.io/pypa/manylinux2010_x86_64
     CIBW_TEST_REQUIRES: mock pytest pytest-azurepipelines
     CIBW_TEST_COMMAND: pytest {project}/tests
 - bash: |
