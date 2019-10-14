@@ -11,6 +11,7 @@ steps:
     key: depot_tools | $(Agent.OS)
     path: py_mini_racer/extension/depot_tools
 - script: python setup.py build_ext
+  condition: eq(variables['Agent.OS'], 'Windows_NT')
 - task: UsePythonVersion@0
   inputs: {versionSpec: '3.4', architecture: x64}
   condition: ne(variables['Agent.OS'], 'Windows_NT')
@@ -23,6 +24,7 @@ steps:
     pip3.6 install cibuildwheel==0.12.0
     cibuildwheel --output-dir wheelhouse .
   env:
+    CIBW_BEFORE_BUILD: python setup.py build_ext
     CIBW_SKIP: "*-manylinux1_i686"
     CIBW_TEST_REQUIRES: mock pytest pytest-azurepipelines
     CIBW_TEST_COMMAND: pytest {project}/tests
