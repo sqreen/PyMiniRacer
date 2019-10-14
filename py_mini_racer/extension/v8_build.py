@@ -58,15 +58,15 @@ def chdir(new_path, make=False):
 
 
 def prepare_workdir():
-    link_directories = ["build_overrides", "buildtools", "testing",
+    directories = ["build", "build_overrides", "buildtools", "testing",
                    "third_party", "tools"]
     with chdir(local_path()):
-        for item in link_directories:
+        for item in directories:
             if not os.path.exists(item):
-                symlink_force(os.path.join("v8", item), item)
-        if os.path.islink("build"):
-            os.unlink("build")
-        copy_tree(os.path.join("v8", "build"), "build")
+                if sys.platform == "win32":
+                    symlink_force(os.path.join("v8", item), item)
+                else:
+                    copy_tree(os.path.join("v8", item), item)
 
 
 def ensure_v8_src(revision):
@@ -136,7 +136,9 @@ def patch_v8():
 
 def symlink_force(target, link_name):
     LOGGER.debug("Creating symlink to %s on %s", target, link_name)
-    if hasattr(os, "symlink"):
+    if sys.platform == "win32":
+        call(["mklink", "/d", abspath(link_name), abspath(target)])
+    else:
         try:
             os.symlink(target, link_name)
         except OSError as e:
@@ -145,8 +147,6 @@ def symlink_force(target, link_name):
                 os.symlink(target, link_name)
             else:
                 raise e
-    else:
-        call(["mklink", "/d", abspath(link_name), abspath(target)])
 
 
 def fixup_libtinfo(dir):
