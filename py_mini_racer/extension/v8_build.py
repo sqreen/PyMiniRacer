@@ -63,10 +63,7 @@ def prepare_workdir():
     with chdir(local_path()):
         for item in directories:
             if not os.path.exists(item):
-                if sys.platform == "win32":
-                    symlink_force(os.path.join("v8", item), item)
-                else:
-                    copy_tree(os.path.join("v8", item), item)
+                symlink_force(os.path.join("v8", item), item)
 
 
 def ensure_v8_src(revision):
