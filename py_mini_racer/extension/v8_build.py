@@ -59,7 +59,7 @@ def chdir(new_path, make=False):
 def install_depot_tools():
     if not os.path.isdir(local_path("depot_tools")):
         LOGGER.debug("Cloning depot tools")
-        call(['git', 'clone', 'https://chromium.googlesource.com/chromium/tools/depot_tools.git', local_path()])
+        call("git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git", local_path("depot_tools")])
     else:
         LOGGER.debug("Using already cloned depot tools")
 
