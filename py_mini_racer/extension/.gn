@@ -1,6 +1,7 @@
 buildconfig = "//build/config/BUILDCONFIG.gn"
 
 default_args = {
+  is_cfi = false
   is_debug = false
   is_component_build = false
   use_gold = false
