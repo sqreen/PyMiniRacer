@@ -113,8 +113,8 @@ def run_hooks(path):
         call("gclient runhooks")
 
 def gen_makefiles(build_path):
-    with chdir(local_path()):
-        call("gn gen {}".format(build_path))
+    with chdir(local_path("v8")):
+        call("gn gen {}".format(local_path(build_path)))
 
 def make(build_path, target, cmd_prefix=""):
     """ Create a release of v8
