@@ -119,8 +119,9 @@ def gen_makefiles(build_path):
 def make(build_path, target, cmd_prefix=""):
     """ Create a release of v8
     """
-    with chdir(local_path()):
-        call("{} ninja -vv -C {} {}".format(cmd_prefix, build_path, target))
+    with chdir(local_path("v8")):
+        call("{} ninja -vv -C {} -t targets all".format(cmd_prefix, local_path(build_path)))
+        call("{} ninja -vv -C {} {}".format(cmd_prefix, local_path(build_path), target))
 
 def patch_v8():
     """ Apply patch on v8
