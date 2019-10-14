@@ -34,14 +34,9 @@ PATCHES_PATH = local_path('../../patches')
 def call(cmd):
     LOGGER.debug("Calling: '%s' from working directory %s", cmd, os.getcwd())
     current_env = os.environ
-    depot_tools_env = '{}{}{}'.format(VENDOR_PATH, os.pathsep, os.environ['PATH'])
+    depot_tools_env = "".join(VENDOR_PATH, os.pathsep, os.environ['PATH'])
     current_env['PATH'] = depot_tools_env
     current_env['DEPOT_TOOLS_WIN_TOOLCHAIN'] = '0'
-    python_path = [local_path("build")]
-    old_python_path = os.environ.get('PYTHONPATH', '')
-    if old_python_path:
-        python_path.append(old_python_path)
-    current_env['PYTHONPATH'] = ":".join(python_path)
     return subprocess.check_call(cmd, shell=True, env=current_env)
 
 

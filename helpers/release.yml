@@ -11,7 +11,7 @@ steps:
   inputs:
     key: depot_tools | $(Agent.OS)
     path: vendor/depot_tools
-- bash: python setup.py build_ext
+- script: python setup.py build_ext
 - task: UsePythonVersion@0
   inputs: {versionSpec: '3.4', architecture: x64}
   condition: ne(variables['Agent.OS'], 'Windows_NT')
