@@ -28,6 +28,7 @@ steps:
     CIBW_BEFORE_BUILD_WINDOWS: git clean -ffdx py_mini_racer/extension
     CIBW_BEFORE_BUILD_MACOS: git clean -ffdx py_mini_racer/extension
     CIBW_SKIP: "*-manylinux1_i686"
+    CIBW_MANYLINUX1_X86_64_IMAGE: quay.io/pypa/manylinux2010_x86_64
     CIBW_TEST_REQUIRES: mock pytest pytest-azurepipelines
     CIBW_TEST_COMMAND: pytest {project}/tests
 - bash: |
