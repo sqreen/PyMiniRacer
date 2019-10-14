@@ -191,7 +191,7 @@ def apply_patches(path, patches_path):
             run_hooks(path)
 
 
-def build_v8(target=None, build_path=None, revision=None):
+def build_v8(target=None, build_path=None, revision=None, no_build=False):
     if target is None:
         target = "v8"
     if build_path is None:
@@ -205,8 +205,9 @@ def build_v8(target=None, build_path=None, revision=None):
     prepare_workdir()
     checkout_path = local_path("v8")
     cmd_prefix = fixup_libtinfo(checkout_path)
-    gen_makefiles(build_path)
-    make(build_path, target, cmd_prefix)
+    if not no_build:
+        gen_makefiles(build_path)
+        make(build_path, target, cmd_prefix)
 
 
 if __name__ == '__main__':
@@ -214,5 +215,6 @@ if __name__ == '__main__':
     parser.add_argument("--target", default="v8", help="Ninja target")
     parser.add_argument("--build-path", default="out", help="Build destination directory (relative to the path)")
     parser.add_argument("--v8-revision", default=V8_VERSION)
+    parser.add_argument("--no-build", type=bool, default=False, help="Only prepare workdir")
     args = parser.parse_args()
-    build_v8(target=args.target, build_path=args.build_path, revision=args.v8_revision)
+    build_v8(target=args.target, build_path=args.build_path, revision=args.v8_revision, no_build=args.no_build)

@@ -10,6 +10,8 @@ steps:
   inputs:
     key: depot_tools | $(Agent.OS)
     path: py_mini_racer/extension/depot_tools
+- script: python py_mini_racer/extension/v8_build.py --no-build
+  condition: eq(variables['Agent.OS'], 'Linux')
 - script: python setup.py build_ext
   condition: eq(variables['Agent.OS'], 'Windows_NT')
 - task: UsePythonVersion@0
