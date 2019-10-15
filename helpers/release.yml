@@ -3,8 +3,7 @@ steps:
 - bash: echo "##vso[task.prependpath]$(Build.SourcesDirectory)\\py_mini_racer\\extension\\depot_tools\\"
 - bash: echo "##vso[task.setvariable variable=DEPOT_TOOLS_WIN_TOOLCHAIN]0"
 - script: python setup.py build_ext
-- task: PublishBuildArtifacts@1
-  inputs: {pathtoPublish: "build"}
+  displayName: Build the extension
 - {task: UsePythonVersion@0, inputs: {versionSpec: '3.6', architecture: x64}}
 - script: |
     pip install cibuildwheel==0.12.0
@@ -14,9 +13,11 @@ steps:
     CIBW_SKIP: "*-manylinux1_i686 *-win32"
     CIBW_TEST_REQUIRES: mock pytest pytest-azurepipelines
     CIBW_TEST_COMMAND: pytest {project}/tests
+  displayName: Build the Wheelhouse
 - script: |
     pip install auditwheel
     python helpers/wheel_pymalloc.py wheelhouse
+  displayName: Patch the Wheelhouse
 - task: PublishBuildArtifacts@1
   inputs: {pathtoPublish: "wheelhouse"}
 - task: S3Upload@1
