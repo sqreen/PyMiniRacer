@@ -1,7 +1,6 @@
 steps:
 - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
 - bash: echo "##vso[task.prependpath]$(Build.SourcesDirectory)\\py_mini_racer\\extension\\depot_tools\\"
-- bash: echo "##vso[task.setvariable variable=DEPOT_TOOLS_WIN_TOOLCHAIN]0"
 - script: python setup.py build_ext
   displayName: Build the extension
 - {task: UsePythonVersion@0, inputs: {versionSpec: '3.6', architecture: x64}}
