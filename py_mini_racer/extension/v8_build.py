@@ -128,6 +128,16 @@ def gen_makefiles(build_path):
         LOGGER.debug("Writing args.gn in %s", build_path)
         with open(os.path.join(build_path, "args.gn"), "w") as f:
             opts = {
+                "proprietary_codecs": "false",
+                "toolkit_views": "false",
+                "use_aura": "false",
+                "use_dbus": "false",
+                "use_gio": "false",
+                "use_glib": "false",
+                "use_ozone": "false",
+                "use_udev": "false",
+                "is_desktop_linux": "false",
+
                 "is_cfi": "false",
                 "is_debug": "false",
                 "is_component_build": "false",
