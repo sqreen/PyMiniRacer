@@ -177,7 +177,6 @@ def apply_patches(path, patches_path):
         if not os.path.isfile('.applied_patches'):
             open('.applied_patches', 'w').close()
 
-        patched = False
         with open('.applied_patches', 'r+') as applied_patches_file:
             applied_patches = set(applied_patches_file.read().splitlines())
 
@@ -188,7 +187,7 @@ def apply_patches(path, patches_path):
 
 
 def patch_sysroot():
-    with chdir(local_path("build/linux/debian_sid_amd64-sysroot")):
+    with chdir(local_path("v8/build/linux/debian_sid_amd64-sysroot")):
         with open("usr/include/glob.h", "r") as f:
             header = f.read()
         s, e = header.split("sysroot-creator.sh.", 1)
