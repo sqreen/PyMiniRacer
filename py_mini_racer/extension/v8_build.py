@@ -185,10 +185,44 @@ def apply_patches(path, patches_path):
                 if patch not in applied_patches:
                     call("patch -p1 -N < {}".format(patch))
                     applied_patches_file.write(patch + "\n")
-                    patched = True
 
-        if patched:
-            run_hooks(path)
+
+def patch_sysroot(path):
+    with chdir(local_path("build/linux/debian_sid_amd64-sysroot")):
+        with open("usr/include/glob.h", "r") as f:
+            header = f.read()
+        s, e = header.split("sysroot-creator.sh.", 1)
+        with open("usr/include/glob.h", "w") as f:
+            f.write(s)
+            f.write("sysroot-creator.sh.")
+            f.write("""
+__asm__(".symver _sys_errlist, _sys_errlist@GLIBC_2.4");
+__asm__(".symver _sys_nerr, _sys_nerr@GLIBC_2.4");
+__asm__(".symver fmemopen, fmemopen@GLIBC_2.2.5");
+__asm__(".symver glob, glob@GLIBC_2.2.5");
+__asm__(".symver glob64, glob64@GLIBC_2.2.5");
+__asm__(".symver memcpy, memcpy@GLIBC_2.2.5");
+__asm__(".symver posix_spawn, posix_spawn@GLIBC_2.2.5");
+__asm__(".symver posix_spawnp, posix_spawnp@GLIBC_2.2.5");
+__asm__(".symver sys_errlist, sys_errlist@GLIBC_2.4");
+__asm__(".symver sys_nerr, sys_nerr@GLIBC_2.4");
+            """)
+        with open("usr/include/math.h", "r") as f:
+            header = f.read()
+        s, e = header.split("sysroot-creator.sh.", 1)
+        with open("usr/include/math.h", "w") as f:
+            f.write(s)
+            f.write("sysroot-creator.sh.")
+            f.write("""
+__asm__(".symver exp2f, exp2f@GLIBC_2.2.5");
+__asm__(".symver expf, expf@GLIBC_2.2.5");
+__asm__(".symver lgamma, lgamma@GLIBC_2.2.5");
+__asm__(".symver lgammaf, lgammaf@GLIBC_2.2.5");
+__asm__(".symver lgammal, lgammal@GLIBC_2.2.5");
+__asm__(".symver log2f, log2f@GLIBC_2.2.5");
+__asm__(".symver logf, logf@GLIBC_2.2.5");
+__asm__(".symver powf, powf@GLIBC_2.2.5");
+            """)
 
 
 def build_v8(target=None, build_path=None, revision=None, no_build=False):
@@ -202,6 +236,8 @@ def build_v8(target=None, build_path=None, revision=None, no_build=False):
     install_depot_tools()
     ensure_v8_src(revision)
     patch_v8()
+    if sys.platform == "linux":
+        patch_sysroot()
     prepare_workdir()
     checkout_path = local_path("v8")
     cmd_prefix = fixup_libtinfo(checkout_path)
