@@ -196,11 +196,15 @@ def patch_sysroot():
             f.write(s)
             f.write("sysroot-creator.sh.")
             f.write("""
+__asm__(".symver glob, glob@GLIBC_2.2.5");
+__asm__(".symver glob64, glob64@GLIBC_2.2.5");
+            """)
+        LOGGER.debug("Patching sysroot /usr/include/string.h")
+        with open("usr/include/string.h", "a") as f:
+            f.write("""
 __asm__(".symver _sys_errlist, _sys_errlist@GLIBC_2.4");
 __asm__(".symver _sys_nerr, _sys_nerr@GLIBC_2.4");
 __asm__(".symver fmemopen, fmemopen@GLIBC_2.2.5");
-__asm__(".symver glob, glob@GLIBC_2.2.5");
-__asm__(".symver glob64, glob64@GLIBC_2.2.5");
 __asm__(".symver memcpy, memcpy@GLIBC_2.2.5");
 __asm__(".symver posix_spawn, posix_spawn@GLIBC_2.2.5");
 __asm__(".symver posix_spawnp, posix_spawnp@GLIBC_2.2.5");
