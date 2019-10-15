@@ -132,7 +132,7 @@ If you have a up-to-date pip and it doesn't use a wheel, you might have an envir
 Installation
 ------------
 
-We built Python wheels (prebuilt binaries) for OSX 64 bits, Linux 64 bits and Windows 64 bits. You need pip >= 1.4 and setuptools >= 0.8.
+We built Python wheels (prebuilt binaries) for macOS 64 bits, Linux 64 bits and Windows 64 bits. You need pip >= 1.4 and setuptools >= 0.8.
 
 .. code:: bash
 
