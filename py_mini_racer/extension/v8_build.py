@@ -187,7 +187,7 @@ def apply_patches(path, patches_path):
                     applied_patches_file.write(patch + "\n")
 
 
-def patch_sysroot(path):
+def patch_sysroot():
     with chdir(local_path("build/linux/debian_sid_amd64-sysroot")):
         with open("usr/include/glob.h", "r") as f:
             header = f.read()
