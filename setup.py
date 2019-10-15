@@ -133,7 +133,7 @@ class MiniRacerBuildExt(build_ext):
                         os.makedirs(dest_dir)
                     copy_file(src, dest)
                 else:
-                    print("Nothing to build")
+                    print("extension was already built")
         except Exception as e:
             traceback.print_exc()
 

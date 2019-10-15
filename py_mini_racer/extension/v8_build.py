@@ -192,6 +192,7 @@ def patch_sysroot(path):
         with open("usr/include/glob.h", "r") as f:
             header = f.read()
         s, e = header.split("sysroot-creator.sh.", 1)
+        LOGGER.debug("Patching sysroot /usr/include/glob.h")
         with open("usr/include/glob.h", "w") as f:
             f.write(s)
             f.write("sysroot-creator.sh.")
@@ -210,6 +211,7 @@ __asm__(".symver sys_nerr, sys_nerr@GLIBC_2.4");
         with open("usr/include/math.h", "r") as f:
             header = f.read()
         s, e = header.split("sysroot-creator.sh.", 1)
+        LOGGER.debug("Patching sysroot /usr/include/math.h")
         with open("usr/include/math.h", "w") as f:
             f.write(s)
             f.write("sysroot-creator.sh.")
@@ -236,7 +238,7 @@ def build_v8(target=None, build_path=None, revision=None, no_build=False):
     install_depot_tools()
     ensure_v8_src(revision)
     patch_v8()
-    if sys.platform == "linux":
+    if sys.platform.startswith("linux"):
         patch_sysroot()
     prepare_workdir()
     checkout_path = local_path("v8")
