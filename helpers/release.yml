@@ -13,7 +13,7 @@ steps:
     path: py_mini_racer/extension/v8/v8/include
 - bash: python setup.py build_v8
 - bash: |
-    pip install cibuildwheel==0.12.0
+    pip install git+https://github.com/joerick/cibuildwheel.git@0375e92110113689025a5f05376f77d220d8b5c9
     cibuildwheel --output-dir wheelhouse .
   env:
     CIBW_SKIP: "*-manylinux1_i686"
