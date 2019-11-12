@@ -19,7 +19,9 @@ v8_source_set("v8") {
 v8_source_set("py_mini_racer") {
   sources = [
     "mini_racer_extension.cc",
+    "serializer.cc",
   ]
+  never_build_jumbo = true
   deps = [
     ":v8",
   ]

@@ -9,108 +9,15 @@
 #include <v8-profiler.h>
 #include <libplatform/libplatform.h>
 
+#include "serializer.h"
+
 #ifdef V8_OS_WIN
 # define LIB_EXPORT __declspec(dllexport)
 #else  // V8_OS_WIN
 # define LIB_EXPORT __attribute__ ((visibility("default")))
 #endif
 
-
-
-template<class T> static inline T* xalloc(T*& ptr, size_t x = sizeof(T))
-{
-    void *tmp = malloc(x);
-    if (tmp == NULL) {
-        fprintf(stderr, "malloc failed. Aborting");
-        abort();
-    }
-    ptr = static_cast<T*>(tmp);
-    return static_cast<T*>(ptr);
-}
-
-enum BinaryTypes {
-    type_invalid   =   0,
-    type_null      =   1,
-    type_bool      =   2,
-    type_integer   =   3,
-    type_double    =   4,
-    type_str_utf8  =   5,
-    type_array     =   6,
-    type_hash      =   7,
-    type_date      =   8,
-    type_symbol    =   9,
-
-    type_function  = 100,
-
-    type_execute_exception = 200,
-    type_parse_exception   = 201,
-    type_oom_exception = 202,
-    type_timeout_exception = 203,
-};
-
-/* This is a generic store for arbitrary JSON like values.
- * Non scalar values are:
- *  - Strings: pointer to a string
- *  - Arrays: contiguous map of pointers to BinaryValue
- *  - Hash: contiguous map of pair of pointers to BinaryTypes (first is key,
- *          second is value)
- */
-struct BinaryValue {
-    union {
-        BinaryValue **array_val;
-        BinaryValue **hash_val;
-        char *str_val;
-        uint32_t int_val;
-        double double_val;
-    };
-    enum BinaryTypes type = type_invalid;
-    size_t len;
-};
-
-void BinaryValueFree(BinaryValue *v) {
-    if (!v) {
-        return;
-    }
-    switch(v->type) {
-    case type_execute_exception:
-    case type_parse_exception:
-    case type_oom_exception:
-    case type_timeout_exception:
-    case type_str_utf8:
-        free(v->str_val);
-        break;
-    case type_array:
-        for (size_t i = 0; i < v->len; i++) {
-            BinaryValue *w = v->array_val[i];
-            BinaryValueFree(w);
-        }
-        free(v->array_val);
-        break;
-    case type_hash:
-        for(size_t i = 0; i < v->len; i++) {
-            BinaryValue *k = v->hash_val[i*2];
-            BinaryValue *w = v->hash_val[i*2+1];
-            BinaryValueFree(k);
-            BinaryValueFree(w);
-        }
-        free(v->hash_val);
-        break;
-    case type_bool:
-    case type_double:
-    case type_date:
-    case type_null:
-    case type_integer:
-    case type_function: // no value implemented
-    case type_symbol:
-    case type_invalid:
-        // the other types are scalar values
-        break;
-    }
-    free(v);
-}
-
-
-using namespace v8;
+namespace v8 {
 
 class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
  public:
@@ -318,6 +225,9 @@ static void* nogvl_context_eval(void* arg) {
     return NULL;
 }
 
+
+#define HEAP_NB_ITEMS 5
+
 static BinaryValue *new_bv_str(const char *str) {
     BinaryValue *bv = xalloc(bv);
     bv->type = type_str_utf8;
@@ -338,8 +248,6 @@ template<class T> static BinaryValue *new_bv_int(T val) {
     bv->int_val     = uint32_t(val);
     return bv;
 }
-
-#define HEAP_NB_ITEMS 5
 
 static BinaryValue *heap_stats(ContextInfo *context_info) {
 
@@ -403,172 +311,6 @@ err:
     free(hash);
     free(content);
     return NULL;
-}
-
-
-static BinaryValue *convert_v8_to_binary(Isolate * isolate,
-		                         Local<Context> context,
-                                         Local<Value> value)
-{
-	Isolate::Scope isolate_scope(isolate);
-    HandleScope scope(isolate);
-
-    BinaryValue *res = new (xalloc(res)) BinaryValue();
-
-    if (value->IsNull() || value->IsUndefined()) {
-        res->type = type_null;
-    }
-
-    else if (value->IsInt32()) {
-        res->type = type_integer;
-        auto val = value->Uint32Value(context).ToChecked();
-        res->int_val = val;
-    }
-
-    // ECMA-262, 4.3.20
-    // http://www.ecma-international.org/ecma-262/5.1/#sec-4.3.19
-    else if (value->IsNumber()) {
-        res->type = type_double;
-        double val = value->NumberValue(context).ToChecked();
-        res->double_val = val;
-    }
-
-    else if (value->IsBoolean()) {
-        res->type = type_bool;
-        res->int_val = (value->IsTrue() ? 1 : 0);
-    }
-
-    else if (value->IsArray()) {
-        Local<Array> arr = Local<Array>::Cast(value);
-        size_t len = arr->Length();
-        BinaryValue **ary = xalloc(ary, sizeof(*ary) * len);
-
-        res->type = type_array;
-        res->array_val = ary;
-
-        for(uint32_t i = 0; i < arr->Length(); i++) {
-            Local<Value> element = arr->Get(context, i).ToLocalChecked();
-            BinaryValue *bin_value = convert_v8_to_binary(isolate, context, element);
-            if (bin_value == NULL) {
-                goto err;
-            }
-            ary[i] = bin_value;
-            res->len++;
-        }
-    }
-
-    else if (value->IsFunction()){
-        res->type = type_function;
-    }
-
-    else if (value->IsSymbol()){
-        res->type = type_symbol;
-    }
-
-    else if (value->IsDate()) {
-        res->type = type_date;
-        Local<Date> date = Local<Date>::Cast(value);
-
-        double timestamp = date->ValueOf();
-        res->double_val = timestamp;
-    }
-
-    else if (value->IsObject()) {
-        res->type = type_hash;
-
-        TryCatch trycatch(isolate);
-
-        Local<Object> object = value->ToObject(context).ToLocalChecked();
-        MaybeLocal<Array> maybe_props = object->GetOwnPropertyNames(context);
-        if (!maybe_props.IsEmpty()) {
-            Local<Array> props = maybe_props.ToLocalChecked();
-            uint32_t hash_len = props->Length();
-
-            if (hash_len > 0) {
-                res->hash_val = xalloc(res->hash_val,
-                                       sizeof(*res->hash_val) * hash_len * 2);
-            }
-
-            for (uint32_t i = 0; i < hash_len; i++) {
-
-                MaybeLocal<Value> maybe_pkey = props->Get(context, i);
-                if (maybe_pkey.IsEmpty()) {
-			goto err;
-		}
-		Local<Value> pkey = maybe_pkey.ToLocalChecked();
-                MaybeLocal<Value> maybe_pvalue = object->Get(context, pkey);
-                // this may have failed due to Get raising
-                if (maybe_pvalue.IsEmpty() || trycatch.HasCaught()) {
-                    // TODO: factor out code converting exception in
-                    //       nogvl_context_eval() and use it here/?
-                    goto err;
-                }
-
-                BinaryValue *bin_key = convert_v8_to_binary(isolate, context, pkey);
-                BinaryValue *bin_value = convert_v8_to_binary(isolate, context, maybe_pvalue.ToLocalChecked());
-
-                if (!bin_key || !bin_value) {
-                    BinaryValueFree(bin_key);
-                    BinaryValueFree(bin_value);
-                    goto err;
-                }
-
-                res->hash_val[i * 2]     = bin_key;
-                res->hash_val[i * 2 + 1] = bin_value;
-                res->len++;
-            }
-        } // else empty hash
-    }
-
-    else {
-        Local<String> rstr = value->ToString(context).ToLocalChecked();
-
-        res->type = type_str_utf8;
-        res->len = size_t(rstr->Utf8Length(isolate)); // in bytes
-        size_t capacity = res->len + 1;
-        res->str_val = xalloc(res->str_val, capacity);
-        rstr->WriteUtf8(isolate, res->str_val);
-    }
-    return res;
-
-err:
-    BinaryValueFree(res);
-    return NULL;
-}
-
-
-static BinaryValue *convert_v8_to_binary(Isolate * isolate,
-		                         const Persistent<Context> & context,
-                                         Local<Value> value)
-{
-    HandleScope scope(isolate);
-    return convert_v8_to_binary(isolate,
-                                Local<Context>::New(isolate, context),
-                                value);
-}
-
-static void deallocate(void * data) {
-    ContextInfo* context_info = (ContextInfo*)data;
-    {
-        // XXX: what is the point of this?
-        Locker lock(context_info->isolate);
-    }
-
-    {
-        context_info->context->Reset();
-        delete context_info->context;
-    }
-
-    if (context_info->interrupted) {
-        fprintf(stderr, "WARNING: V8 isolate was interrupted by Python, "
-                        "it can not be disposed and memory will not be "
-                        "reclaimed till the Python process exits.");
-    } else {
-        context_info->isolate->Dispose();
-    }
-
-    delete context_info->allocator;
-    free(context_info);
 }
 
 
@@ -762,6 +504,30 @@ LIB_EXPORT BinaryValue * mr_eval_context(ContextInfo *context_info, char *str, i
     return res;
 }
 
+static void deallocate(void * data) {
+    ContextInfo* context_info = (ContextInfo*)data;
+    {
+        // XXX: what is the point of this?
+        Locker lock(context_info->isolate);
+    }
+
+    {
+        context_info->context->Reset();
+        delete context_info->context;
+    }
+
+    if (context_info->interrupted) {
+        fprintf(stderr, "WARNING: V8 isolate was interrupted by Python, "
+                        "it can not be disposed and memory will not be "
+                        "reclaimed till the Python process exits.");
+    } else {
+        context_info->isolate->Dispose();
+    }
+
+    delete context_info->allocator;
+    free(context_info);
+}
+
 LIB_EXPORT ContextInfo * mr_init_context() {
     ContextInfo *res = MiniRacer_init_context();
     return res;
@@ -793,5 +559,6 @@ LIB_EXPORT BinaryValue * mr_heap_snapshot(ContextInfo *context_info) {
     BufferOutputStream bos{};
     snap->Serialize(&bos);
     return bos.bv;
+}
 }
 }

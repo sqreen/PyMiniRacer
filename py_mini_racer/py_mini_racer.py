@@ -9,6 +9,7 @@ import ctypes
 import threading
 import datetime
 import fnmatch
+import pickle
 
 from pkg_resources import resource_listdir, resource_filename
 
@@ -235,6 +236,8 @@ class PythonTypes(object):
     oom_exception = 202
     timeout_exception = 203
 
+    pickle = 999
+
 
 class PythonValue(ctypes.Structure):
     """ Map to C PythonValue """
@@ -253,7 +256,12 @@ class PythonValue(ctypes.Structure):
         """ Return an object as native Python """
 
         result = None
-        if self.type == PythonTypes.null:
+        if self.type == PythonTypes.pickle:
+            buf = ctypes.string_at(self.value, self.len)
+            print("buf: " + repr(buf))
+            result = pickle.loads(buf)
+            print("res: " + repr(result))
+        elif self.type == PythonTypes.null:
             result = None
         elif self.type == PythonTypes.bool:
             result = self.value == 1

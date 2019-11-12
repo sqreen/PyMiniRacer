@@ -37,7 +37,12 @@ class Test(unittest.TestCase):
         res = self.mr.eval("'" + ustr + "'")
         self.assertEqual(ustr, res)
 
+    def test_boolean(self):
+        self.valid(True)
+        self.valid(False)
+
     def test_numbers(self):
+        self.valid(-1)
         self.valid(1)
         self.valid(1.0)
         self.valid(2**16)
@@ -80,6 +85,16 @@ class Test(unittest.TestCase):
     def test_function(self):
         res = self.mr.eval('var a = function(){}; a')
         self.assertTrue(isinstance(res, py_mini_racer.JSFunction))
+
+    def test_bigint(self):
+        res = self.mr.eval('var a = BigInt("0x1fffffffffffff"); a')
+        self.assertEqual(res, 0x1fffffffffffff)
+        res = self.mr.eval('var a = BigInt("0x1fffffffffffff") * -1n; a')
+        self.assertEqual(res, -0x1fffffffffffff)
+        res = self.mr.eval('var a = BigInt("0xffffffffffffffff"); a')
+        self.assertEqual(res, 0xffffffffffffffff)
+        res = self.mr.eval('var a = BigInt("0xffffffffffffffff") * -1n; a')
+        self.assertEqual(res, -0xffffffffffffffff)
 
     def test_invalid_key(self):
 
