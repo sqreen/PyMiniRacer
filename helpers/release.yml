@@ -5,8 +5,7 @@ steps:
   displayName: Build the extension
 - {task: UsePythonVersion@0, inputs: {versionSpec: '3.6', architecture: x64}}
 - script: |
-    pip install cibuildwheel==0.12.0
-    cibuildwheel --output-dir wheelhouse .
+    pip install git+https://github.com/joerick/cibuildwheel.git@0375e92110113689025a5f05376f77d220d8b5c9
   env:
     CIBW_BEFORE_BUILD: "git clean -ffdx -e py_mini_racer/extension/out py_mini_racer/extension || true"
     CIBW_SKIP: "*-manylinux1_i686 *-win32"
@@ -20,7 +19,7 @@ steps:
 - task: PublishBuildArtifacts@1
   inputs: {pathtoPublish: "wheelhouse"}
 - task: S3Upload@1
-  condition: and(succeeded(), eq(variables['build.sourceBranch'], 'refs/head/master'))
+  condition: and(succeeded(), eq(variables['build.sourceBranch'], 'refs/heads/master'))
   displayName: Publish Wheelhouse to S3
   inputs:
     awsCredentials: AWS

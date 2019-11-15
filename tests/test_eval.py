@@ -79,9 +79,9 @@ class Test(unittest.TestCase):
     def test_timeout(self):
         timeout_ms = 100
         with self.assertRaises(py_mini_racer.JSTimeoutException):
-            start_time = time.clock()
+            start_time = time.time()
             self.mr.eval('while(1) { }', timeout=timeout_ms)
-            duration = time.clock() - start_time
+            duration = time.time() - start_time
             assert timeout_ms <= duration * 1000 <= timeout_ms + 10
 
     def test_max_memory(self):
