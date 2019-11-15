@@ -6,6 +6,7 @@ steps:
 - {task: UsePythonVersion@0, inputs: {versionSpec: '3.6', architecture: x64}}
 - script: |
     pip install git+https://github.com/joerick/cibuildwheel.git@0375e92110113689025a5f05376f77d220d8b5c9
+    cibuildwheel --output-dir wheelhouse .
   env:
     CIBW_BEFORE_BUILD: "git clean -ffdx -e py_mini_racer/extension/out py_mini_racer/extension || true"
     CIBW_SKIP: "*-manylinux1_i686 *-win32"
