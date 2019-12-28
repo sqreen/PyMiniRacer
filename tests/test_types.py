@@ -57,6 +57,10 @@ class Test(unittest.TestCase):
         # Nested
         self.valid([1, 2, ['a', 1]])
 
+    def test_self_referencing_array(self):
+        res = self.mr.eval('var a = []; a[0] = a; a')
+        self.assertEqual(id(res[0]), id(res))
+
     def test_none(self):
         self.valid(None)
 
@@ -81,6 +85,14 @@ class Test(unittest.TestCase):
                 }
             ], 'qwe': 1
         })
+
+    def test_map(self):
+        res = self.mr.eval('var a = new Map([[ 1, "one" ],[ 2, "two" ]]); a')
+        self.assertTrue(res, {1: "one", 2: "two"})
+
+    def test_symbol(self):
+        res = self.mr.eval('Symbol("test")')
+        self.assertEqual(res, "test")
 
     def test_function(self):
         res = self.mr.eval('var a = function(){}; a')
@@ -114,6 +126,8 @@ class Test(unittest.TestCase):
     def test_date(self):
         res = self.mr.eval("var a = new Date(Date.UTC(2014, 0, 2, 3, 4, 5)); a")
         self.assertEqual(res, datetime(2014, 1, 2, 3, 4, 5))
+        res = self.mr.eval('var a = new Date("1995-12-17T03:24:00"); a')
+        self.assertEqual(res, datetime(1995, 12, 17, 3, 24))
 
     def test_exception(self):
         js_source = """

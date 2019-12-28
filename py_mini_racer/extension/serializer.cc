@@ -51,8 +51,8 @@ void BinaryValueFree(BinaryValue *v) {
 }
 
 
-PickleSerializer::PickleSerializer(Isolate * isolate):
-	isolate_(isolate) {}
+PickleSerializer::PickleSerializer(Isolate * isolate, Local<Context> context):
+	isolate_(isolate), context_(context) {}
 
 PickleSerializer::~PickleSerializer() {
 	if (buffer_) {
@@ -139,14 +139,17 @@ void PickleSerializer::WriteBoolean(Boolean * value) {
 	}
 }
 
-void PickleSerializer::WriteInt32(Int32 * value) {
-	int32_t tmp = value->Value();
+void PickleSerializer::WriteInt(int32_t i) {
 	WriteOpCode(PickleOpCode::kBinInt);
-	char * raw = reinterpret_cast<char *>(&tmp);
+	char * raw = reinterpret_cast<char *>(&i);
 #if V8_TARGET_BIG_ENDIAN
-	std::reverse(raw, raw + sizeof(tmp));
+	std::reverse(raw, raw + sizeof(i));
 #endif
-	WriteRawBytes(raw, sizeof(tmp));
+	WriteRawBytes(raw, sizeof(i));
+}
+
+void PickleSerializer::WriteInt32(Int32 * value) {
+	WriteInt(value->Value());
 }
 
 void PickleSerializer::WriteNumber(Number * value) {
@@ -192,27 +195,142 @@ void PickleSerializer::WriteBigInt(BigInt * value) {
 	}
 }
 
+void PickleSerializer::WriteString(Local<String> value) {
+	int length = value->Utf8Length(isolate_);
+	uint8_t * dest;
+
+	WriteOpCode(PickleOpCode::kBinUnicode);
+	WriteSize(length);
+	if (ReserveRawBytes(length).To(&dest) && length > 0) {
+		value->WriteUtf8(isolate_, reinterpret_cast<char *>(dest), length, nullptr, String::WriteOptions::NO_NULL_TERMINATION);
+	}
+}
+
+void PickleSerializer::WriteBatchContent(Local<Array> value, PickleOpCode op) {
+	size_t length = value->Length();
+	uint32_t i = 0;
+
+	while (i < length) {
+		WriteOpCode(PickleOpCode::kMark);
+		for (int j = 0; i < length && j < 1000; ++i, ++j) {
+			Local<Value> item;
+
+			if (value->Get(context_, i).ToLocal(&item)) {
+				WriteValue(item);
+			} else {
+				WriteNone();
+			}
+		}
+		WriteOpCode(op);
+	}
+}
+
+void PickleSerializer::WriteObject(Local<Object> value) {
+	TryCatch trycatch(isolate_);
+	Context::Scope scope(context_);
+
+	int hash = value->GetIdentityHash();
+	std::pair<uint32_t, Local<Object>>& memoed = memo_[hash];
+
+	if (memoed.first) {
+		WriteOpCode(PickleOpCode::kLongBinGet);
+		WriteSize(memoed.first - 1);
+		return;
+	}
+	// TODO overflow check
+	memoed.first = static_cast<uint32_t>(memo_.size());
+	memoed.second = value;
+
+	if (value->IsArray()) {
+		WriteOpCode(PickleOpCode::kEmptyList);
+		WriteOpCode(PickleOpCode::kLongBinPut);
+		WriteSize(memoed.first - 1);
+		WriteBatchContent(Local<Array>::Cast(value), PickleOpCode::kAppends);
+	} else if (value->IsMap()) {
+		WriteOpCode(PickleOpCode::kEmptyDict);
+		WriteOpCode(PickleOpCode::kLongBinPut);
+		WriteSize(memoed.first - 1);
+
+		WriteBatchContent(Local<Map>::Cast(value)->AsArray(), PickleOpCode::kSetItems);
+	} else {
+		WriteOpCode(PickleOpCode::kEmptyDict);
+		WriteOpCode(PickleOpCode::kLongBinPut);
+		WriteSize(memoed.first - 1);
+
+		Local<Array> keys;
+		if (value->GetOwnPropertyNames(context_).ToLocal(&keys)) {
+			for (uint32_t i = 0; i < keys->Length(); ++i) {
+				Local<Value> key;
+				Local<Value> item;
+
+				if (!keys->Get(context_, i).ToLocal(&key)
+				    || !value->Get(context_, key).ToLocal(&item)) {
+					continue;
+				}
+				WriteValue(key);
+				WriteValue(item);
+				WriteOpCode(PickleOpCode::kSetItem);
+			}
+		}
+	}
+	// TODO Throw if error
+}
+
+void PickleSerializer::WriteDate(Date * value) {
+	std::time_t dt = std::chrono::system_clock::to_time_t(std::chrono::system_clock::time_point(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::duration<double, std::milli>(value->ValueOf()))));
+	std::tm tm = *std::gmtime(&dt);
+
+	WriteOpCode(PickleOpCode::kGlobal);
+#define DATETIME "datetime\ndatetime\n"
+	WriteRawBytes(DATETIME, sizeof(DATETIME) - 1);
+#undef DATETIME
+	WriteOpCode(PickleOpCode::kMark);
+	WriteInt(tm.tm_year + 1900);
+	WriteInt(tm.tm_mon + 1);
+	WriteInt(tm.tm_mday);
+	WriteInt(tm.tm_hour);
+	WriteInt(tm.tm_min);
+	WriteInt(tm.tm_sec);
+	WriteOpCode(PickleOpCode::kTuple);
+	WriteOpCode(PickleOpCode::kNewObj);
+}
+
+void PickleSerializer::WriteValue(Local<Value> value) {
+	// Use v8::internal GetInstanceType
+	if (value->IsNull() || value->IsUndefined()) {
+		WriteNone();
+	} else if (value->IsBoolean()) {
+		WriteBoolean(Boolean::Cast(*value));
+	} else if (value->IsInt32()) {
+		WriteInt32(Int32::Cast(*value));
+	} else if (value->IsNumber()) {
+		WriteNumber(Number::Cast(*value));
+	} else if (value->IsBigInt()) {
+		WriteBigInt(BigInt::Cast(*value));
+	} else if (value->IsString()) {
+		WriteString(Local<String>::Cast(value));
+	} else if (value->IsSymbol()) {
+		WriteValue(Symbol::Cast(*value)->Name());
+	} else if (value->IsDate()) {
+		WriteDate(Date::Cast(*value));
+	} else if (value->IsObject()) {
+		WriteObject(Local<Object>::Cast(value));
+	} else {
+		// TODO Throw if not serializable
+	}
+	// TODO Throw an error if allocation failed
+}
+
 BinaryValue * convert_v8_to_pickle(Isolate * isolate,
 				   Local<Context> context,
 				   Local<Value> value)
 {
 	Isolate::Scope isolate_scope(isolate);
 	HandleScope scope(isolate);
-	PickleSerializer serializer = PickleSerializer(isolate);
+	PickleSerializer serializer = PickleSerializer(isolate, context);
 
 	serializer.WriteProto();
-	if (value->IsNull() || value->IsUndefined()) {
-		serializer.WriteNone();
-	} else if (value->IsBoolean()) {
-		serializer.WriteBoolean(Boolean::Cast(*value));
-	} else if (value->IsInt32()) {
-		serializer.WriteInt32(Int32::Cast(*value));
-	} else if (value->IsNumber()) {
-		serializer.WriteNumber(Number::Cast(*value));
-	} else if (value->IsBigInt()) {
-		serializer.WriteBigInt(BigInt::Cast(*value));
-	}
-	// TODO Throw an error if allocation failed
+	serializer.WriteValue(value);
 	serializer.WriteStop();
 
 	auto ret = serializer.Release();
@@ -228,115 +346,9 @@ BinaryValue *convert_v8_to_binary(Isolate * isolate,
                                   Local<Value> value)
 {
 	Isolate::Scope isolate_scope(isolate);
-    HandleScope scope(isolate);
+	HandleScope scope(isolate);
 
-    BinaryValue *res = new (xalloc(res)) BinaryValue();
-
-    if (value->IsNull()
-	|| value->IsUndefined()
-	|| value->IsBoolean()
-	|| value->IsInt32()
-	|| value->IsNumber()
-	|| value->IsBigInt()) {
 	return convert_v8_to_pickle(isolate, context, value);
-    }
-
-    else if (value->IsArray()) {
-        Local<Array> arr = Local<Array>::Cast(value);
-        size_t len = arr->Length();
-        BinaryValue **ary = xalloc(ary, sizeof(*ary) * len);
-
-        res->type = type_array;
-        res->array_val = ary;
-
-        for(uint32_t i = 0; i < arr->Length(); i++) {
-            Local<Value> element = arr->Get(context, i).ToLocalChecked();
-            BinaryValue *bin_value = convert_v8_to_binary(isolate, context, element);
-            if (bin_value == NULL) {
-                goto err;
-            }
-            ary[i] = bin_value;
-            res->len++;
-        }
-    }
-
-    else if (value->IsFunction()){
-        res->type = type_function;
-    }
-
-    else if (value->IsSymbol()){
-        res->type = type_symbol;
-    }
-
-    else if (value->IsDate()) {
-        res->type = type_date;
-        Local<Date> date = Local<Date>::Cast(value);
-
-        double timestamp = date->ValueOf();
-        res->double_val = timestamp;
-    }
-
-    else if (value->IsObject()) {
-        res->type = type_hash;
-
-        TryCatch trycatch(isolate);
-
-        Local<Object> object = value->ToObject(context).ToLocalChecked();
-        MaybeLocal<Array> maybe_props = object->GetOwnPropertyNames(context);
-        if (!maybe_props.IsEmpty()) {
-            Local<Array> props = maybe_props.ToLocalChecked();
-            uint32_t hash_len = props->Length();
-
-            if (hash_len > 0) {
-                res->hash_val = xalloc(res->hash_val,
-                                       sizeof(*res->hash_val) * hash_len * 2);
-            }
-
-            for (uint32_t i = 0; i < hash_len; i++) {
-
-                MaybeLocal<Value> maybe_pkey = props->Get(context, i);
-                if (maybe_pkey.IsEmpty()) {
-			goto err;
-		}
-		Local<Value> pkey = maybe_pkey.ToLocalChecked();
-                MaybeLocal<Value> maybe_pvalue = object->Get(context, pkey);
-                // this may have failed due to Get raising
-                if (maybe_pvalue.IsEmpty() || trycatch.HasCaught()) {
-                    // TODO: factor out code converting exception in
-                    //       nogvl_context_eval() and use it here/?
-                    goto err;
-                }
-
-                BinaryValue *bin_key = convert_v8_to_binary(isolate, context, pkey);
-                BinaryValue *bin_value = convert_v8_to_binary(isolate, context, maybe_pvalue.ToLocalChecked());
-
-                if (!bin_key || !bin_value) {
-                    BinaryValueFree(bin_key);
-                    BinaryValueFree(bin_value);
-                    goto err;
-                }
-
-                res->hash_val[i * 2]     = bin_key;
-                res->hash_val[i * 2 + 1] = bin_value;
-                res->len++;
-            }
-        } // else empty hash
-    }
-
-    else {
-        Local<String> rstr = value->ToString(context).ToLocalChecked();
-
-        res->type = type_str_utf8;
-        res->len = size_t(rstr->Utf8Length(isolate)); // in bytes
-        size_t capacity = res->len + 1;
-        res->str_val = xalloc(res->str_val, capacity);
-        rstr->WriteUtf8(isolate, res->str_val);
-    }
-    return res;
-
-err:
-    BinaryValueFree(res);
-    return NULL;
 }
 
 

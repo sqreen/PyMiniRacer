@@ -1,6 +1,11 @@
 #pragma once
 #include <stdio.h>
 #include <stdlib.h>
+
+#include <chrono>
+#include <map>
+#include <ratio>
+
 #include <v8.h>
 
 namespace v8 {
@@ -80,34 +85,61 @@ enum class PickleOpCode : uint8_t {
 	// value:double
 	kBinFloat = 'G',
 	// size:uint32_t long:size * bytes
-	kLong4 = 0x8B
+	kLong4 = 0x8B,
+	// length:uint32_t string: length * bytes
+	kBinUnicode = 'X',
+	// index:int32_t
+	kLongBinGet = 'j',
+	// index:int32_t
+	kLongBinPut = 'r',
+	kEmptyList = ']',
+	kMark = '(',
+	kAppends = 'e',
+	kEmptyDict = '}',
+	kSetItems = 'u',
+	kSetItem = 's',
+	// module:line object:line
+	kGlobal = 'c',
+	// cls args
+	kNewObj = 0x81,
+	kTuple = 't',
+
 };
 
 
 class PickleSerializer
 {
 	public:
-		PickleSerializer(Isolate * isolate);
+		PickleSerializer(Isolate * isolate, Local<Context> context);
 		~PickleSerializer();
 
 		void WriteSize(uint32_t size);
+		void WriteInt(int32_t i);
 
 		void WriteProto();
+		void WriteValue(Local<Value> value);
 		void WriteStop();
+
 		void WriteNone();
 		void WriteBoolean(Boolean * boolean);
 		void WriteInt32(Int32 * value);
 		void WriteNumber(Number * value);
 		void WriteBigInt(BigInt * value);
+		void WriteDate(Date * value);
+		void WriteString(Local<String> value);
+		void WriteObject(Local<Object> value);
 
 		std::pair<uint8_t *, size_t> Release();
 	private:
+		void WriteBatchContent(Local<Array> value, PickleOpCode op);
 		void WriteOpCode(PickleOpCode code);
 		void WriteRawBytes(void const * source, size_t length);
 		Maybe<uint8_t *> ReserveRawBytes(size_t bytes);
 		Maybe<bool> ExpandBuffer(size_t required_capacity);
 
 		Isolate * const isolate_;
+		Local<Context> context_;
+		std::map<int, std::pair<uint32_t, Local<Object>>> memo_;
 		uint8_t * buffer_ = nullptr;
 		size_t buffer_size_ = 0;
 		size_t buffer_capacity_ = 0;
