@@ -52,7 +52,9 @@ void BinaryValueFree(BinaryValue *v) {
 
 
 PickleSerializer::PickleSerializer(Isolate * isolate, Local<Context> context):
-	isolate_(isolate), context_(context) {}
+	isolate_(isolate), context_(context) {
+	WriteProto();
+}
 
 PickleSerializer::~PickleSerializer() {
 	if (buffer_) {
@@ -85,7 +87,7 @@ Maybe<uint8_t *> PickleSerializer::ReserveRawBytes(size_t bytes) {
   size_t new_size = old_size + bytes;
   if (new_size > buffer_capacity_) {
     bool ok;
-    if (!ExpandBuffer(new_size).To(&ok)) {
+    if (!ExpandBuffer(new_size).To(&ok) || !ok) {
       return Nothing<uint8_t *>();
     }
   }
@@ -101,14 +103,16 @@ void PickleSerializer::WriteRawBytes(void const * source, size_t length) {
   }
 }
 
-
-std::pair<uint8_t *, size_t> PickleSerializer::Release() {
-	Isolate::Scope isolate_scope(isolate_);
+Maybe<std::pair<uint8_t *, size_t>> PickleSerializer::Release() {
+	WriteStop();
+	if (out_of_memory_) {
+		return Nothing<std::pair<uint8_t *, size_t>>();
+	}
 	auto result = std::make_pair(buffer_, buffer_size_);
 	buffer_ = nullptr;
 	buffer_size_ = 0;
 	buffer_capacity_ = 0;
-	return result;
+	return Just(result);
 }
 
 void PickleSerializer::WriteOpCode(PickleOpCode code) {
@@ -170,9 +174,11 @@ void PickleSerializer::WriteSize(uint32_t size) {
 	WriteRawBytes(raw, sizeof(size));
 }
 
-void PickleSerializer::WriteBigInt(BigInt * value) {
+Maybe<bool> PickleSerializer::WriteBigInt(BigInt * value) {
 	int wc = value->WordCount();
-	// TODO integer overflow check
+	if (wc > static_cast<int>(UINT32_MAX / sizeof(uint64_t) - 1)) {
+		return Nothing<bool>();
+	}
 	uint32_t length = wc * sizeof(uint64_t) + 1;
 	int negative = 0;
 	uint8_t * dest;
@@ -193,6 +199,7 @@ void PickleSerializer::WriteBigInt(BigInt * value) {
 			dest[length - 1] = 0x00;
 		}
 	}
+	return Just(true);
 }
 
 void PickleSerializer::WriteString(Local<String> value) {
@@ -225,7 +232,7 @@ void PickleSerializer::WriteBatchContent(Local<Array> value, PickleOpCode op) {
 	}
 }
 
-void PickleSerializer::WriteObject(Local<Object> value) {
+Maybe<bool> PickleSerializer::WriteObject(Local<Object> value) {
 	TryCatch trycatch(isolate_);
 	Context::Scope scope(context_);
 
@@ -235,9 +242,12 @@ void PickleSerializer::WriteObject(Local<Object> value) {
 	if (memoed.first) {
 		WriteOpCode(PickleOpCode::kLongBinGet);
 		WriteSize(memoed.first - 1);
-		return;
+		return Just(true);
 	}
-	// TODO overflow check
+
+	if (memo_.size() > UINT32_MAX - 1) {
+		return Nothing<bool>();
+	}
 	memoed.first = static_cast<uint32_t>(memo_.size());
 	memoed.second = value;
 
@@ -265,7 +275,7 @@ void PickleSerializer::WriteObject(Local<Object> value) {
 
 				if (!keys->Get(context_, i).ToLocal(&key)
 				    || !value->Get(context_, key).ToLocal(&item)) {
-					continue;
+					return Nothing<bool>();
 				}
 				WriteValue(key);
 				WriteValue(item);
@@ -273,10 +283,11 @@ void PickleSerializer::WriteObject(Local<Object> value) {
 			}
 		}
 	}
-	// TODO Throw if error
+	return (out_of_memory_) ? Nothing<bool>() : Just(true);
 }
 
 void PickleSerializer::WriteDate(Date * value) {
+	// TODO check local time vs UTC
 	std::time_t dt = std::chrono::system_clock::to_time_t(std::chrono::system_clock::time_point(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::duration<double, std::milli>(value->ValueOf()))));
 	std::tm tm = *std::gmtime(&dt);
 
@@ -295,8 +306,7 @@ void PickleSerializer::WriteDate(Date * value) {
 	WriteOpCode(PickleOpCode::kNewObj);
 }
 
-void PickleSerializer::WriteValue(Local<Value> value) {
-	// Use v8::internal GetInstanceType
+Maybe<bool> PickleSerializer::WriteValue(Local<Value> value) {
 	if (value->IsNull() || value->IsUndefined()) {
 		WriteNone();
 	} else if (value->IsBoolean()) {
@@ -305,20 +315,20 @@ void PickleSerializer::WriteValue(Local<Value> value) {
 		WriteInt32(Int32::Cast(*value));
 	} else if (value->IsNumber()) {
 		WriteNumber(Number::Cast(*value));
-	} else if (value->IsBigInt()) {
-		WriteBigInt(BigInt::Cast(*value));
 	} else if (value->IsString()) {
 		WriteString(Local<String>::Cast(value));
 	} else if (value->IsSymbol()) {
 		WriteValue(Symbol::Cast(*value)->Name());
 	} else if (value->IsDate()) {
 		WriteDate(Date::Cast(*value));
+	} else if (value->IsBigInt()) {
+		return WriteBigInt(BigInt::Cast(*value));
 	} else if (value->IsObject()) {
-		WriteObject(Local<Object>::Cast(value));
+		return WriteObject(Local<Object>::Cast(value));
 	} else {
-		// TODO Throw if not serializable
+		return Just(false);
 	}
-	// TODO Throw an error if allocation failed
+	return (out_of_memory_) ? Nothing<bool>() : Just(true);
 }
 
 BinaryValue * convert_v8_to_pickle(Isolate * isolate,
@@ -328,16 +338,15 @@ BinaryValue * convert_v8_to_pickle(Isolate * isolate,
 	Isolate::Scope isolate_scope(isolate);
 	HandleScope scope(isolate);
 	PickleSerializer serializer = PickleSerializer(isolate, context);
-
-	serializer.WriteProto();
 	serializer.WriteValue(value);
-	serializer.WriteStop();
 
-	auto ret = serializer.Release();
 	BinaryValue *res = new (xalloc(res)) BinaryValue();
-        res->type = type_pickle;
-        res->buf = std::get<0>(ret);
-	res->len = std::get<1>(ret);
+	std::pair<uint8_t *, size_t> ret;
+	if (serializer.Release().To(&ret)) {
+		res->type = type_pickle;
+		res->buf = std::get<0>(ret);
+		res->len = std::get<1>(ret);
+	}
 	return res;
 }
 

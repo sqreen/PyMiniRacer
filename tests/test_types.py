@@ -96,7 +96,7 @@ class Test(unittest.TestCase):
 
     def test_function(self):
         res = self.mr.eval('var a = function(){}; a')
-        self.assertTrue(isinstance(res, py_mini_racer.JSFunction))
+        self.assertEqual(res, {})
 
     def test_bigint(self):
         res = self.mr.eval('var a = BigInt("0x1fffffffffffff"); a')
@@ -126,7 +126,7 @@ class Test(unittest.TestCase):
     def test_date(self):
         res = self.mr.eval("var a = new Date(Date.UTC(2014, 0, 2, 3, 4, 5)); a")
         self.assertEqual(res, datetime(2014, 1, 2, 3, 4, 5))
-        res = self.mr.eval('var a = new Date("1995-12-17T03:24:00"); a')
+        res = self.mr.eval('var a = new Date("1995-12-17T03:24:00Z"); a')
         self.assertEqual(res, datetime(1995, 12, 17, 3, 24))
 
     def test_exception(self):
@@ -139,7 +139,7 @@ class Test(unittest.TestCase):
         self.mr.eval(js_source)
 
         with self.assertRaises(py_mini_racer.JSEvalException) as cm:
-            self.mr.eval("f(42)")
+            print(self.mr.eval("f(42)"))
 
         self.assertIn('error: 42', cm.exception.args[0])
 

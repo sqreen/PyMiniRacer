@@ -404,60 +404,34 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
     // NOTE: this is very important, we can not do an raise from within
     // a v8 scope, if we do the scope is never cleaned up properly and we leak
     if (!eval_result.parsed) {
-        result = xalloc(result);
-        result->type = type_parse_exception;
-
-        if (bmessage && bmessage->type == type_str_utf8) {
-            // canibalize bmessage
-            result->str_val = bmessage->str_val;
-            result->len = bmessage->len;
-            free(bmessage);
-            bmessage = NULL;
+        if (bmessage) {
+            result = bmessage;
         } else {
+            result = xalloc(result);
+            result->type = type_parse_exception;
             result->str_val = strdup("Unknown JavaScript error during parse");
             result->len = result->str_val ? strlen(result->str_val) : 0;
         }
     }
-
     else if (!eval_result.executed) {
-        result = xalloc(result);
-        result->str_val = nullptr;
-
-        bool mem_softlimit_reached = (bool)context_info->isolate->GetData(MEM_SOFTLIMIT_REACHED);
-        if (mem_softlimit_reached) {
-            result->type = type_oom_exception;
+        if (bmessage) {
+            result = bmessage;
         } else {
-            if (eval_result.timed_out) {
-                result->type = type_timeout_exception;
+            result = xalloc(result);
+            bool mem_softlimit_reached = (bool)context_info->isolate->GetData(MEM_SOFTLIMIT_REACHED);
+            if (mem_softlimit_reached) {
+                result->type = type_oom_exception;
             } else {
-                result->type = type_execute_exception;
+                if (eval_result.timed_out) {
+                    result->type = type_timeout_exception;
+                } else {
+                    result->type = type_execute_exception;
+                }
             }
-        }
-
-        if (bmessage && bmessage->type == type_str_utf8 &&
-                bbacktrace && bbacktrace->type == type_str_utf8) {
-            // +1 for \n, +1 for NUL terminator
-            size_t dest_size = bmessage->len + bbacktrace->len + 1 + 1;
-            char *dest = xalloc(dest, dest_size);
-            memcpy(dest, bmessage->str_val, bmessage->len);
-            dest[bmessage->len] = '\n';
-            memcpy(dest + bmessage->len + 1, bbacktrace->str_val, bbacktrace->len);
-            dest[dest_size - 1] = '\0';
-
-            result->str_val = dest;
-            result->len = dest_size - 1;
-        } else if(bmessage && bmessage->type == type_str_utf8) {
-            // canibalize bmessage
-            result->str_val = bmessage->str_val;
-            result->len = bmessage->len;
-            free(bmessage);
-            bmessage = NULL;
-        } else {
             result->str_val = strdup("Unknown JavaScript error during execution");
             result->len = result->str_val ? strlen(result->str_val) : 0;
         }
     }
-
     else {
         Locker lock(context_info->isolate);
         Isolate::Scope isolate_scope(context_info->isolate);
@@ -467,7 +441,9 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         result = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
     }
 
-    BinaryValueFree(bmessage);
+    if (result != bmessage) {
+        BinaryValueFree(bmessage);
+    }
     BinaryValueFree(bbacktrace);
 
     return result;

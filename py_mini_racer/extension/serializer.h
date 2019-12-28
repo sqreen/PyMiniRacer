@@ -113,27 +113,30 @@ class PickleSerializer
 		PickleSerializer(Isolate * isolate, Local<Context> context);
 		~PickleSerializer();
 
+		Maybe<bool> WriteValue(Local<Value> value);
+		Maybe<bool> WriteObject(Local<Object> value);
+		Maybe<std::pair<uint8_t *, size_t>> Release();
+
+	private:
 		void WriteSize(uint32_t size);
 		void WriteInt(int32_t i);
 
 		void WriteProto();
-		void WriteValue(Local<Value> value);
 		void WriteStop();
 
 		void WriteNone();
 		void WriteBoolean(Boolean * boolean);
 		void WriteInt32(Int32 * value);
 		void WriteNumber(Number * value);
-		void WriteBigInt(BigInt * value);
 		void WriteDate(Date * value);
 		void WriteString(Local<String> value);
-		void WriteObject(Local<Object> value);
 
-		std::pair<uint8_t *, size_t> Release();
-	private:
 		void WriteBatchContent(Local<Array> value, PickleOpCode op);
 		void WriteOpCode(PickleOpCode code);
 		void WriteRawBytes(void const * source, size_t length);
+
+		Maybe<bool> WriteBigInt(BigInt * value);
+
 		Maybe<uint8_t *> ReserveRawBytes(size_t bytes);
 		Maybe<bool> ExpandBuffer(size_t required_capacity);
 
