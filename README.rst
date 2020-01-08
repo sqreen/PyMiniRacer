@@ -111,6 +111,7 @@ The PyMiniRacer binary builds have been tested on x86_64 with:
 * Debian >= 7
 * CentOS >= 6
 * The latest Alpine Linux Docker image
+* Windows 10
 
 You need pip >= 8.1 to install the wheels - you can check and upgrade yours in this way:
 
@@ -131,8 +132,7 @@ If you have a up-to-date pip and it doesn't use a wheel, you might have an envir
 Installation
 ------------
 
-We built Python wheels (prebuilt binaries) for OSX 64 bits and Linux 64 bits -
-most recent distributions. You need pip >= 1.4 and setuptools >= 0.8.
+We built Python wheels (prebuilt binaries) for macOS 64 bits, Linux 64 bits and Windows 64 bits. You need pip >= 1.4 and setuptools >= 0.8.
 
 .. code:: bash
 
@@ -156,25 +156,17 @@ by the V8 build system.
     $ python --version
     Python 2.7.16
 
-You can then build V8 with the command:
-
-.. code:: bash
-
-    $ python setup.py build_v8
-
-You can also build the ctype extension:
+You can build the extension with the following command:
 
 .. code:: bash
 
     $ python setup.py build_ext
 
-Which automatically builds v8.
-
 You can generate a wheel for whatever Python version with the command:
 
 .. code:: bash
 
-    $ python setup.py build_v8  # (for Python 2 and Python 3)
+    $ python setup.py build_ext  # (for Python 2 and Python 3)
     $ python setup.py bdist_wheel  # (for Python 2 only)
     $ python3 setup.py bdist_wheel  # (for Python 3 only)
 
@@ -198,7 +190,7 @@ If you're having build issues, you may either have to run the build a second tim
 Tests
 -----
 
-If you want to run the tests, you need to build V8 first, then launch:
+If you want to run the tests, you need to build the extension first, then launch:
 
 .. code:: bash
 

@@ -10,15 +10,20 @@ jobs:
        versionSpec: '3.6'
        architecture: x64
    - checkout: self
-   - bash: python3 setup.py sdist --dist-dir wheelhouse
+   - bash: python setup.py sdist --dist-dir wheelhouse
    - template: helpers/release.yml
 - job: mac
   pool: {vmImage: 'macOS-10.13'}
   steps:
-   - bash: sudo xcode-select -s /Applications/Xcode_8.3.3.app/Contents/Developer
-   - task: UsePythonVersion@0
-     inputs:
-       versionSpec: '3.6'
-       architecture: x64
    - checkout: self
+   - template: helpers/release.yml
+- job: windows
+  pool: {vmImage: 'vs2017-win2016'}
+  steps:
+   - script: git config --global core.symlinks true
+   - checkout: self
+   - powershell: |
+       Remove-Item C:\ProgramData\Chocolatey\bin\python2.7.exe -force
+       Remove-Item C:\ProgramData\Chocolatey\bin\python2.exe -force
+     displayName: Remove extraneous Python Interpreters
    - template: helpers/release.yml
