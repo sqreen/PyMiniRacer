@@ -16,7 +16,6 @@
 #endif
 
 
-
 template<class T> static inline T* xalloc(T*& ptr, size_t x = sizeof(T))
 {
     void *tmp = malloc(x);
@@ -127,6 +126,10 @@ struct ContextInfo {
     Persistent<Context>* context;
     ArrayBufferAllocator* allocator;
     bool interrupted;
+    size_t soft_memory_limit;
+    bool soft_memory_limit_reached;
+    size_t hard_memory_limit;
+    bool hard_memory_limit_reached;
 };
 
 struct EvalResult {
@@ -162,25 +165,28 @@ typedef struct {
     size_t max_memory;
 } EvalParams;
 
-enum IsolateFlags {
-    MEM_SOFTLIMIT_VALUE,
-    MEM_SOFTLIMIT_REACHED,
+enum IsolateData {
+    CONTEXT_INFO,
 };
 
 static std::unique_ptr<Platform> current_platform = NULL;
 static std::mutex platform_lock;
 
 static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
-    if((bool)isolate->GetData(MEM_SOFTLIMIT_REACHED)) return;
+    ContextInfo * context_info = (ContextInfo *)isolate->GetData(CONTEXT_INFO);
 
-    size_t softlimit = *(size_t*) isolate->GetData(MEM_SOFTLIMIT_VALUE);
+    if (context_info == nullptr) {
+        return;
+    }
 
     HeapStatistics stats;
     isolate->GetHeapStatistics(&stats);
     size_t used = stats.used_heap_size();
 
-    if(used > softlimit) {
-        isolate->SetData(MEM_SOFTLIMIT_REACHED, (void*)true);
+    context_info->soft_memory_limit_reached = (used > context_info->soft_memory_limit);
+    isolate->MemoryPressureNotification((context_info->soft_memory_limit_reached) ? v8::MemoryPressureLevel::kModerate : v8::MemoryPressureLevel::kNone);
+    if(used > context_info->hard_memory_limit) {
+        context_info->hard_memory_limit_reached = true;
         isolate->TerminateExecution();
     }
 }
@@ -210,6 +216,11 @@ static void breaker(std::timed_mutex& breaker_mutex, void * d) {
   }
 }
 
+static void set_hard_memory_limit(ContextInfo *context_info, size_t limit) {
+    context_info->hard_memory_limit = limit;
+    context_info->hard_memory_limit_reached = false;
+}
+
 static void* nogvl_context_eval(void* arg) {
     EvalParams* eval_params = (EvalParams*)arg;
     EvalResult* result = eval_params->result;
@@ -223,10 +234,7 @@ static void* nogvl_context_eval(void* arg) {
 
     Context::Scope context_scope(context);
 
-    // Memory softlimit
-    isolate->SetData(MEM_SOFTLIMIT_VALUE, (void*)false);
-    // Memory softlimit hit flag
-    isolate->SetData(MEM_SOFTLIMIT_REACHED, (void*)false);
+    set_hard_memory_limit(eval_params->context_info, eval_params->max_memory);
 
     MaybeLocal<Script> parsed_script = Script::Compile(context, *eval_params->eval);
     result->parsed = !parsed_script.IsEmpty();
@@ -251,7 +259,6 @@ static void* nogvl_context_eval(void* arg) {
         }
         // memory limit
         if (eval_params->max_memory > 0) {
-            isolate->SetData(MEM_SOFTLIMIT_VALUE, &eval_params->max_memory);
             isolate->AddGCEpilogueCallback(gc_callback);
         }
 
@@ -577,8 +584,8 @@ ContextInfo *MiniRacer_init_context()
     init_v8();
 
     ContextInfo* context_info = xalloc(context_info);
+    memset(context_info, 0, sizeof(*context_info));
     context_info->allocator = new ArrayBufferAllocator();
-    context_info->interrupted = false;
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator = context_info->allocator;
 
@@ -592,6 +599,7 @@ ContextInfo *MiniRacer_init_context()
 
     context_info->context = new Persistent<Context>();
     context_info->context->Reset(context_info->isolate, context);
+    context_info->isolate->SetData(CONTEXT_INFO, (void *)context_info);
 
     return context_info;
 }
@@ -681,8 +689,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         result = xalloc(result);
         result->str_val = nullptr;
 
-        bool mem_softlimit_reached = (bool)context_info->isolate->GetData(MEM_SOFTLIMIT_REACHED);
-        if (mem_softlimit_reached) {
+        if (context_info->hard_memory_limit_reached) {
             result->type = type_oom_exception;
         } else {
             if (eval_result.timed_out) {
@@ -779,9 +786,24 @@ LIB_EXPORT BinaryValue * mr_heap_stats(ContextInfo *context_info) {
     return heap_stats(context_info);
 }
 
+LIB_EXPORT void mr_set_hard_memory_limit(ContextInfo *context_info, size_t limit) {
+    set_hard_memory_limit(context_info, limit);
+}
+
+LIB_EXPORT void mr_set_soft_memory_limit(ContextInfo *context_info, size_t limit) {
+    context_info->soft_memory_limit = limit;
+    context_info->soft_memory_limit_reached = false;
+}
+
+LIB_EXPORT bool mr_soft_memory_limit_reached(ContextInfo *context_info) {
+    return context_info->soft_memory_limit_reached;
+}
+
 LIB_EXPORT void mr_low_memory_notification(ContextInfo *context_info) {
     context_info->isolate->LowMemoryNotification();
 }
+
+
 
 // FOR DEBUGGING ONLY
 LIB_EXPORT BinaryValue * mr_heap_snapshot(ContextInfo *context_info) {
