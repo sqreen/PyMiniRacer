@@ -99,18 +99,17 @@ V8 heap information can be retrieved:
 Compatibility
 -------------
 
-PyMiniRacer is compatible with Python 2 and Python 3. Wheels are generated for python 2.7 and python 3.4 to python 3.7.
+PyMiniRacer is compatible with Python 2 and Python 3. Wheels are generated for python 2.7 and python 3.4 to python 3.8.
 
 Binary builds availability
 --------------------------
 
 The PyMiniRacer binary builds have been tested on x86_64 with:
 
-* OSX 10.10
-* Ubuntu >= 12.04
-* Debian >= 7
-* CentOS >= 6
-* The latest Alpine Linux Docker image
+* macOS >= 10.13
+* Ubuntu >= 16.04
+* Debian >= 9
+* CentOS >= 7
 * Windows 10
 
 You need pip >= 8.1 to install the wheels - you can check and upgrade yours in this way:
@@ -182,10 +181,6 @@ The legacy Python binary builds (OSX 10.6) need to be downloaded from:
     https://www.python.org/downloads/
 
 They will allow to build a wheel compatible with former OSX versions.
-
-If you're having build issues, you may either have to run the build a second time (which will be much faster than the first run) or run the following command before running the first build: 
-
-``export LDSHARED="clang++ -bundle -undefined dynamic_lookup -arch i386 -arch x86_64"``
 
 Tests
 -----

@@ -3,6 +3,14 @@
 History
 -------
 
+0.2.0b1 (2020-01-09)
+--------------------
+
+* Support for Windows 64 bits
+* Support for Python 3.8
+* Upgrade V8 to 7.8
+* Support soft memory limits
+
 0.1.18 (2019-01-04)
 ---------------------
 
