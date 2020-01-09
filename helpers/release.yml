@@ -19,6 +19,9 @@ steps:
   displayName: Patch the Wheelhouse
 - task: PublishBuildArtifacts@1
   inputs: {pathtoPublish: "wheelhouse"}
+- script: |
+    pip install twine readme_renderer[md]
+    twine check dist/*.whl
 - task: S3Upload@1
   condition: and(succeeded(), eq(variables['build.sourceBranch'], 'refs/heads/master'))
   displayName: Publish Wheelhouse to S3
