@@ -159,7 +159,6 @@ setup(
     version=__version__,
     description="Minimal, modern embedded V8 for Python.",
     long_description=readme + '\n\n' + history,
-    long_description_content_type='text/markdown',
     author='Sqreen',
     author_email='hey@sqreen.io',
     url='https://github.com/sqreen/PyMiniRacer',

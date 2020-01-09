@@ -152,6 +152,7 @@ First check that your current Python executable is version 2.7. This is required
 by the V8 build system.
 
 .. code:: bash
+
     $ python --version
     Python 2.7.16
 
@@ -175,7 +176,7 @@ directory.  Please note that you can build Python 3 wheels by reusing the
 cached version of V8 built with Python 2.7.
 
 Notes for building on macOS
-'''''''''''''''''''''''''
+'''''''''''''''''''''''''''
 
 The legacy Python binary builds (OSX 10.6) need to be downloaded from:
     https://www.python.org/downloads/
