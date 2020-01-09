@@ -20,6 +20,7 @@ steps:
 - script: |
     pip install twine readme_renderer[md]
     twine check wheelhouse/*.whl
+  displayName: Check the wheels
 - task: PublishBuildArtifacts@1
   inputs: {pathtoPublish: "wheelhouse"}
 - task: S3Upload@1
