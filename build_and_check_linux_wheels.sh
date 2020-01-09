@@ -16,7 +16,7 @@ fi
 TAG=dockerfile-centos-6
 
 
-for PYVERSION in cp27-cp27mu cp34-cp34m cp35-cp35m cp36-cp36m cp37-cp37m
+for PYVERSION in cp27-cp27mu cp34-cp34m cp35-cp35m cp36-cp36m cp37-cp37m cp38-cp38
 do
     CONT=$(date +%s)A
 

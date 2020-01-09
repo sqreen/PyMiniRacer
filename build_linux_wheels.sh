@@ -15,7 +15,7 @@ docker run \
 docker cp . ${CONT}:${BASE_PATH}
 docker cp _v8.so ${CONT}:.
 
-for PYVERSION in cp27-cp27m cp27-cp27mu cp34-cp34m cp35-cp35m cp36-cp36m cp37-cp37m
+for PYVERSION in cp27-cp27m cp27-cp27mu cp34-cp34m cp35-cp35m cp36-cp36m cp37-cp37m cp38-cp38
 do
     docker exec ${CONT} /opt/python/${PYVERSION}/bin/python setup.py sdist
     docker exec ${CONT} /opt/python/${PYVERSION}/bin/python setup.py bdist_wheel

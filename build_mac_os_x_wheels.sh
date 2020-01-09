@@ -13,7 +13,7 @@ if ! [ -f ${GEM} ]; then
 
 fi
 
-for PYVERSION in 2.7 3.4 3.5 3.6 3.7; do
+for PYVERSION in 2.7 3.4 3.5 3.6 3.7 3.8; do
     curl https://bootstrap.pypa.io/get-pip.py | python
     pip install virtualenv
     ORIG_PATH=$PATH

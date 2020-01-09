@@ -6,7 +6,7 @@ set -x
 
 mkdir -p dist
 
-for PYVERSION in 2.7 3.4 3.5 3.6 3.7; do
+for PYVERSION in 2.7 3.4 3.5 3.6 3.7 3.8; do
 
 	CONT=$(date +%s)
 
