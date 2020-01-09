@@ -214,9 +214,3 @@ Tools used in rendering this package:
 
 .. _Cookiecutter: https://github.com/audreyr/cookiecutter
 .. _`cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
-
-Todo
-----
-
-Export V8 version.
-Fix circular structures export.
