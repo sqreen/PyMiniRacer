@@ -35,7 +35,7 @@ jobs:
        versionSpec: '2.7'
        architecture: x64
    - checkout: self
-   - bash: python setup.py build_ext --no-build --no-sysroot
+   - bash: python py_mini_racer/extensions/v8_build.py --no-build --no-sysroot
    - publish: py_mini_racer/extensions/v8
      artifact: sources-for-alpine
 - job: alpine
@@ -46,4 +46,4 @@ jobs:
    - checkout: self
    - download: current
      artifact: sources-for-alpine
-   - bash: python setup.py build_ext --no-sysroot
+   - bash: python py_mini_racer/extensions/v8_build.py --no-sysroot
