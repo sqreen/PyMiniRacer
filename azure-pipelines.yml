@@ -36,7 +36,8 @@ jobs:
        architecture: x64
    - checkout: self
    - bash: python py_mini_racer/extension/v8_build.py --no-build --no-sysroot
-   - publish: py_mini_racer/extension/v8
+   - bash: tar -cf v8.tar py_mini_racer/extension/v8
+   - publish: v8.tar
      artifact: sources-for-alpine
 - job: alpine
   dependsOn:
@@ -46,4 +47,5 @@ jobs:
    - checkout: self
    - download: current
      artifact: sources-for-alpine
-   - bash: python py_mini_racer/extension/v8_build.py --no-sysroot
+   - bash: tar -xf v8.tar
+   - bash: python py_mini_racer/extension/v8_build.py --no-update --no-sysroot

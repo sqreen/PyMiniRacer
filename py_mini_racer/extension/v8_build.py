@@ -269,7 +269,8 @@ __asm__(".symver powf, powf@GLIBC_2.2.5");
             """)
 
 
-def build_v8(target=None, build_path=None, revision=None, no_build=False, no_sysroot=False):
+def build_v8(target=None, build_path=None, revision=None, no_build=False,
+             no_sysroot=False, no_update=False):
     if target is None:
         target = "v8"
     if build_path is None:
@@ -278,8 +279,9 @@ def build_v8(target=None, build_path=None, revision=None, no_build=False, no_sys
     if revision is None:
         revision = V8_VERSION
     install_depot_tools()
-    ensure_v8_src(revision)
-    patch_v8()
+    if not no_update:
+        ensure_v8_src(revision)
+        patch_v8()
     if not no_sysroot and sys.platform.startswith("linux"):
         patch_sysroot()
     prepare_workdir()
@@ -296,6 +298,8 @@ if __name__ == '__main__':
     parser.add_argument("--build-path", default="out", help="Build destination directory (relative to the path)")
     parser.add_argument("--v8-revision", default=V8_VERSION)
     parser.add_argument("--no-build", action="store_true", help="Only prepare workdir")
+    parser.add_argument("--no-update", action="store_true", help="Do not update the workdir")
     parser.add_argument("--no-sysroot", action="store_true", help="Do not use the V8 build sysroot")
     args = parser.parse_args()
-    build_v8(target=args.target, build_path=args.build_path, revision=args.v8_revision, no_build=args.no_build, no_sysroot=args.no_sysroot)
+    build_v8(target=args.target, build_path=args.build_path, revision=args.v8_revision,
+             no_build=args.no_build, no_update=args.no_update, no_sysroot=args.no_sysroot)
