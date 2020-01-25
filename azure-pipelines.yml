@@ -27,7 +27,7 @@ jobs:
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.exe -force
      displayName: Remove extraneous Python Interpreters
    - template: helpers/release.yml
-- job: fetch-sources-for-alpine
+- job: fetch sources for alpine
   pool: {vmImage: 'Ubuntu-16.04'}
   steps:
    - task: UsePythonVersion@0
@@ -40,7 +40,7 @@ jobs:
      artifact: sources-for-alpine
 - job: alpine
   dependsOn:
-   - fetch-sources-for-alpine
+   - fetch sources for alpine
   container: nicolassqreen/azure-pipelines-container-alpine-python:latest
   steps:
    - checkout: self
