@@ -110,6 +110,7 @@ The PyMiniRacer binary builds have been tested on x86_64 with:
 * Ubuntu >= 16.04
 * Debian >= 9
 * CentOS >= 7
+* Alpine >= 3.11
 * Windows 10
 
 You need pip >= 8.1 to install the wheels - you can check and upgrade yours in this way:
@@ -120,11 +121,11 @@ You need pip >= 8.1 to install the wheels - you can check and upgrade yours in t
     $ pip install --upgrade pip
 
 It should work on any Linux with a libc >= 2.12 and a wheel compatible pip (>= 8.1).
-If you're running Alpine Linux, you may need to install `libgcc` manually using the following command:
+If you're running Alpine Linux, you may need to install required dependencies manually using the following command:
 
 .. code-block:: bash
 
-    $ apk add libgcc
+    $ apk add libgcc libstdc++
 
 If you have a up-to-date pip and it doesn't use a wheel, you might have an environment for which no wheel is built. Please open an issue.
 
