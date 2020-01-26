@@ -154,7 +154,6 @@ def gen_makefiles(build_path, no_sysroot=False):
             if no_sysroot:
                 opts.update({
                     "treat_warnings_as_errors": "false",
-                    "use_custom_libcxx": "false",
                     "use_sysroot": "false",
                     "clang_use_chrome_plugins": "false",
                     "clang_base_path": "\"/usr\"",

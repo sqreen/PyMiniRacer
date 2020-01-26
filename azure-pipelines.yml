@@ -44,7 +44,7 @@ jobs:
    - checkout: self
    - bash: python py_mini_racer/extension/v8_build.py --no-build --no-sysroot
      displayName: Download V8 sources
-   - bash: tar -czf v8.tar.gz py_mini_racer/extension/.gclient py_mini_racer/extension/.gclient_entries py_mini_racer/extension/depot_tools py_mini_racer/extension/v8
+   - bash: tar -czf v8.tar.gz py_mini_racer/extension
      displayName: Archive V8 sources
    - publish: v8.tar.gz
      artifact: sources-for-alpine
@@ -59,7 +59,7 @@ jobs:
      artifact: sources-for-alpine
    - bash: |
        echo Extracting in $PWD
-       tar -xvf $(Pipeline.Workspace)/sources-for-alpine/v8.tar.gz
+       tar -xf $(Pipeline.Workspace)/sources-for-alpine/v8.tar.gz
      displayName: Extract V8 sources
    - bash: |
        sudo apk add ninja llvm lld linux-headers
