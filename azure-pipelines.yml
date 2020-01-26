@@ -61,8 +61,8 @@ jobs:
      displayName: Extract V8 sources
    - bash: |
        sudo apk add ninja llvm lld linux-headers
-       ln -f /usr/local/bin/gn py_mini_racer/extension/v8/buildtools/linux64/gn
-       rm py_mini_racer/extension/v8/depot_tools/ninja
+       cp -f /usr/local/bin/gn py_mini_racer/extension/v8/buildtools/linux64/gn
+       rm -f py_mini_racer/extension/depot_tools/ninja
      displayName: Prepare Aline Linux build environment
    - bash: |
        python py_mini_racer/extension/v8_build.py --no-update --no-sysroot --target py_mini_racer_shared_lib
