@@ -9,7 +9,6 @@ import subprocess
 import multiprocessing
 
 from glob import glob
-from os.path import join, dirname, abspath
 from contextlib import contextmanager
 from distutils.dir_util import copy_tree
 
@@ -17,15 +16,14 @@ from distutils.dir_util import copy_tree
 logging.basicConfig()
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
-
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 V8_VERSION = "branch-heads/7.8"
 
 
 def local_path(path="."):
     """ Return path relative to this file
     """
-    current_path = dirname(__file__)
-    return abspath(join(current_path, path))
+    return os.path.abspath(os.path.join(ROOT_DIR, path))
 
 
 PATCHES_PATH = local_path('../../patches')
@@ -90,7 +88,7 @@ def ensure_v8_src(revision):
 def fetch_v8(path):
     """ Fetch v8
     """
-    with chdir(abspath(path), make=True):
+    with chdir(os.path.abspath(path), make=True):
         call("fetch --nohooks v8")
 
 
@@ -183,7 +181,7 @@ def patch_v8():
 def symlink_force(target, link_name):
     LOGGER.debug("Creating symlink to %s on %s", target, link_name)
     if sys.platform == "win32":
-        call(["mklink", "/d", abspath(link_name), abspath(target)])
+        call(["mklink", "/d", os.path.abspath(link_name), os.path.abspath(target)])
     else:
         try:
             os.symlink(target, link_name)

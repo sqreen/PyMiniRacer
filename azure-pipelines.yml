@@ -47,8 +47,9 @@ jobs:
    - checkout: self
    - download: current
      artifact: sources-for-alpine
-   - bash: tar -xf sources-for-alpine/v8.tar.gz
+   - bash: tar -xf $(Pipeline.Workspace)/sources-for-alpine/v8.tar.gz
    - bash: |
-       sudo apk add llvm lld linux-headers
+       sudo apk add ninja llvm lld linux-headers
        ln -f /usr/local/bin/gn py_mini_racer/extension/v8/buildtools/linux64/gn
+       rm py_mini_racer/extension/v8/depot_tools/ninja
    - bash: python py_mini_racer/extension/v8_build.py --no-update --no-sysroot
