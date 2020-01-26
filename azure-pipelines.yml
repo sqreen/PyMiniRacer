@@ -3,6 +3,7 @@ trigger:
 
 jobs:
 - job: linux
+  displayName: Build on Linux
   pool: {vmImage: 'Ubuntu-16.04'}
   steps:
    - task: UsePythonVersion@0
@@ -11,13 +12,17 @@ jobs:
        architecture: x64
    - checkout: self
    - bash: python setup.py sdist --dist-dir wheelhouse
+   - template: helpers/cibuild.yml
    - template: helpers/release.yml
 - job: mac
+  displayName: Build on macOS
   pool: {vmImage: 'macOS-10.13'}
   steps:
    - checkout: self
+   - template: helpers/cibuild.yml
    - template: helpers/release.yml
 - job: windows
+  displayName: Build on Windows
   pool: {vmImage: 'vs2017-win2016'}
   steps:
    - script: git config --global core.symlinks true
@@ -26,8 +31,10 @@ jobs:
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.7.exe -force
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.exe -force
      displayName: Remove extraneous Python Interpreters
+   - template: helpers/cibuild.yml
    - template: helpers/release.yml
 - job: fetch_sources_for_alpine
+  displayName: Prepare build on Alpine Linux
   pool: {vmImage: 'Ubuntu-16.04'}
   steps:
    - task: UsePythonVersion@0
@@ -40,6 +47,7 @@ jobs:
    - publish: v8.tar.gz
      artifact: sources-for-alpine
 - job: alpine
+  displayName: Build on Alpine Linux
   dependsOn:
    - fetch_sources_for_alpine
   container: nicolassqreen/azure-pipelines-container-alpine-python:latest
@@ -52,4 +60,12 @@ jobs:
        sudo apk add ninja llvm lld linux-headers
        ln -f /usr/local/bin/gn py_mini_racer/extension/v8/buildtools/linux64/gn
        rm py_mini_racer/extension/v8/depot_tools/ninja
-   - bash: python py_mini_racer/extension/v8_build.py --no-update --no-sysroot
+   - bash: |
+       python py_mini_racer/extension/v8_build.py --no-update --no-sysroot
+       for i in cp27-cp27mu cp35-cp35m cp36-cp36m cp37-cp37m cp38-cp38; do
+         sudo /opt/python/$i/bin/pip install wheel pytest six
+         /opt/python/$i/bin/python setup.py bdist_wheel -d wheelhouse
+         sudo /opt/python/$i/bin/python setup.py develop --no-deps
+         /opt/python/$i/bin/pytest tests
+       done
+   - template: helpers/release.yml

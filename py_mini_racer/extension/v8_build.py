@@ -7,8 +7,8 @@ import os
 import os.path
 import subprocess
 import multiprocessing
+import glob
 
-from glob import glob
 from contextlib import contextmanager
 from distutils.dir_util import copy_tree
 
@@ -206,7 +206,7 @@ def fixup_libtinfo(dir):
     if not found_v6:
         return ''
 
-    symlink_force(found_v6, join(dir, 'libtinfo.so.5'))
+    symlink_force(found_v6, os.path.join(dir, 'libtinfo.so.5'))
     return "LD_LIBRARY_PATH='{}:{}'"\
         .format(dir, os.getenv('LD_LIBRARY_PATH', ''))
 
@@ -220,7 +220,7 @@ def apply_patches(path, patches_path):
         with open('.applied_patches', 'r+') as applied_patches_file:
             applied_patches = set(applied_patches_file.read().splitlines())
 
-            for patch in glob(join(patches_path, '*.patch')):
+            for patch in glob.glob(os.path.join(patches_path, '*.patch')):
                 if patch not in applied_patches:
                     call("patch -p1 -N < {}".format(patch))
                     applied_patches_file.write(patch + "\n")
