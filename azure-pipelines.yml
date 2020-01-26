@@ -43,7 +43,9 @@ jobs:
        architecture: x64
    - checkout: self
    - bash: python py_mini_racer/extension/v8_build.py --no-build --no-sysroot
+     displayName: Download V8 sources
    - bash: tar -czf v8.tar.gz py_mini_racer/extension/v8
+     displayName: Archive V8 sources
    - publish: v8.tar.gz
      artifact: sources-for-alpine
 - job: alpine
@@ -56,16 +58,21 @@ jobs:
    - download: current
      artifact: sources-for-alpine
    - bash: tar -xf $(Pipeline.Workspace)/sources-for-alpine/v8.tar.gz
+     displayName: Extract V8 sources
    - bash: |
        sudo apk add ninja llvm lld linux-headers
        ln -f /usr/local/bin/gn py_mini_racer/extension/v8/buildtools/linux64/gn
        rm py_mini_racer/extension/v8/depot_tools/ninja
+     displayName: Prepare Aline Linux build environment
    - bash: |
-       python py_mini_racer/extension/v8_build.py --no-update --no-sysroot
+       python py_mini_racer/extension/v8_build.py --no-update --no-sysroot --target py_mini_racer_shared_lib
+     displayName: Build the extension
+   - bash: |
        for i in cp27-cp27mu cp35-cp35m cp36-cp36m cp37-cp37m cp38-cp38; do
-         sudo /opt/python/$i/bin/pip install wheel pytest six
+         sudo /opt/python/$i/bin/pip install wheel pytest
          /opt/python/$i/bin/python setup.py bdist_wheel -d wheelhouse
          sudo /opt/python/$i/bin/python setup.py develop --no-deps
          /opt/python/$i/bin/pytest tests
        done
+     displayName: Build the Wheelhouse
    - template: helpers/release.yml
