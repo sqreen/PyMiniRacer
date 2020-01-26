@@ -1,4 +1,0 @@
--r prod.txt
-tox
-pytest
-six

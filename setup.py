@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import os
-import pip
 import sys
 import io
 import pkg_resources
@@ -37,35 +36,6 @@ with io.open('README.rst', 'r', encoding='utf8') as readme_file:
 
 with io.open('HISTORY.rst', 'r', encoding='utf8') as history_file:
     history = history_file.read().replace('.. :changelog:', '')
-
-
-def _parse_requirements(filepath):
-    pip_version = list(map(int, pkg_resources.get_distribution('pip').version.split('.')[:2]))
-    if pip_version >= [10, 0]:
-        from pip._internal.download import PipSession
-        from pip._internal.req import parse_requirements
-        raw = parse_requirements(filepath, session=PipSession())
-    elif pip_version >= [6, 0]:
-        from pip.download import PipSession
-        from pip.req import parse_requirements
-        raw = parse_requirements(filepath, session=PipSession())
-    else:
-        from pip.req import parse_requirements
-        raw = parse_requirements(filepath)
-
-    return [str(i.req) for i in raw]
-
-
-requirements = _parse_requirements('requirements/prod.txt')
-setup_requires = _parse_requirements('requirements/setup.txt')
-test_requirements = _parse_requirements('requirements/test.txt')
-
-
-def local_path(path):
-    """ Return path relative to this file
-    """
-    current_path = dirname(__file__)
-    return abspath(join(current_path, path))
 
 
 def check_python_version():
@@ -170,8 +140,6 @@ setup(
     package_dir={'py_mini_racer':
                  'py_mini_racer'},
     include_package_data=True,
-    setup_requires=setup_requires,
-    install_requires=requirements,
     license="ISCL",
     zip_safe=False,
     keywords='py_mini_racer',
@@ -190,7 +158,11 @@ setup(
         'Programming Language :: Python :: 3.8',
     ],
     test_suite='tests',
-    tests_require=test_requirements,
+    tests_require=[
+        "tox",
+        "six",
+        "pytest",
+    ],
     cmdclass={
         "build_ext": MiniRacerBuildExt,
     }
