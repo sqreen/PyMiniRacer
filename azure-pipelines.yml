@@ -34,7 +34,7 @@ jobs:
    - template: helpers/cibuild.yml
    - template: helpers/release.yml
 - job: fetch_sources_for_alpine
-  displayName: Prepare build on Alpine Linux
+  displayName: Prepare build for Alpine Linux
   pool: {vmImage: 'Ubuntu-16.04'}
   steps:
    - task: UsePythonVersion@0
@@ -44,7 +44,7 @@ jobs:
    - checkout: self
    - bash: python py_mini_racer/extension/v8_build.py --no-build --no-sysroot
      displayName: Download V8 sources
-   - bash: tar -czf v8.tar.gz py_mini_racer/extension/v8
+   - bash: tar -czf v8.tar.gz py_mini_racer/extension/depot_tools py_mini_racer/extension/v8
      displayName: Archive V8 sources
    - publish: v8.tar.gz
      artifact: sources-for-alpine
@@ -57,7 +57,9 @@ jobs:
    - checkout: self
    - download: current
      artifact: sources-for-alpine
-   - bash: tar -xf $(Pipeline.Workspace)/sources-for-alpine/v8.tar.gz
+   - bash: |
+       echo Extracting in $PWD
+       tar -xvf $(Pipeline.Workspace)/sources-for-alpine/v8.tar.gz
      displayName: Extract V8 sources
    - bash: |
        sudo apk add ninja llvm lld linux-headers
