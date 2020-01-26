@@ -44,7 +44,7 @@ jobs:
    - checkout: self
    - bash: python py_mini_racer/extension/v8_build.py --no-build --no-sysroot
      displayName: Download V8 sources
-   - bash: tar -czf v8.tar.gz py_mini_racer/extension/depot_tools py_mini_racer/extension/v8
+   - bash: tar -czf v8.tar.gz py_mini_racer/extension/.gclient py_mini_racer/extension/.gclient_entries py_mini_racer/extension/depot_tools py_mini_racer/extension/v8
      displayName: Archive V8 sources
    - publish: v8.tar.gz
      artifact: sources-for-alpine
