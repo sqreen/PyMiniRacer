@@ -100,10 +100,12 @@ enum class PickleOpCode : uint8_t {
 	kSetItem = 's',
 	// module:line object:line
 	kGlobal = 'c',
-	// cls args
-	kNewObj = 0x81,
+	// callable:cls tuple:args
+	kReduce = 'R',
 	kTuple = 't',
-
+	kTuple1 = 0x85,
+	kTuple2 = 0x86,
+	kTuple3 = 0x87,
 };
 
 
@@ -116,6 +118,7 @@ class PickleSerializer
 		Maybe<bool> WriteValue(Local<Value> value);
 		Maybe<bool> WriteObject(Local<Object> value);
 		Maybe<std::pair<uint8_t *, size_t>> Release();
+		Maybe<bool> WriteException(char const * name, Local<Value> exception, Local<Value> stacktrace);
 
 	private:
 		void WriteSize(uint32_t size);

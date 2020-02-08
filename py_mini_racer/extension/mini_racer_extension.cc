@@ -212,7 +212,7 @@ static void* nogvl_context_eval(void* arg) {
 
                 if (!trycatch.StackTrace(context).IsEmpty()) {
                     result->backtrace = new Persistent<Value>();
-                    result->backtrace->Reset(isolate, trycatch.StackTrace(context).ToLocalChecked()->ToString(context).ToLocalChecked());
+                    result->backtrace->Reset(isolate, trycatch.StackTrace(context).ToLocalChecked());
                 }
             }
         } else {
@@ -348,9 +348,6 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
 
     BinaryValue *result = NULL;
 
-    BinaryValue *bmessage = NULL;
-    BinaryValue *bbacktrace = NULL;
-
     if (context_info == NULL) {
         return NULL;
     }
@@ -382,57 +379,53 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         }
 
         nogvl_context_eval(&eval_params);
+    }
 
+     if (!eval_result.executed) {
+        Locker lock(context_info->isolate);
+        Isolate::Scope isolate_scope(context_info->isolate);
+        HandleScope handle_scope(context_info->isolate);
+
+	PickleSerializer serializer = PickleSerializer(context_info->isolate, Local<Context>::New(context_info->isolate, *context_info->context));
+        Local<Value> tmp;
+        Local<Value> tmp_exc;
         if (eval_result.message) {
-            Local<Value> tmp = Local<Value>::New(context_info->isolate,
+            tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.message);
+	} else {
+            tmp = String::NewFromUtf8(context_info->isolate, "Unknown JavaScript error").ToLocalChecked();
+	}
+	if (eval_result.backtrace) {
+            tmp_exc = Local<Value>::New(context_info->isolate, *eval_result.backtrace);
+	} else {
+            tmp_exc = String::NewFromUtf8(context_info->isolate, "").ToLocalChecked();
+	}
 
-            bmessage = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
-        }
-
-        if (eval_result.backtrace) {
-
-            Local<Value> tmp = Local<Value>::New(context_info->isolate,
-                                                 *eval_result.backtrace);
-            bbacktrace = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
-        }
-    }
-
-    // bmessage and bbacktrace are now potentially allocated
-    // they are always freed at the end of the function
-
-    // NOTE: this is very important, we can not do an raise from within
-    // a v8 scope, if we do the scope is never cleaned up properly and we leak
-    if (!eval_result.parsed) {
-        if (bmessage) {
-            result = bmessage;
-        } else {
-            result = xalloc(result);
-            result->type = type_parse_exception;
-            result->str_val = strdup("Unknown JavaScript error during parse");
-            result->len = result->str_val ? strlen(result->str_val) : 0;
-        }
-    }
-    else if (!eval_result.executed) {
-        if (bmessage) {
-            result = bmessage;
-        } else {
-            result = xalloc(result);
+	if (!eval_result.parsed) {
+		serializer.WriteException("JSParseException", tmp, tmp_exc);
+	} else {
             bool mem_softlimit_reached = (bool)context_info->isolate->GetData(MEM_SOFTLIMIT_REACHED);
             if (mem_softlimit_reached) {
-                result->type = type_oom_exception;
+		serializer.WriteException("JSOOMException", tmp, tmp_exc);
             } else {
                 if (eval_result.timed_out) {
-                    result->type = type_timeout_exception;
+		serializer.WriteException("JSTimeoutException", tmp, tmp_exc);
                 } else {
-                    result->type = type_execute_exception;
+		serializer.WriteException("JSException", tmp, tmp_exc);
                 }
             }
-            result->str_val = strdup("Unknown JavaScript error during execution");
-            result->len = result->str_val ? strlen(result->str_val) : 0;
         }
-    }
-    else {
+	result = new (xalloc(result)) BinaryValue();
+	std::pair<uint8_t *, size_t> ret;
+	if (serializer.Release().To(&ret)) {
+		result->type = type_pickle;
+		result->buf = std::get<0>(ret);
+		result->len = std::get<1>(ret);
+        } else {
+		result->type = type_invalid;
+	}
+
+    } else {
         Locker lock(context_info->isolate);
         Isolate::Scope isolate_scope(context_info->isolate);
         HandleScope handle_scope(context_info->isolate);
@@ -440,11 +433,6 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         Local<Value> tmp = Local<Value>::New(context_info->isolate, *eval_result.value);
         result = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
     }
-
-    if (result != bmessage) {
-        BinaryValueFree(bmessage);
-    }
-    BinaryValueFree(bbacktrace);
 
     return result;
 }

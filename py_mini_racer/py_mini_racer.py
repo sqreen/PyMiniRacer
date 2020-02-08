@@ -24,8 +24,12 @@ except NotImplementedError:
     EXTENSION_NAME = fnmatch.filter(os.listdir(__location__), '_v8*.so')[0]
     EXTENSION_PATH = os.path.join(__location__, EXTENSION_NAME)
 
+
 class MiniRacerBaseException(Exception):
     """ base MiniRacer exception class """
+    pass
+
+class JSException(MiniRacerBaseException):
     pass
 
 class JSParseException(MiniRacerBaseException):
@@ -159,11 +163,7 @@ class MiniRacer(object):
                                            len(bytes_val),
                                            ctypes.c_ulong(timeout),
                                            ctypes.c_size_t(max_memory))
-
-            if bool(res) is False:
-                raise JSConversionException()
-            python_value = res.contents.to_python()
-            return python_value
+            return res.contents.to_python()
         finally:
             self.lock.release()
             if res is not None:
@@ -261,6 +261,11 @@ class PythonValue(ctypes.Structure):
             print("buf: " + repr(buf))
             result = pickle.loads(buf)
             print("res: " + repr(result))
+            if isinstance(result, tuple) and issubclass(result[0], MiniRacerBaseException):
+                t, v, tb = result
+                raise t, v, tb
+        elif self.type == PythonTypes.invalid:
+            raise JSConversionException()
         elif self.type == PythonTypes.null:
             result = None
         elif self.type == PythonTypes.bool:

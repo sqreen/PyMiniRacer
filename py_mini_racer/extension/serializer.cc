@@ -303,7 +303,7 @@ void PickleSerializer::WriteDate(Date * value) {
 	WriteInt(tm.tm_min);
 	WriteInt(tm.tm_sec);
 	WriteOpCode(PickleOpCode::kTuple);
-	WriteOpCode(PickleOpCode::kNewObj);
+	WriteOpCode(PickleOpCode::kReduce);
 }
 
 Maybe<bool> PickleSerializer::WriteValue(Local<Value> value) {
@@ -331,6 +331,25 @@ Maybe<bool> PickleSerializer::WriteValue(Local<Value> value) {
 	return (out_of_memory_) ? Nothing<bool>() : Just(true);
 }
 
+Maybe<bool> PickleSerializer::WriteException(char const * name, Local<Value> exception, Local<Value> stacktrace)
+{
+	WriteOpCode(PickleOpCode::kGlobal);
+#define MODULE "py_mini_racer.py_mini_racer\n"
+	WriteRawBytes(MODULE, sizeof(MODULE) - 1);
+#undef MODULE
+	WriteRawBytes(name, strlen(name));
+	WriteRawBytes("\n", 1);
+	if (exception->IsString()) {
+		WriteString(Local<String>::Cast(exception));
+		WriteOpCode(PickleOpCode::kTuple1);
+	} else {
+		WriteOpCode(PickleOpCode::kNone);
+	}
+	WriteOpCode(PickleOpCode::kNone);
+	WriteOpCode(PickleOpCode::kTuple3);
+	return (out_of_memory_) ? Nothing<bool>() : Just(true);
+}
+
 BinaryValue * convert_v8_to_pickle(Isolate * isolate,
 				   Local<Context> context,
 				   Local<Value> value)
@@ -346,6 +365,8 @@ BinaryValue * convert_v8_to_pickle(Isolate * isolate,
 		res->type = type_pickle;
 		res->buf = std::get<0>(ret);
 		res->len = std::get<1>(ret);
+	} else {
+		res->type = type_invalid;
 	}
 	return res;
 }

@@ -18,8 +18,10 @@ class Test(unittest.TestCase):
 
     def test_invalid(self):
 
-        with self.assertRaises(py_mini_racer.JSEvalException):
+        with self.assertRaises(py_mini_racer.JSException) as cm:
             self.mr.eval("invalid")
+        self.assertIn("ReferenceError", str(cm.exception))
+
 
     def test_global(self):
         self.mr.eval('var xabc = 22;')
@@ -53,16 +55,14 @@ class Test(unittest.TestCase):
 
         context.eval(js_source)
 
-        with self.assertRaises(py_mini_racer.JSEvalException):
+        with self.assertRaises(py_mini_racer.JSException):
             context.eval("f()")
 
     def test_cannot_parse(self):
         context = py_mini_racer.MiniRacer()
         js_source = "var f = function("
 
-        with six.assertRaisesRegex(
-            self, py_mini_racer.JSParseException, '.*Unknown JavaScript error during parse.*'
-        ):
+        with six.assertRaises(py_mini_racer.JSParseException):
             context.eval(js_source)
 
     def test_null_byte(self):
@@ -95,11 +95,6 @@ class Test(unittest.TestCase):
                     n.fill(0);
                     a = a.concat(n);
                 }''', max_memory=200000000)
-
-
-    def test_symbol(self):
-        res = self.mr.eval('Symbol.toPrimitive')
-        self.assertEqual(type(res), py_mini_racer.JSSymbol)
 
 
 if __name__ == '__main__':

@@ -93,6 +93,8 @@ class Test(unittest.TestCase):
     def test_symbol(self):
         res = self.mr.eval('Symbol("test")')
         self.assertEqual(res, "test")
+#        res = self.mr.eval('Symbol.toPrimitive')
+#        self.assertEqual(type(res), py_mini_racer.JSSymbol)
 
     def test_function(self):
         res = self.mr.eval('var a = function(){}; a')
@@ -109,14 +111,12 @@ class Test(unittest.TestCase):
         self.assertEqual(res, -0xffffffffffffffff)
 
     def test_invalid_key(self):
-
         fun = """
             var o = {};
             o.__defineGetter__("bar", function() { return null(); });
             o
         """
-        with self.assertRaises(py_mini_racer.JSConversionException):
-            self.mr.eval(fun)
+        self.assertEqual(self.mr.eval(fun), {})
 
     def test_timestamp(self):
         val = int(time.time())
@@ -138,8 +138,22 @@ class Test(unittest.TestCase):
 
         self.mr.eval(js_source)
 
-        with self.assertRaises(py_mini_racer.JSEvalException) as cm:
-            print(self.mr.eval("f(42)"))
+        with self.assertRaises(py_mini_racer.JSException) as cm:
+            self.mr.eval("f(42)")
+
+        self.assertIn('error: 42', cm.exception.args[0])
+
+    def test_error_exception(self):
+        js_source = """
+        var f = function(arg) {
+            throw new Error('error: ' + arg);
+            return nil
+        }"""
+
+        self.mr.eval(js_source)
+
+        with self.assertRaises(py_mini_racer.JSException) as cm:
+            self.mr.eval("f(42)")
 
         self.assertIn('error: 42', cm.exception.args[0])
 
