@@ -3,6 +3,12 @@
 History
 -------
 
+0.2.0 (2020-03-11)
+------------------
+
+* Support for Alpine Linux
+* Avoid pip private modules in setup.py
+
 0.2.0b1 (2020-01-09)
 --------------------
 
