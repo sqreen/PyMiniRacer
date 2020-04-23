@@ -96,6 +96,16 @@ def _fetch_ext_handle():
 
     _ext_handle.mr_init_context.restype = ctypes.c_void_p
 
+    _ext_handle.mr_call_context.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_ulong,
+        ctypes.c_size_t]
+    _ext_handle.mr_call_context.restype = ctypes.POINTER(PythonValue)
+
     _ext_handle.mr_eval_context.argtypes = [
         ctypes.c_void_p,
         ctypes.c_char_p,
@@ -192,9 +202,30 @@ class MiniRacer(object):
         timeout = kwargs.get('timeout', 0)
         max_memory = kwargs.get('max_memory', 0)
 
-        json_args = json.dumps(args, separators=(',', ':'), cls=encoder)
-        js = "{identifier}.apply(this, {json_args})"
-        return self.eval(js.format(identifier=identifier, json_args=json_args), timeout, max_memory)
+        if is_unicode(identifier):
+            identifier = identifier.encode("utf8")
+
+        json_args = json.dumps(args, separators=(',', ':'), cls=encoder).encode("utf-8")
+
+        res = None
+        self.lock.acquire()
+        try:
+            res = self.ext.mr_call_context(self.ctx,
+                                           identifier,
+                                           len(identifier),
+                                           json_args,
+                                           len(json_args),
+                                           ctypes.c_ulong(timeout),
+                                           ctypes.c_size_t(max_memory))
+
+            if bool(res) is False:
+                raise JSConversionException()
+            python_value = res.contents.to_python()
+            return python_value
+        finally:
+            self.lock.release()
+            if res is not None:
+                self.free(res)
 
     def heap_stats(self):
         """ Return heap statistics """
