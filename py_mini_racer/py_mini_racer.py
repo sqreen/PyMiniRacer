@@ -192,6 +192,20 @@ class MiniRacer(object):
             if res is not None:
                 self.free(res)
 
+    def fake_call(self, identifier, *args, **kwargs):
+        """ Call the named function with provided arguments
+        You can pass a custom JSON encoder by passing it in the encoder
+        keyword only argument.
+        """
+
+        encoder = kwargs.get('encoder', None)
+        timeout = kwargs.get('timeout', 0)
+        max_memory = kwargs.get('max_memory', 0)
+
+        json_args = json.dumps(args, separators=(',', ':'), cls=encoder)
+        js = "{identifier}.apply(this, {json_args})"
+        return self.eval(js.format(identifier=identifier, json_args=json_args), timeout, max_memory)
+
     def call(self, identifier, *args, **kwargs):
         """ Call the named function with provided arguments
         You can pass a custom JSON encoder by passing it in the encoder
@@ -201,6 +215,7 @@ class MiniRacer(object):
         encoder = kwargs.get('encoder', None)
         timeout = kwargs.get('timeout', 0)
         max_memory = kwargs.get('max_memory', 0)
+
 
         if is_unicode(identifier):
             identifier = identifier.encode("utf8")
