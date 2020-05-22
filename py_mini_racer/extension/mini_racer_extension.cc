@@ -447,20 +447,23 @@ static BinaryValue *convert_v8_to_binary(Isolate * isolate,
 
     else if (value->IsArray()) {
         Local<Array> arr = Local<Array>::Cast(value);
-        size_t len = arr->Length();
+        uint32_t len = arr->Length();
+
         BinaryValue **ary = xalloc(ary, sizeof(*ary) * len);
 
         res->type = type_array;
         res->array_val = ary;
+        res->len = (size_t) len;
 
-        for(uint32_t i = 0; i < arr->Length(); i++) {
+        for(uint32_t i = 0; i < len; i++) {
             Local<Value> element = arr->Get(context, i).ToLocalChecked();
             BinaryValue *bin_value = convert_v8_to_binary(isolate, context, element);
             if (bin_value == NULL) {
+                // adjust final array length
+                res->len = (size_t) i;
                 goto err;
             }
             ary[i] = bin_value;
-            res->len++;
         }
     }
 
