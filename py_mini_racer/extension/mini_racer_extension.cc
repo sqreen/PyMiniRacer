@@ -1,3 +1,5 @@
+#include <unistd.h>
+
 #include <thread>
 #include <mutex>
 #include <chrono>
@@ -130,6 +132,7 @@ struct ContextInfo {
     bool soft_memory_limit_reached;
     size_t hard_memory_limit;
     bool hard_memory_limit_reached;
+    pid_t original_pid;
 };
 
 struct EvalResult {
@@ -556,22 +559,31 @@ static BinaryValue *convert_v8_to_binary(Isolate * isolate,
 
 static void deallocate(void * data) {
     ContextInfo* context_info = (ContextInfo*)data;
-    {
-        // XXX: what is the point of this?
-        Locker lock(context_info->isolate);
+
+    if (!context_info || !context_info->isolate) {
+        return;
     }
 
+    if (context_info->context)
     {
+        Locker lock(context_info->isolate);
+        Isolate::Scope isolate_scope(context_info->isolate);
         context_info->context->Reset();
         delete context_info->context;
+        context_info->context = NULL;
     }
 
     if (context_info->interrupted) {
         fprintf(stderr, "WARNING: V8 isolate was interrupted by Python, "
                         "it can not be disposed and memory will not be "
                         "reclaimed till the Python process exits.");
+    } else if (context_info->original_pid != getpid()) {
+        fprintf(stderr, "WARNING: V8 isolate was forked, it can not be disposed"
+                        " and memory will not be reclaimed until the Python"
+                        " process exists.");
     } else {
         context_info->isolate->Dispose();
+        context_info->isolate = NULL;
     }
 
     delete context_info->allocator;
@@ -586,6 +598,7 @@ ContextInfo *MiniRacer_init_context()
     ContextInfo* context_info = xalloc(context_info);
     memset(context_info, 0, sizeof(*context_info));
     context_info->allocator = new ArrayBufferAllocator();
+    context_info->original_pid = getpid();
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator = context_info->allocator;
 
