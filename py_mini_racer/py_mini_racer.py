@@ -175,8 +175,7 @@ class MiniRacer(object):
 
             if bool(res) is False:
                 raise JSConversionException()
-            python_value = res.contents.to_python()
-            return python_value
+            return self._eval_return(res)
         finally:
             self.lock.release()
             if res is not None:
@@ -226,6 +225,42 @@ class MiniRacer(object):
 
         self.ext.mr_free_context(self.ctx)
 
+    @staticmethod
+    def _eval_return(res):
+        return res.contents.to_python()
+
+
+class StrictMiniRacer(MiniRacer):
+    """
+    A stricter version of MiniRacer accepting only scalars as a return value
+    (boolean, integer, strings, ...).
+    """
+
+    json_impl = json
+
+    def execute(self, expr, **kwargs):
+        """ Stricter Execute with JSON serialization of returned value.
+        """
+        wrapped_expr = "JSON.stringify((function(){return (%s)})())" % expr
+        ret = self.eval(wrapped_expr, **kwargs)
+        if isinstance(ret, str):
+            return self.json_impl.loads(ret)
+
+    def call(self, identifier, *args, **kwargs):
+        """ Stricter Call with JSON serialization of returned value.
+        """
+        json_args = self.json_impl.dumps(args, separators=(',', ':'),
+                                         cls=kwargs.get("encoder"))
+        js = "JSON.stringify({identifier}.apply(this, {json_args}))"
+        ret = self.eval(js.format(identifier=identifier, json_args=json_args),
+                        **kwargs)
+        if isinstance(ret, str):
+            return self.json_impl.loads(ret)
+
+    @staticmethod
+    def _eval_return(res):
+        return res.contents.scalar_to_python()
+
 
 class PythonTypes(object):
     """ Python types identifier - need to be coherent with
@@ -263,9 +298,29 @@ class PythonValue(ctypes.Structure):
             ptr = ctypes.c_char_p.from_buffer(self)
             return ctypes.c_double.from_buffer(ptr).value
 
-    def to_python(self):
-        """ Return an object as native Python """
+    def _raise_from_error(self):
+        if self.type == PythonTypes.parse_exception:
+            msg = ctypes.c_char_p(self.value).value
+            raise JSParseException(msg)
+        elif self.type == PythonTypes.execute_exception:
+            msg = ctypes.c_char_p(self.value).value
+            raise JSEvalException(msg.decode('utf-8', errors='replace'))
+        elif self.type == PythonTypes.oom_exception:
+            msg = ctypes.c_char_p(self.value).value
+            raise JSOOMException(msg)
+        elif self.type == PythonTypes.timeout_exception:
+            msg = ctypes.c_char_p(self.value).value
+            raise JSTimeoutException(msg)
 
+    def string_to_python(self, **kwargs):
+        self._raise_from_error()
+        if self.type != PythonTypes.str_utf8:
+            raise WrongReturnTypeException(
+                "returned value is not a unicode string")
+        return self.scalar_to_python()
+
+    def scalar_to_python(self):
+        self._raise_from_error()
         result = None
         if self.type == PythonTypes.null:
             result = None
@@ -282,7 +337,23 @@ class PythonValue(ctypes.Structure):
             buf = ctypes.c_char_p(self.value)
             ptr = ctypes.cast(buf, ctypes.POINTER(ctypes.c_char))
             result = ptr[0:self.len].decode("utf8")
-        elif self.type == PythonTypes.array:
+        elif self.type == PythonTypes.function:
+            result = JSFunction()
+        elif self.type == PythonTypes.date:
+            timestamp = self._double_value()
+            # JS timestamp are milliseconds, in python we are in seconds
+            result = datetime.datetime.utcfromtimestamp(timestamp / 1000.)
+        elif self.type == PythonTypes.symbol:
+            result = JSSymbol()
+        else:
+            raise WrongReturnTypeException("unknown type %d" % self.type)
+        return result
+
+    def to_python(self):
+        """ Return an object as native Python """
+        self._raise_from_error()
+        result = None
+        if self.type == PythonTypes.array:
             if self.len == 0:
                 return []
             ary = []
@@ -303,26 +374,6 @@ class PythonValue(ctypes.Structure):
                 pval = PythonValue.from_address(ptr_to_hash[i*2+1])
                 res[pkey.to_python()] = pval.to_python()
             result = res
-        elif self.type == PythonTypes.function:
-            result = JSFunction()
-        elif self.type == PythonTypes.parse_exception:
-            msg = ctypes.c_char_p(self.value).value
-            raise JSParseException(msg)
-        elif self.type == PythonTypes.execute_exception:
-            msg = ctypes.c_char_p(self.value).value
-            raise JSEvalException(msg.decode('utf-8', errors='replace'))
-        elif self.type == PythonTypes.oom_exception:
-            msg = ctypes.c_char_p(self.value).value
-            raise JSOOMException(msg)
-        elif self.type == PythonTypes.timeout_exception:
-            msg = ctypes.c_char_p(self.value).value
-            raise JSTimeoutException(msg)
-        elif self.type == PythonTypes.date:
-            timestamp = self._double_value()
-            # JS timestamp are milliseconds, in python we are in seconds
-            result = datetime.datetime.utcfromtimestamp(timestamp / 1000.)
-        elif self.type == PythonTypes.symbol:
-            result = JSSymbol()
         else:
-            raise WrongReturnTypeException("unknown type %d" % self.type)
+            result = self.scalar_to_python()
         return result
