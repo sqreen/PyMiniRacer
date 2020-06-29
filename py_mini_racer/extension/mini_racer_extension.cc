@@ -275,30 +275,30 @@ static void* nogvl_context_eval(void* arg) {
             if (trycatch.HasCaught()) {
                 if (!trycatch.Exception()->IsNull()) {
                     result->message = new Persistent<Value>();
-			Local<Message> message = trycatch.Message();
-			char buf[1000];
-			int len, line, column;
+                        Local<Message> message = trycatch.Message();
+                        char buf[1000];
+                        int len, line, column;
 
-			if (!message->GetLineNumber(context).To(&line)) {
-			  line = 0;
-			}
+                        if (!message->GetLineNumber(context).To(&line)) {
+                          line = 0;
+                        }
 
-			if (!message->GetStartColumn(context).To(&column)) {
-			  column = 0;
-			}
+                        if (!message->GetStartColumn(context).To(&column)) {
+                          column = 0;
+                        }
 
-			len = snprintf(buf, sizeof(buf), "%s at %s:%i:%i", *String::Utf8Value(isolate, message->Get()),
-				       *String::Utf8Value(isolate, message->GetScriptResourceName()->ToString(context).ToLocalChecked()),
-				       line,
-				       column);
+                        len = snprintf(buf, sizeof(buf), "%s at %s:%i:%i", *String::Utf8Value(isolate, message->Get()),
+                                       *String::Utf8Value(isolate, message->GetScriptResourceName()->ToString(context).ToLocalChecked()),
+                                       line,
+                                       column);
 
-			if ((size_t) len >= sizeof(buf)) {
-			    len = sizeof(buf) - 1;
-			    buf[len] = '\0';
-			}
+                        if ((size_t) len >= sizeof(buf)) {
+                            len = sizeof(buf) - 1;
+                            buf[len] = '\0';
+                        }
 
-			Local<String> v8_message = String::NewFromUtf8(isolate, buf, NewStringType::kNormal, len).ToLocalChecked();
-			result->message->Reset(isolate, v8_message);
+                        Local<String> v8_message = String::NewFromUtf8(isolate, buf, NewStringType::kNormal, len).ToLocalChecked();
+                        result->message->Reset(isolate, v8_message);
                 } else if(trycatch.HasTerminated()) {
                     result->terminated = true;
                     result->message = new Persistent<Value>();
@@ -312,6 +312,7 @@ static void* nogvl_context_eval(void* arg) {
                 }
 
                 if (!trycatch.StackTrace(context).IsEmpty()) {
+
                     result->backtrace = new Persistent<Value>();
                     result->backtrace->Reset(isolate, trycatch.StackTrace(context).ToLocalChecked()->ToString(context).ToLocalChecked());
                 }
@@ -387,7 +388,7 @@ static BinaryValue *heap_stats(ContextInfo *context_info) {
         content[idx++ * 2 + 1] = new_bv_int(0);
         content[idx++ * 2 + 1] = new_bv_int(0);
     } else {
-	isolate->GetHeapStatistics(&stats);
+        isolate->GetHeapStatistics(&stats);
 
         content[idx++ * 2 + 1] = new_bv_int(stats.total_physical_size());
         content[idx++ * 2 + 1] = new_bv_int(stats.total_heap_size_executable());
@@ -415,7 +416,7 @@ err:
 
 
 static BinaryValue *convert_basic_v8_to_binary(Isolate * isolate,
-		                                Local<Context> context,
+                                                Local<Context> context,
                                                 Local<Value> value)
 {
     Isolate::Scope isolate_scope(isolate);
@@ -528,9 +529,9 @@ static BinaryValue *convert_v8_to_binary(Isolate * isolate,
 
                 MaybeLocal<Value> maybe_pkey = props->Get(context, i);
                 if (maybe_pkey.IsEmpty()) {
-			goto err;
-		}
-		Local<Value> pkey = maybe_pkey.ToLocalChecked();
+                        goto err;
+                }
+                Local<Value> pkey = maybe_pkey.ToLocalChecked();
                 MaybeLocal<Value> maybe_pvalue = object->Get(context, pkey);
                 // this may have failed due to Get raising
                 if (maybe_pvalue.IsEmpty() || trycatch.HasCaught()) {
@@ -575,7 +576,7 @@ static BinaryValue *convert_basic_v8_to_binary(Isolate * isolate,
 }
 
 static BinaryValue *convert_v8_to_binary(Isolate * isolate,
-		                         const Persistent<Context> & context,
+                                         const Persistent<Context> & context,
                                          Local<Value> value)
 {
     HandleScope scope(isolate);
@@ -686,9 +687,9 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
 
             if (eval_params.basic_only) {
                 bmessage = convert_basic_v8_to_binary(context_info->isolate, *context_info->context, tmp);
-	    } else {
+            } else {
                 bmessage = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
-	    }
+            }
         }
 
         if (eval_result.backtrace) {
@@ -764,11 +765,11 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         HandleScope handle_scope(context_info->isolate);
 
         Local<Value> tmp = Local<Value>::New(context_info->isolate, *eval_result.value);
-	if (eval_params.basic_only) {
+        if (eval_params.basic_only) {
             result = convert_basic_v8_to_binary(context_info->isolate, *context_info->context, tmp);
-	} else {
+        } else {
             result = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
-	}
+        }
     }
 
     BinaryValueFree(bmessage);
