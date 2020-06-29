@@ -23,6 +23,12 @@ except NotImplementedError:
     EXTENSION_NAME = fnmatch.filter(os.listdir(__location__), '_v8*.so')[0]
     EXTENSION_PATH = os.path.join(__location__, EXTENSION_NAME)
 
+if sys.version_info[0] < 3:
+    UNICODE_TYPE = unicode
+else:
+    UNICODE_TYPE = str
+
+
 class MiniRacerBaseException(Exception):
     """ base MiniRacer exception class """
     pass
@@ -59,6 +65,7 @@ class JSSymbol(object):
     """ type for JS symbols """
     pass
 
+
 def is_unicode(value):
     """ Check if a value is a valid unicode string, compatible with python 2 and python 3
 
@@ -73,14 +80,7 @@ def is_unicode(value):
     >>> is_unicode(('abc',))
     False
     """
-    python_version = sys.version_info[0]
-
-    if python_version == 2:
-        return isinstance(value, unicode)
-    elif python_version == 3:
-        return isinstance(value, str)
-    else:
-        raise NotImplementedError()
+    return isinstance(value, UNICODE_TYPE)
 
 
 _ext_handle = None
@@ -243,7 +243,7 @@ class StrictMiniRacer(MiniRacer):
         """
         wrapped_expr = "JSON.stringify((function(){return (%s)})())" % expr
         ret = self.eval(wrapped_expr, **kwargs)
-        if isinstance(ret, str):
+        if is_unicode(ret):
             return self.json_impl.loads(ret)
 
     def call(self, identifier, *args, **kwargs):
@@ -254,7 +254,7 @@ class StrictMiniRacer(MiniRacer):
         js = "JSON.stringify({identifier}.apply(this, {json_args}))"
         ret = self.eval(js.format(identifier=identifier, json_args=json_args),
                         **kwargs)
-        if isinstance(ret, str):
+        if is_unicode(ret):
             return self.json_impl.loads(ret)
 
     @staticmethod
