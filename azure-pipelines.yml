@@ -16,7 +16,7 @@ jobs:
    - template: helpers/release.yml
 - job: mac
   displayName: Build on macOS
-  pool: {vmImage: 'macOS-10.13'}
+  pool: {vmImage: 'macOS-10.14'}
   steps:
    - checkout: self
    - template: helpers/cibuild.yml

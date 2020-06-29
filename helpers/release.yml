@@ -6,10 +6,10 @@ steps:
   displayName: Publish Wheelhouse to S3
   inputs:
     awsCredentials: AWS
-    bucketName: sqreen-pyminiracer-travis-artefact
+    bucketName: sqreen-download-private
     globExpressions: |
       *.whl
       *.tar.gz
-    targetFolder: $(Build.SourceVersion)/dist
+    targetFolder: python/py-mini-racer/
     sourceFolder: wheelhouse
     flattenFolders: true
