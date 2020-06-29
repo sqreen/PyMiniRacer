@@ -32,3 +32,7 @@ class StrictTestCase(unittest.TestCase):
 
         self.assertIsNone(self.mr.eval(js_func))
         self.assertEqual(self.mr.call('f', list(range(5))), 5)
+
+    def test_message(self):
+        with self.assertRaises(py_mini_racer.JSEvalException):
+            res = self.mr.eval("throw new EvalError('Hello', 'someFile.js', 10);")

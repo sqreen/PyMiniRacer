@@ -684,14 +684,18 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.message);
 
-            bmessage = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
+            if (eval_params.basic_only) {
+                bmessage = convert_basic_v8_to_binary(context_info->isolate, *context_info->context, tmp);
+	    } else {
+                bmessage = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
+	    }
         }
 
         if (eval_result.backtrace) {
 
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.backtrace);
-            bbacktrace = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
+            bbacktrace = convert_basic_v8_to_binary(context_info->isolate, *context_info->context, tmp);
         }
     }
 
