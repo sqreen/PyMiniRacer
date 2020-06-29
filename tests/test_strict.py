@@ -22,7 +22,7 @@ class StrictTestCase(unittest.TestCase):
         self.assertEqual([1, 2, 3], self.mr.execute('[1, 2, 3]'))
 
     def test_not_allowed_type(self):
-        with self.assertRaises(py_mini_racer.WrongReturnTypeException):
+        with self.assertRaises(py_mini_racer.JSConversionException):
             self.mr.eval("Object()")
 
     def test_call(self):

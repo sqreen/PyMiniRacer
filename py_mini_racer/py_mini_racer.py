@@ -101,7 +101,8 @@ def _fetch_ext_handle():
         ctypes.c_char_p,
         ctypes.c_int,
         ctypes.c_ulong,
-        ctypes.c_size_t]
+        ctypes.c_size_t,
+        ctypes.c_bool]
     _ext_handle.mr_eval_context.restype = ctypes.POINTER(PythonValue)
 
     _ext_handle.mr_free_value.argtypes = [ctypes.c_void_p]
@@ -129,6 +130,8 @@ class MiniRacer(object):
     """ Ctypes wrapper arround binary mini racer
         https://docs.python.org/2/library/ctypes.html
     """
+
+    basic_types_only = False
 
     def __init__(self):
         """ Init a JS context """
@@ -171,7 +174,8 @@ class MiniRacer(object):
                                            bytes_val,
                                            len(bytes_val),
                                            ctypes.c_ulong(timeout),
-                                           ctypes.c_size_t(max_memory))
+                                           ctypes.c_size_t(max_memory),
+                                           ctypes.c_bool(self.basic_types_only))
 
             if bool(res) is False:
                 raise JSConversionException()
@@ -232,11 +236,12 @@ class MiniRacer(object):
 
 class StrictMiniRacer(MiniRacer):
     """
-    A stricter version of MiniRacer accepting only scalars as a return value
-    (boolean, integer, strings, ...).
+    A stricter version of MiniRacer accepting only basic types as a return value
+    (boolean, integer, strings, ...), array and mapping are disallowed.
     """
 
     json_impl = json
+    basic_types_only = True
 
     def execute(self, expr, **kwargs):
         """ Stricter Execute with JSON serialization of returned value.
@@ -259,7 +264,7 @@ class StrictMiniRacer(MiniRacer):
 
     @staticmethod
     def _eval_return(res):
-        return res.contents.scalar_to_python()
+        return res.contents.basic_to_python()
 
 
 class PythonTypes(object):
@@ -312,14 +317,7 @@ class PythonValue(ctypes.Structure):
             msg = ctypes.c_char_p(self.value).value
             raise JSTimeoutException(msg)
 
-    def string_to_python(self, **kwargs):
-        self._raise_from_error()
-        if self.type != PythonTypes.str_utf8:
-            raise WrongReturnTypeException(
-                "returned value is not a unicode string")
-        return self.scalar_to_python()
-
-    def scalar_to_python(self):
+    def basic_to_python(self):
         self._raise_from_error()
         result = None
         if self.type == PythonTypes.null:
@@ -346,7 +344,7 @@ class PythonValue(ctypes.Structure):
         elif self.type == PythonTypes.symbol:
             result = JSSymbol()
         else:
-            raise WrongReturnTypeException("unknown type %d" % self.type)
+            raise JSConversionException()
         return result
 
     def to_python(self):
@@ -375,5 +373,5 @@ class PythonValue(ctypes.Structure):
                 res[pkey.to_python()] = pval.to_python()
             result = res
         else:
-            result = self.scalar_to_python()
+            result = self.basic_to_python()
         return result
