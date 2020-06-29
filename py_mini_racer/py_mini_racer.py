@@ -255,7 +255,7 @@ class StrictMiniRacer(MiniRacer):
         """ Stricter Call with JSON serialization of returned value.
         """
         json_args = self.json_impl.dumps(args, separators=(',', ':'),
-                                         cls=kwargs.get("encoder"))
+                                         cls=kwargs.pop("encoder", None))
         js = "JSON.stringify({identifier}.apply(this, {json_args}))"
         ret = self.eval(js.format(identifier=identifier, json_args=json_args),
                         **kwargs)
