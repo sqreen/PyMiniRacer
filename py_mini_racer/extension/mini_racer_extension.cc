@@ -163,6 +163,7 @@ typedef struct {
     unsigned long timeout;
     EvalResult* result;
     size_t max_memory;
+    bool basic_only;
 } EvalParams;
 
 enum IsolateData {
@@ -274,30 +275,30 @@ static void* nogvl_context_eval(void* arg) {
             if (trycatch.HasCaught()) {
                 if (!trycatch.Exception()->IsNull()) {
                     result->message = new Persistent<Value>();
-			Local<Message> message = trycatch.Message();
-			char buf[1000];
-			int len, line, column;
+                        Local<Message> message = trycatch.Message();
+                        char buf[1000];
+                        int len, line, column;
 
-			if (!message->GetLineNumber(context).To(&line)) {
-			  line = 0;
-			}
+                        if (!message->GetLineNumber(context).To(&line)) {
+                          line = 0;
+                        }
 
-			if (!message->GetStartColumn(context).To(&column)) {
-			  column = 0;
-			}
+                        if (!message->GetStartColumn(context).To(&column)) {
+                          column = 0;
+                        }
 
-			len = snprintf(buf, sizeof(buf), "%s at %s:%i:%i", *String::Utf8Value(isolate, message->Get()),
-				       *String::Utf8Value(isolate, message->GetScriptResourceName()->ToString(context).ToLocalChecked()),
-				       line,
-				       column);
+                        len = snprintf(buf, sizeof(buf), "%s at %s:%i:%i", *String::Utf8Value(isolate, message->Get()),
+                                       *String::Utf8Value(isolate, message->GetScriptResourceName()->ToString(context).ToLocalChecked()),
+                                       line,
+                                       column);
 
-			if ((size_t) len >= sizeof(buf)) {
-			    len = sizeof(buf) - 1;
-			    buf[len] = '\0';
-			}
+                        if ((size_t) len >= sizeof(buf)) {
+                            len = sizeof(buf) - 1;
+                            buf[len] = '\0';
+                        }
 
-			Local<String> v8_message = String::NewFromUtf8(isolate, buf, NewStringType::kNormal, len).ToLocalChecked();
-			result->message->Reset(isolate, v8_message);
+                        Local<String> v8_message = String::NewFromUtf8(isolate, buf, NewStringType::kNormal, len).ToLocalChecked();
+                        result->message->Reset(isolate, v8_message);
                 } else if(trycatch.HasTerminated()) {
                     result->terminated = true;
                     result->message = new Persistent<Value>();
@@ -311,14 +312,25 @@ static void* nogvl_context_eval(void* arg) {
                 }
 
                 if (!trycatch.StackTrace(context).IsEmpty()) {
-                    result->backtrace = new Persistent<Value>();
-                    result->backtrace->Reset(isolate, trycatch.StackTrace(context).ToLocalChecked()->ToString(context).ToLocalChecked());
+                    Local<Value> stacktrace;
+
+                    if (trycatch.StackTrace(context).ToLocal(&stacktrace)) {
+                        Local<Value> tmp;
+
+                        if (stacktrace->ToString(context).ToLocal(&tmp)) {
+                            result->backtrace = new Persistent<Value>();
+                            result->backtrace->Reset(isolate, tmp);
+                        }
+                    }
                 }
             }
         } else {
-            Persistent<Value>* persistent = new Persistent<Value>();
-            persistent->Reset(isolate, maybe_value.ToLocalChecked());
-            result->value = persistent;
+            Local<Value> tmp;
+
+            if (maybe_value.ToLocal(&tmp)) {
+                result->value = new Persistent<Value>();
+                result->value->Reset(isolate, tmp);
+            }
         }
     }
 
@@ -386,7 +398,7 @@ static BinaryValue *heap_stats(ContextInfo *context_info) {
         content[idx++ * 2 + 1] = new_bv_int(0);
         content[idx++ * 2 + 1] = new_bv_int(0);
     } else {
-	isolate->GetHeapStatistics(&stats);
+        isolate->GetHeapStatistics(&stats);
 
         content[idx++ * 2 + 1] = new_bv_int(stats.total_physical_size());
         content[idx++ * 2 + 1] = new_bv_int(stats.total_heap_size_executable());
@@ -413,11 +425,11 @@ err:
 }
 
 
-static BinaryValue *convert_v8_to_binary(Isolate * isolate,
-		                         Local<Context> context,
-                                         Local<Value> value)
+static BinaryValue *convert_basic_v8_to_binary(Isolate * isolate,
+                                                Local<Context> context,
+                                                Local<Value> value)
 {
-	Isolate::Scope isolate_scope(isolate);
+    Isolate::Scope isolate_scope(isolate);
     HandleScope scope(isolate);
 
     BinaryValue *res = new (xalloc(res)) BinaryValue();
@@ -425,13 +437,11 @@ static BinaryValue *convert_v8_to_binary(Isolate * isolate,
     if (value->IsNull() || value->IsUndefined()) {
         res->type = type_null;
     }
-
     else if (value->IsInt32()) {
         res->type = type_integer;
         auto val = value->Uint32Value(context).ToChecked();
         res->int_val = val;
     }
-
     // ECMA-262, 4.3.20
     // http://www.ecma-international.org/ecma-262/5.1/#sec-4.3.19
     else if (value->IsNumber()) {
@@ -439,13 +449,56 @@ static BinaryValue *convert_v8_to_binary(Isolate * isolate,
         double val = value->NumberValue(context).ToChecked();
         res->double_val = val;
     }
-
     else if (value->IsBoolean()) {
         res->type = type_bool;
         res->int_val = (value->IsTrue() ? 1 : 0);
     }
+    else if (value->IsFunction()){
+        res->type = type_function;
+    }
+    else if (value->IsSymbol()){
+        res->type = type_symbol;
+    }
+    else if (value->IsDate()) {
+        res->type = type_date;
+        Local<Date> date = Local<Date>::Cast(value);
 
-    else if (value->IsArray()) {
+        double timestamp = date->ValueOf();
+        res->double_val = timestamp;
+    }
+    else if (value->IsString()) {
+        Local<String> rstr = value->ToString(context).ToLocalChecked();
+
+        res->type = type_str_utf8;
+        res->len = size_t(rstr->Utf8Length(isolate)); // in bytes
+        size_t capacity = res->len + 1;
+        res->str_val = xalloc(res->str_val, capacity);
+        rstr->WriteUtf8(isolate, res->str_val);
+    }
+    else {
+        BinaryValueFree(res);
+        res = nullptr;
+    }
+    return res;
+}
+
+
+static BinaryValue *convert_v8_to_binary(Isolate * isolate,
+                                         Local<Context> context,
+                                         Local<Value> value)
+{
+    Isolate::Scope isolate_scope(isolate);
+    HandleScope scope(isolate);
+    BinaryValue *res;
+
+    res = convert_basic_v8_to_binary(isolate, context, value);
+    if (res) {
+        return res;
+    }
+
+    res = new (xalloc(res)) BinaryValue();
+
+    if (value->IsArray()) {
         Local<Array> arr = Local<Array>::Cast(value);
         uint32_t len = arr->Length();
 
@@ -466,23 +519,6 @@ static BinaryValue *convert_v8_to_binary(Isolate * isolate,
             ary[i] = bin_value;
         }
     }
-
-    else if (value->IsFunction()){
-        res->type = type_function;
-    }
-
-    else if (value->IsSymbol()){
-        res->type = type_symbol;
-    }
-
-    else if (value->IsDate()) {
-        res->type = type_date;
-        Local<Date> date = Local<Date>::Cast(value);
-
-        double timestamp = date->ValueOf();
-        res->double_val = timestamp;
-    }
-
     else if (value->IsObject()) {
         res->type = type_hash;
 
@@ -503,9 +539,9 @@ static BinaryValue *convert_v8_to_binary(Isolate * isolate,
 
                 MaybeLocal<Value> maybe_pkey = props->Get(context, i);
                 if (maybe_pkey.IsEmpty()) {
-			goto err;
-		}
-		Local<Value> pkey = maybe_pkey.ToLocalChecked();
+                        goto err;
+                }
+                Local<Value> pkey = maybe_pkey.ToLocalChecked();
                 MaybeLocal<Value> maybe_pvalue = object->Get(context, pkey);
                 // this may have failed due to Get raising
                 if (maybe_pvalue.IsEmpty() || trycatch.HasCaught()) {
@@ -528,16 +564,8 @@ static BinaryValue *convert_v8_to_binary(Isolate * isolate,
                 res->len++;
             }
         } // else empty hash
-    }
-
-    else {
-        Local<String> rstr = value->ToString(context).ToLocalChecked();
-
-        res->type = type_str_utf8;
-        res->len = size_t(rstr->Utf8Length(isolate)); // in bytes
-        size_t capacity = res->len + 1;
-        res->str_val = xalloc(res->str_val, capacity);
-        rstr->WriteUtf8(isolate, res->str_val);
+    } else {
+        goto err;
     }
     return res;
 
@@ -547,8 +575,18 @@ err:
 }
 
 
+static BinaryValue *convert_basic_v8_to_binary(Isolate * isolate,
+                                               const Persistent<Context> & context,
+                                               Local<Value> value)
+{
+    HandleScope scope(isolate);
+    return convert_basic_v8_to_binary(isolate,
+                                Local<Context>::New(isolate, context),
+                                value);
+}
+
 static BinaryValue *convert_v8_to_binary(Isolate * isolate,
-		                         const Persistent<Context> & context,
+                                         const Persistent<Context> & context,
                                          Local<Value> value)
 {
     HandleScope scope(isolate);
@@ -610,7 +648,7 @@ ContextInfo *MiniRacer_init_context()
 static BinaryValue* MiniRacer_eval_context_unsafe(
         ContextInfo *context_info,
         char *utf_str, int str_len,
-        unsigned long timeout, size_t max_memory)
+        unsigned long timeout, size_t max_memory, bool basic_only)
 {
     EvalParams eval_params;
     EvalResult eval_result{};
@@ -643,6 +681,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         eval_params.result = &eval_result;
         eval_params.timeout = 0;
         eval_params.max_memory = 0;
+        eval_params.basic_only = basic_only;
         if (timeout > 0) {
             eval_params.timeout = timeout;
         }
@@ -656,14 +695,18 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.message);
 
-            bmessage = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
+            if (eval_params.basic_only) {
+                bmessage = convert_basic_v8_to_binary(context_info->isolate, *context_info->context, tmp);
+            } else {
+                bmessage = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
+            }
         }
 
         if (eval_result.backtrace) {
 
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.backtrace);
-            bbacktrace = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
+            bbacktrace = convert_basic_v8_to_binary(context_info->isolate, *context_info->context, tmp);
         }
     }
 
@@ -726,13 +769,17 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         }
     }
 
-    else {
+    else if (eval_result.value) {
         Locker lock(context_info->isolate);
         Isolate::Scope isolate_scope(context_info->isolate);
         HandleScope handle_scope(context_info->isolate);
 
         Local<Value> tmp = Local<Value>::New(context_info->isolate, *eval_result.value);
-        result = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
+        if (eval_params.basic_only) {
+            result = convert_basic_v8_to_binary(context_info->isolate, *context_info->context, tmp);
+        } else {
+            result = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
+        }
     }
 
     BinaryValueFree(bmessage);
@@ -767,8 +814,8 @@ public:
 
 extern "C" {
 
-LIB_EXPORT BinaryValue * mr_eval_context(ContextInfo *context_info, char *str, int len, unsigned long timeout, size_t max_memory) {
-    BinaryValue *res = MiniRacer_eval_context_unsafe(context_info, str, len, timeout, max_memory);
+LIB_EXPORT BinaryValue * mr_eval_context(ContextInfo *context_info, char *str, int len, unsigned long timeout, size_t max_memory, bool basic_only) {
+    BinaryValue *res = MiniRacer_eval_context_unsafe(context_info, str, len, timeout, max_memory, basic_only);
     return res;
 }
 
@@ -820,3 +867,5 @@ LIB_EXPORT BinaryValue * mr_heap_snapshot(ContextInfo *context_info) {
     return bos.bv;
 }
 }
+
+// vim: set shiftwidth=4 softtabstop=4 expandtab:
