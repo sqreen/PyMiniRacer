@@ -312,15 +312,25 @@ static void* nogvl_context_eval(void* arg) {
                 }
 
                 if (!trycatch.StackTrace(context).IsEmpty()) {
+                    Local<Value> stacktrace;
 
-                    result->backtrace = new Persistent<Value>();
-                    result->backtrace->Reset(isolate, trycatch.StackTrace(context).ToLocalChecked()->ToString(context).ToLocalChecked());
+                    if (trycatch.StackTrace(context).ToLocal(&stacktrace)) {
+                        Local<Value> tmp;
+
+                        if (stacktrace->ToString(context).ToLocal(&tmp)) {
+                            result->backtrace = new Persistent<Value>();
+                            result->backtrace->Reset(isolate, tmp);
+                        }
+                    }
                 }
             }
         } else {
-            Persistent<Value>* persistent = new Persistent<Value>();
-            persistent->Reset(isolate, maybe_value.ToLocalChecked());
-            result->value = persistent;
+            Local<Value> tmp;
+
+            if (maybe_value.ToLocal(&tmp)) {
+                result->value = new Persistent<Value>();
+                result->value->Reset(isolate, tmp);
+            }
         }
     }
 
@@ -759,7 +769,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         }
     }
 
-    else {
+    else if (eval_result.value) {
         Locker lock(context_info->isolate);
         Isolate::Scope isolate_scope(context_info->isolate);
         HandleScope handle_scope(context_info->isolate);
@@ -857,3 +867,5 @@ LIB_EXPORT BinaryValue * mr_heap_snapshot(ContextInfo *context_info) {
     return bos.bv;
 }
 }
+
+// vim: set shiftwidth=4 softtabstop=4 expandtab:
