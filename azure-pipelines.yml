@@ -10,17 +10,24 @@ jobs:
      inputs:
        versionSpec: '3.6'
        architecture: x64
+   - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
    - checkout: self
-   - bash: python setup.py sdist --dist-dir wheelhouse
-   - template: helpers/cibuild.yml
-   - template: helpers/release.yml
+   - bash: |
+       pip3.6 install pep517
+       python3.6 -m pep517.build --binary --out-dir wheelhouse .
 - job: mac
   displayName: Build on macOS
   pool: {vmImage: 'macOS-10.14'}
   steps:
+   - task: UsePythonVersion@0
+     inputs:
+       versionSpec: '3.6'
+       architecture: x64
+   - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
    - checkout: self
-   - template: helpers/cibuild.yml
-   - template: helpers/release.yml
+   - bash: |
+       pip3.6 install pep517
+       python3.6 -m pep517.build --binary --out-dir wheelhouse .
 - job: windows
   displayName: Build on Windows
   pool: {vmImage: 'vs2017-win2016'}
@@ -31,50 +38,13 @@ jobs:
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.7.exe -force
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.exe -force
      displayName: Remove extraneous Python Interpreters
-   - template: helpers/cibuild.yml
-   - template: helpers/release.yml
-- job: fetch_sources_for_alpine
-  displayName: Prepare build for Alpine Linux
-  pool: {vmImage: 'Ubuntu-16.04'}
-  steps:
    - task: UsePythonVersion@0
      inputs:
-       versionSpec: '2.7'
+       versionSpec: '3.6'
        architecture: x64
+   - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
+   - bash: echo "##vso[task.prependpath]$(Build.SourcesDirectory)\\py_mini_racer\\extension\\depot_tools\\"
    - checkout: self
-   - bash: python py_mini_racer/extension/v8_build.py --no-build --no-sysroot
-     displayName: Download V8 sources
-   - bash: tar -czf v8.tar.gz py_mini_racer/extension
-     displayName: Archive V8 sources
-   - publish: v8.tar.gz
-     artifact: sources-for-alpine
-- job: alpine
-  displayName: Build on Alpine Linux
-  dependsOn:
-   - fetch_sources_for_alpine
-  container: nicolassqreen/azure-pipelines-container-alpine-python:latest
-  steps:
-   - checkout: self
-   - download: current
-     artifact: sources-for-alpine
    - bash: |
-       echo Extracting in $PWD
-       tar -xf $(Pipeline.Workspace)/sources-for-alpine/v8.tar.gz
-     displayName: Extract V8 sources
-   - bash: |
-       sudo apk add ninja llvm lld linux-headers
-       cp -f /usr/local/bin/gn py_mini_racer/extension/v8/buildtools/linux64/gn
-       rm -f py_mini_racer/extension/depot_tools/ninja
-     displayName: Prepare Aline Linux build environment
-   - bash: |
-       python py_mini_racer/extension/v8_build.py --no-update --no-sysroot --target py_mini_racer_shared_lib
-     displayName: Build the extension
-   - bash: |
-       for i in cp27-cp27mu cp35-cp35m cp36-cp36m cp37-cp37m cp38-cp38; do
-         sudo /opt/python/$i/bin/pip install wheel pytest
-         /opt/python/$i/bin/python setup.py bdist_wheel -d wheelhouse
-         sudo /opt/python/$i/bin/python setup.py develop --no-deps
-         /opt/python/$i/bin/pytest tests
-       done
-     displayName: Build the Wheelhouse
-   - template: helpers/release.yml
+       pip3.6 install pep517
+       python3.6 -m pep517.build --binary --out-dir wheelhouse .

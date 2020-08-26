@@ -26,13 +26,13 @@ def local_path(path="."):
     return os.path.abspath(os.path.join(ROOT_DIR, path))
 
 
-PATCHES_PATH = local_path('../../patches')
+PATCHES_PATH = local_path('../patches')
 
 
 def call(cmd):
     LOGGER.debug("Calling: '%s' from working directory %s", cmd, os.getcwd())
     current_env = os.environ
-    depot_tools_env = os.pathsep.join([local_path("depot_tools"), os.environ['PATH']])
+    depot_tools_env = os.pathsep.join([local_path("../py_mini_racer/extension/depot_tools"), os.environ['PATH']])
     current_env['PATH'] = depot_tools_env
     current_env['DEPOT_TOOLS_WIN_TOOLCHAIN'] = '0'
     return subprocess.check_call(cmd, shell=True, env=current_env)
@@ -55,9 +55,9 @@ def chdir(new_path, make=False):
 
 
 def install_depot_tools():
-    if not os.path.isdir(local_path("depot_tools")):
+    if not os.path.isdir(local_path("../py_mini_racer/extension/depot_tools")):
         LOGGER.debug("Cloning depot tools")
-        call("git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git {}".format(local_path("depot_tools")))
+        call("git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git {}".format(local_path("../py_mini_racer/extension/depot_tools")))
     else:
         LOGGER.debug("Using already cloned depot tools")
 
@@ -65,7 +65,7 @@ def install_depot_tools():
 def prepare_workdir():
     directories = ["build", "build_overrides", "buildtools", "testing",
                    "third_party", "tools"]
-    with chdir(local_path()):
+    with chdir(local_path("../py_mini_racer/extension")):
         for item in directories:
             if not os.path.exists(item):
                 symlink_force(os.path.join("v8", item), item)
@@ -74,14 +74,14 @@ def prepare_workdir():
 def ensure_v8_src(revision):
     """ Ensure that v8 src are presents and up-to-date
     """
-    path = local_path()
+    path = local_path("../py_mini_racer/extension")
 
-    if not os.path.isfile(local_path(".gclient")):
+    if not os.path.isfile(local_path("../py_mini_racer/extension/.gclient")):
         fetch_v8(path)
     else:
         update_v8(path)
 
-    checkout_v8_version(local_path("v8"), revision)
+    checkout_v8_version(local_path("../py_mini_racer/extension/v8"), revision)
     dependencies_sync(path)
 
 
@@ -119,7 +119,7 @@ def run_hooks(path):
         call("gclient runhooks")
 
 def gen_makefiles(build_path, no_sysroot=False):
-    with chdir(local_path()):
+    with chdir(local_path("../py_mini_racer/extension")):
         build_path = local_path(build_path)
         if not os.path.exists(build_path):
             os.makedirs(build_path)
@@ -170,13 +170,13 @@ def gen_makefiles(build_path, no_sysroot=False):
 def make(build_path, target, cmd_prefix=""):
     """ Create a release of v8
     """
-    with chdir(local_path()):
+    with chdir(local_path("../py_mini_racer/extension")):
         call("{} ninja -vv -C {} {}".format(cmd_prefix, local_path(build_path), target))
 
 def patch_v8():
     """ Apply patch on v8
     """
-    path = local_path("v8")
+    path = local_path("../py_mini_racer/extension/v8")
     patches_paths = PATCHES_PATH
     apply_patches(path, patches_paths)
 
@@ -230,7 +230,7 @@ def apply_patches(path, patches_path):
 
 
 def patch_sysroot():
-    with chdir(local_path("v8/build/linux/debian_sid_amd64-sysroot")):
+    with chdir(local_path("../py_mini_racer/extension/v8/build/linux/debian_sid_amd64-sysroot")):
         with open("usr/include/glob.h", "r") as f:
             header = f.read()
         s, e = header.split("sysroot-creator.sh.", 1)
@@ -290,7 +290,7 @@ def build_v8(target=None, build_path=None, revision=None, no_build=False,
         patch_sysroot()
     prepare_workdir()
     if not no_build:
-        checkout_path = local_path("v8")
+        checkout_path = local_path("../py_mini_racer/extension/v8")
         cmd_prefix = fixup_libtinfo(checkout_path)
         gen_makefiles(build_path, no_sysroot=no_sysroot)
         make(build_path, target, cmd_prefix)

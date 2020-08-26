@@ -12,6 +12,29 @@ import fnmatch
 
 from pkg_resources import resource_listdir, resource_filename
 
+
+def lib_filename(name, static=False):
+    if os.name == "posix" and sys.platform == "darwin":
+        prefix = "lib"
+        if static:
+            ext = ".a"
+        else:
+            ext = ".dylib"
+    elif sys.platform == "win32":
+        prefix = ""
+        if static:
+            ext = ".lib"
+        else:
+            ext = ".dll"
+    else:
+        prefix = "lib"
+        if static:
+            ext = ".a"
+        else:
+            ext = ".so"
+    return prefix + name + ext
+
+
 # In python 3 the extension file name depends on the python version
 try:
     EXTENSION_NAME = fnmatch.filter(resource_listdir('py_mini_racer', '.'), '_v8*.so')[0]
