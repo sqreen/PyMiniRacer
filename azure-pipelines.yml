@@ -76,6 +76,7 @@ jobs:
        python py_mini_racer/extension/v8_build.py --no-update --no-sysroot --target py_mini_racer_shared_lib
      displayName: Build the extension
    - bash: |
+       python -m pip install wheel
        python setup.py bdist_wheel --dist-dir wheelhouse --python-tag py2.py3 --plat-name linux_x86_64
      displayName: Build the Wheelhouse
    - template: helpers/release.yml

@@ -5,10 +5,11 @@ steps:
   displayName: Build the extension
 - {task: UsePythonVersion@0, inputs: {versionSpec: '3.6', architecture: x64}}
 - script: |
+    python -m pip install wheel
     python setup.py bdist_wheel --dist-dir wheelhouse --python-tag py2.py3 --plat-name $(plat_name)
   displayName: Build the Wheelhouse
 - script: |
-    pip install auditwheel
+    python -m pip install auditwheel
     for i in wheelhouse/*.whl; do auditwheel show $i; done
   displayName: Patch the Wheelhouse
 - script: |
