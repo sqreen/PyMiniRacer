@@ -300,7 +300,7 @@ def build_v8(target=None, build_path=None, revision=None, no_build=False,
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--target", default="v8", help="Ninja target")
-    parser.add_argument("--build-path", default="out", help="Build destination directory (relative to the path)")
+    parser.add_argument("--build-path", default="../py_mini_racer/extension/out", help="Build destination directory (relative to the current path)")
     parser.add_argument("--v8-revision", default=V8_VERSION)
     parser.add_argument("--no-build", action="store_true", help="Only prepare workdir")
     parser.add_argument("--no-update", action="store_true", help="Do not update the workdir")
