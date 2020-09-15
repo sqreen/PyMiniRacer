@@ -60,6 +60,7 @@ jobs:
    - bash: echo "##vso[task.prependpath]$(Build.SourcesDirectory)\\py_mini_racer\\extension\\depot_tools\\"
    - script: |
        python helpers/v8_build.py
+       ls -l py_mini_racer/extension/out/
        cp py_mini_racer/extension/out/mini_racer.dll py_mini_racer/mini_racer.dll
      displayName: Build the extension
    - script: |
@@ -106,8 +107,8 @@ jobs:
        cp py_mini_racer/extension/out/libmini_racer.so py_mini_racer/libmini_racer.muslc.so
      displayName: Build the extension
    - bash: |
-       python -m pip install wheel
+       /opt/python/cp36-cp36m/bin/python -m pip install wheel
        mkdir wheelhouse
-       python setup.py bdist_wheel --dist-dir wheelhouse --python-tag py2.py3 --plat-name linux_x86_64
+       /opt/python/cp36-cp36m/bin/python setup.py bdist_wheel --dist-dir wheelhouse --python-tag py2.py3 --plat-name linux_x86_64
      displayName: Build the Wheelhouse
    - template: helpers/release.yml
