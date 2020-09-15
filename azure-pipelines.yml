@@ -21,7 +21,7 @@ jobs:
        python3 helpers/build_package.py wheel wheelhouse
      displayName: Build the Wheelhouse
    - script: |
-       python -m pip install auditwheel
+       python3 -m pip install auditwheel
        for i in wheelhouse/*.whl; do auditwheel show $i; done
      displayName: Patch the Wheelhouse
    - script: |
@@ -58,7 +58,7 @@ jobs:
    - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
    - bash: echo "##vso[task.prependpath]$(Build.SourcesDirectory)\\py_mini_racer\\extension\\depot_tools\\"
    - script: |
-       python py_mini_racer/extension/v8_build.py
+       python helpers/v8_build.py
        cp py_mini_racer/extension/out/mini_racer.dll py_mini_racer/mini_racer.dll
      displayName: Build the extension
    - script: |
@@ -75,7 +75,7 @@ jobs:
        versionSpec: '2.7'
        architecture: x64
    - checkout: self
-   - bash: python py_mini_racer/extension/v8_build.py --no-build --no-sysroot
+   - bash: python helpers/v8_build.py --no-build --no-sysroot
      displayName: Download V8 sources
    - bash: tar -czf v8.tar.gz py_mini_racer/extension
      displayName: Archive V8 sources
@@ -100,7 +100,7 @@ jobs:
        rm -f py_mini_racer/extension/depot_tools/ninja
      displayName: Prepare Aline Linux build environment
    - bash: |
-       python py_mini_racer/extension/v8_build.py --no-update --no-sysroot --target py_mini_racer_shared_lib
+       python helpers/v8_build.py --no-update --no-sysroot --target py_mini_racer_shared_lib
        cp py_mini_racer/extension/out/libmini_racer.so py_mini_racer/libmini_racer.muslc.so
      displayName: Build the extension
    - bash: |
