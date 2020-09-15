@@ -5,6 +5,8 @@ jobs:
 - job: linux
   displayName: Build on Linux
   pool: {vmImage: 'Ubuntu-16.04'}
+  variables:
+    plat_name: "manylinux1_x86_64"
   steps:
    - task: UsePythonVersion@0
      inputs:
@@ -17,6 +19,8 @@ jobs:
 - job: mac
   displayName: Build on macOS
   pool: {vmImage: 'macOS-10.14'}
+  variables:
+    plat_name: "macosx_10_9_x86_64"
   steps:
    - checkout: self
    - template: helpers/cibuild.yml
@@ -24,6 +28,8 @@ jobs:
 - job: windows
   displayName: Build on Windows
   pool: {vmImage: 'vs2017-win2016'}
+  variables:
+    plat_name: "win_amd64"
   steps:
    - script: git config --global core.symlinks true
    - checkout: self
@@ -70,11 +76,6 @@ jobs:
        python py_mini_racer/extension/v8_build.py --no-update --no-sysroot --target py_mini_racer_shared_lib
      displayName: Build the extension
    - bash: |
-       for i in cp27-cp27mu cp35-cp35m cp36-cp36m cp37-cp37m cp38-cp38; do
-         sudo /opt/python/$i/bin/pip install wheel pytest
-         /opt/python/$i/bin/python setup.py bdist_wheel -d wheelhouse
-         sudo /opt/python/$i/bin/python setup.py develop --no-deps
-         /opt/python/$i/bin/pytest tests
-       done
+       python setup.py bdist_wheel --dist-dir wheelhouse --python-tag py2.py3 --plat-name linux_x86_64
      displayName: Build the Wheelhouse
    - template: helpers/release.yml

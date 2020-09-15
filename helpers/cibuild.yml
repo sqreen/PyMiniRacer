@@ -5,17 +5,11 @@ steps:
   displayName: Build the extension
 - {task: UsePythonVersion@0, inputs: {versionSpec: '3.6', architecture: x64}}
 - script: |
-    pip install git+https://github.com/joerick/cibuildwheel.git@0375e92110113689025a5f05376f77d220d8b5c9
-    cibuildwheel --output-dir wheelhouse .
-  env:
-    CIBW_BEFORE_BUILD: "git clean -ffdx -e py_mini_racer/extension/out py_mini_racer/extension || true"
-    CIBW_SKIP: "*-manylinux1_i686 *-win32"
-    CIBW_TEST_REQUIRES: mock pytest pytest-azurepipelines
-    CIBW_TEST_COMMAND: pytest {project}/tests
+    python setup.py bdist_wheel --dist-dir wheelhouse --python-tag py2.py3 --plat-name $(plat_name)
   displayName: Build the Wheelhouse
 - script: |
     pip install auditwheel
-    python helpers/wheel_pymalloc.py wheelhouse
+    for i in wheelhouse/*.whl; do auditwheel show $i; done
   displayName: Patch the Wheelhouse
 - script: |
     pip install twine readme_renderer[md]
