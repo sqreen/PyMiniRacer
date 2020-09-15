@@ -40,6 +40,7 @@ jobs:
    - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
    - script: |
        python3 -m pip install setuptools wheel
+       mkdir wheelhouse
        python3 helpers/build_package.py wheel wheelhouse
      displayName: Build the wheelhouse
    - template: helpers/release.yml
@@ -63,6 +64,7 @@ jobs:
      displayName: Build the extension
    - script: |
        python -m pip install wheel
+       mkdir wheelhouse
        python setup.py bdist_wheel --dist-dir wheelhouse --python-tag py2.py3 --plat-name $(plat_name)
      displayName: Build the Wheelhouse
    - template: helpers/release.yml
@@ -105,6 +107,7 @@ jobs:
      displayName: Build the extension
    - bash: |
        python -m pip install wheel
+       mkdir wheelhouse
        python setup.py bdist_wheel --dist-dir wheelhouse --python-tag py2.py3 --plat-name linux_x86_64
      displayName: Build the Wheelhouse
    - template: helpers/release.yml
