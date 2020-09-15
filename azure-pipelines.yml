@@ -24,6 +24,14 @@ jobs:
   steps:
    - checkout: self
    - template: helpers/cibuild.yml
+   - script: |
+       python -m pip install auditwheel
+       for i in wheelhouse/*.whl; do auditwheel show $i; done
+     displayName: Patch the Wheelhouse
+   - script: |
+       pip install twine readme_renderer[md]
+       twine check wheelhouse/*.whl
+     displayName: Check the wheels
    - template: helpers/release.yml
 - job: windows
   displayName: Build on Windows
@@ -74,6 +82,7 @@ jobs:
      displayName: Prepare Aline Linux build environment
    - bash: |
        python py_mini_racer/extension/v8_build.py --no-update --no-sysroot --target py_mini_racer_shared_lib
+       cp py_mini_racer/extension/out/libmini_racer.so py_mini_racer/libmini_racer.muslc.so
      displayName: Build the extension
    - bash: |
        python -m pip install wheel
