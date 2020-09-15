@@ -14,7 +14,20 @@ jobs:
        architecture: x64
    - checkout: self
    - bash: python setup.py sdist --dist-dir wheelhouse
-   - template: helpers/cibuild.yml
+   - {task: UsePythonVersion@0, inputs: {versionSpec: '3.6', architecture: x64}}
+   - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
+   - script: |
+       python3 -m pip install setuptools wheel
+       python3 helpers/build_package.py wheel wheelhouse
+     displayName: Build the Wheelhouse
+   - script: |
+       python -m pip install auditwheel
+       for i in wheelhouse/*.whl; do auditwheel show $i; done
+     displayName: Patch the Wheelhouse
+   - script: |
+       python -m pip install twine readme_renderer[md]
+       twine check wheelhouse/*.whl
+     displayName: Check the wheels
    - template: helpers/release.yml
 - job: mac
   displayName: Build on macOS
@@ -23,15 +36,12 @@ jobs:
     plat_name: "macosx_10_9_x86_64"
   steps:
    - checkout: self
-   - template: helpers/cibuild.yml
+   - {task: UsePythonVersion@0, inputs: {versionSpec: '3.6', architecture: x64}}
+   - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
    - script: |
-       python -m pip install auditwheel
-       for i in wheelhouse/*.whl; do auditwheel show $i; done
-     displayName: Patch the Wheelhouse
-   - script: |
-       pip install twine readme_renderer[md]
-       twine check wheelhouse/*.whl
-     displayName: Check the wheels
+       python3 -m pip install setuptools wheel
+       python3 helpers/build_package.py wheel wheelhouse
+     displayName: Build the wheelhouse
    - template: helpers/release.yml
 - job: windows
   displayName: Build on Windows
@@ -45,7 +55,16 @@ jobs:
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.7.exe -force
        Remove-Item C:\ProgramData\Chocolatey\bin\python2.exe -force
      displayName: Remove extraneous Python Interpreters
-   - template: helpers/cibuild.yml
+   - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
+   - bash: echo "##vso[task.prependpath]$(Build.SourcesDirectory)\\py_mini_racer\\extension\\depot_tools\\"
+   - script: |
+       python py_mini_racer/extension/v8_build.py
+       cp py_mini_racer/extension/out/mini_racer.dll py_mini_racer/mini_racer.dll
+     displayName: Build the extension
+   - script: |
+       python -m pip install wheel
+       python setup.py bdist_wheel --dist-dir wheelhouse --python-tag py2.py3 --plat-name $(plat_name)
+     displayName: Build the Wheelhouse
    - template: helpers/release.yml
 - job: fetch_sources_for_alpine
   displayName: Prepare build for Alpine Linux

@@ -4,7 +4,7 @@ include HISTORY.rst
 include LICENSE
 include README.rst
 
-include py_mini_racer/libmini_racer.so
+include py_mini_racer/libmini_racer.glibc.so py_mini_racer/libmini_racer.muslc.so
 include py_mini_racer/libmini_racer.dylib
 include py_mini_racer/mini_racer.dll
 
