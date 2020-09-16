@@ -58,7 +58,7 @@ jobs:
    - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
    - bash: echo "##vso[task.prependpath]$(Build.SourcesDirectory)\\py_mini_racer\\extension\\depot_tools\\"
    - script: |
-       python helpers/v8_build.py py_mini_racer_shared_lib
+       python helpers/v8_build.py --target py_mini_racer_shared_lib
        cp py_mini_racer/extension/out/mini_racer.dll py_mini_racer/mini_racer.dll
      displayName: Build the extension
    - script: |
