@@ -13,7 +13,6 @@ jobs:
        versionSpec: '3.6'
        architecture: x64
    - checkout: self
-   - bash: python setup.py sdist --dist-dir wheelhouse
    - {task: UsePythonVersion@0, inputs: {versionSpec: '3.6', architecture: x64}}
    - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
    - script: |
@@ -59,8 +58,7 @@ jobs:
    - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
    - bash: echo "##vso[task.prependpath]$(Build.SourcesDirectory)\\py_mini_racer\\extension\\depot_tools\\"
    - script: |
-       python helpers/v8_build.py
-       ls -l py_mini_racer/extension/out/
+       python helpers/v8_build.py py_mini_racer_shared_lib
        cp py_mini_racer/extension/out/mini_racer.dll py_mini_racer/mini_racer.dll
      displayName: Build the extension
    - script: |
@@ -111,4 +109,6 @@ jobs:
        mkdir wheelhouse
        /opt/python/cp36-cp36m/bin/python setup.py bdist_wheel --dist-dir wheelhouse --python-tag py2.py3 --plat-name linux_x86_64
      displayName: Build the Wheelhouse
+   - bash: /opt/python/cp36-cp36m/bin/python setup.py sdist --dist-dir wheelhouse
+     displayName: Build the source package
    - template: helpers/release.yml
