@@ -17,6 +17,7 @@ jobs:
    - {task: UsePythonVersion@0, inputs: {versionSpec: '2.7', architecture: x64}}
    - script: |
        python3 -m pip install setuptools wheel
+       mkdir wheelhouse
        python3 helpers/build_package.py wheel wheelhouse
      displayName: Build the Wheelhouse
    - script: |
@@ -61,6 +62,7 @@ jobs:
        python helpers/v8_build.py --target py_mini_racer_shared_lib
        cp py_mini_racer/extension/out/mini_racer.dll py_mini_racer/mini_racer.dll
      displayName: Build the extension
+   - {task: UsePythonVersion@0, inputs: {versionSpec: '3.6', architecture: x64}}
    - script: |
        python -m pip install wheel
        mkdir wheelhouse
