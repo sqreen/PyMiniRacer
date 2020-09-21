@@ -9,19 +9,46 @@ import ctypes
 import threading
 import datetime
 import fnmatch
+import sysconfig
 
-from pkg_resources import resource_listdir, resource_filename
+try:
+    import pkg_resources
+except ImportError:
+    pkg_resources = None  # pragma: no cover
+
+
+def _get_libc_name():
+    """Return the libc of the system."""
+    target = sysconfig.get_config_var("HOST_GNU_TYPE")
+    if target is not None and target.endswith("musl"):
+        return "muslc"
+    return "glibc"
+
+
+def _get_lib_path(name):
+    """Return the path of the library called `name`."""
+    if os.name == "posix" and sys.platform == "darwin":
+        prefix, ext = "lib", ".dylib"
+    elif sys.platform == "win32":
+        prefix, ext = "", ".dll"
+    else:
+        prefix, ext = "lib", ".{}.so".format(_get_libc_name())
+    fn = None
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass is not None:
+        fn = os.path.join(meipass, prefix + name + ext)
+    if fn is None and pkg_resources is not None:
+        fn = pkg_resources.resource_filename("py_mini_racer", prefix + name + ext)
+    if fn is None:
+        root_dir = os.path.dirname(os.path.abspath(__file__))
+        fn = os.path.join(root_dir, prefix + name + ext)
+    return fn
+
 
 # In python 3 the extension file name depends on the python version
-try:
-    EXTENSION_NAME = fnmatch.filter(resource_listdir('py_mini_racer', '.'), '_v8*.so')[0]
-    EXTENSION_PATH = resource_filename('py_mini_racer', EXTENSION_NAME)
-except NotImplementedError:
-    if not hasattr(sys, "_MEIPASS"):
-        raise
-    __location__ = os.path.join(sys._MEIPASS, "_v8") # pylint: disable=no-member, protected-access
-    EXTENSION_NAME = fnmatch.filter(os.listdir(__location__), '_v8*.so')[0]
-    EXTENSION_PATH = os.path.join(__location__, EXTENSION_NAME)
+EXTENSION_PATH = _get_lib_path("mini_racer")
+EXTENSION_NAME = os.path.basename(EXTENSION_PATH) if EXTENSION_PATH is not None else None
+
 
 if sys.version_info[0] < 3:
     UNICODE_TYPE = unicode
@@ -92,6 +119,8 @@ def _fetch_ext_handle():
     if _ext_handle:
         return _ext_handle
 
+    if EXTENSION_PATH is None or not os.path.exists(EXTENSION_PATH):
+        raise RuntimeError("Native library not available at {}".format(EXTENSION_PATH))
     _ext_handle = ctypes.CDLL(EXTENSION_PATH)
 
     _ext_handle.mr_init_context.restype = ctypes.c_void_p
