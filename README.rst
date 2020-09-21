@@ -138,14 +138,6 @@ We built Python wheels (prebuilt binaries) for macOS 64 bits, Linux 64 bits and 
 
     $ pip install py-mini-racer
 
-If you're running Alpine, Pypi isn't able to host the dedicated wheels.  
-We're making them available with the following command.
-
-.. code:: bash
-
-    $ pip install --index-url https://download.sqreen.io/python/alpine py-mini-racer
-
-
 Build
 -----
 
@@ -161,20 +153,17 @@ You can build the extension with the following command:
 
 .. code:: bash
 
-    $ python setup.py build_ext
+    $ python helpers/v8_build.py
 
 You can generate a wheel for whatever Python version with the command:
 
 .. code:: bash
 
-    $ python setup.py build_ext  # (for Python 2 and Python 3)
-    $ python setup.py bdist_wheel  # (for Python 2 only)
-    $ python3 setup.py bdist_wheel  # (for Python 3 only)
+    $ python3 helpers/build_package.py wheel dist
 
 It will then build V8, the extension, and generates a wheel for your current
 Python version. The V8 builds are cached in the ``py_mini_racer/extension/v8/``
-directory.  Please note that you can build Python 3 wheels by reusing the
-cached version of V8 built with Python 2.7.
+directory.
 
 Notes for building on macOS
 '''''''''''''''''''''''''''
@@ -187,11 +176,17 @@ They will allow to build a wheel compatible with former OSX versions.
 Tests
 -----
 
-If you want to run the tests, you need to build the extension first, then launch:
+If you want to run the tests, you need to build the extension first, first install pytest:
+
+.. code-block:: bash
+
+    $ python -m pip install pytest
+
+Then launch:
 
 .. code:: bash
 
-    $ python setup.py test --addopts tests
+    $ python -m pytest tests
 
 Credits
 -------

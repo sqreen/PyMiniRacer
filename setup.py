@@ -34,8 +34,8 @@ setup(
     version=about["__version__"],
     description="Minimal, modern embedded V8 for Python.",
     long_description=readme + '\n\n' + history,
-    author='Sqreen',
-    author_email='hey@sqreen.io',
+    author=about["__author__"],
+    author_email=about["__email__"],
     url='https://github.com/sqreen/PyMiniRacer',
     packages=[
         'py_mini_racer',
