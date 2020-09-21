@@ -47,10 +47,7 @@ def _get_lib_path(name):
 
 # In python 3 the extension file name depends on the python version
 EXTENSION_PATH = _get_lib_path("mini_racer")
-if EXTENSION_PATH is None or not os.path.exists(EXTENSION_PATH):
-    raise RuntimeError("Native library not available at {}".format(EXTENSION_PATH))
-
-EXTENSION_NAME = os.path.basename(EXTENSION_PATH)
+EXTENSION_NAME = os.path.basename(EXTENSION_PATH) if EXTENSION_PATH is not None else None
 
 
 if sys.version_info[0] < 3:
@@ -122,6 +119,8 @@ def _fetch_ext_handle():
     if _ext_handle:
         return _ext_handle
 
+    if EXTENSION_PATH is None or not os.path.exists(EXTENSION_PATH):
+        raise RuntimeError("Native library not available at {}".format(EXTENSION_PATH))
     _ext_handle = ctypes.CDLL(EXTENSION_PATH)
 
     _ext_handle.mr_init_context.restype = ctypes.c_void_p
