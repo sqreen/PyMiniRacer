@@ -3,6 +3,12 @@
 History
 -------
 
+0.4.0 (2020-09-22)
+------------------
+
+* Universal wheels for Linux, Mac and Windows
+* Fallback to source package for Alpine Linux
+
 0.3.0 (2020-06-29)
 ------------------
 
