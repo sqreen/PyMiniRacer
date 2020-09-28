@@ -28,7 +28,7 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
     # Build the wheel
     if os.name == "posix" and sys.platform == "darwin":
         shutil.copyfile("py_mini_racer/extension/out/libmini_racer.dylib", "py_mini_racer/libmini_racer.dylib")
-        options.extend(["--plat-name", "macosx_10_9_x86_64"])
+        options.extend(["--plat-name", "macosx_10_10_x86_64"])
     elif sys.platform == "win32":
         shutil.copyfile("py_mini_racer/extension/out/mini_racer.dll", "py_mini_racer/mini_racer.dll")
         options.extend(["--plat-name", "win_amd64"])
