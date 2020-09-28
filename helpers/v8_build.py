@@ -17,7 +17,7 @@ logging.basicConfig()
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-V8_VERSION = "branch-heads/7.8"
+V8_VERSION = "branch-heads/8.5"
 
 
 def local_path(path="."):
