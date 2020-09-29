@@ -144,7 +144,6 @@ def gen_makefiles(build_path, no_sysroot=False):
                 "symbol_level": "0",
                 "strip_debug_info": "true",
                 "treat_warnings_as_errors": "true",
-                "use_jumbo_build": "true",
 
                 "v8_monolithic": "false",
                 "v8_use_external_startup_data": "false",
@@ -153,6 +152,9 @@ def gen_makefiles(build_path, no_sysroot=False):
 
                 "v8_untrusted_code_mitigations": "false",
                 # See https://v8.dev/docs/untrusted-code-mitigations
+
+                # See cc_wrapper
+                "clang_use_chrome_plugins": "false",
             }
             if no_sysroot:
                 opts.update({
