@@ -18,7 +18,7 @@ History
 ------------------
 
 * Introduce a strict mode
-* Fix array conversion when size changes dynamically
+* Fix array conversion when size changes dynamically (CVE-2020-25489)
 
 0.2.0 (2020-03-11)
 ------------------
