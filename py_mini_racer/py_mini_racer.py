@@ -9,19 +9,52 @@ import ctypes
 import threading
 import datetime
 import fnmatch
+import sysconfig
 
-from pkg_resources import resource_listdir, resource_filename
+try:
+    import pkg_resources
+except ImportError:
+    pkg_resources = None  # pragma: no cover
+
+
+def _get_libc_name():
+    """Return the libc of the system."""
+    target = sysconfig.get_config_var("HOST_GNU_TYPE")
+    if target is not None and target.endswith("musl"):
+        return "muslc"
+    return "glibc"
+
+
+def _get_lib_path(name):
+    """Return the path of the library called `name`."""
+    if os.name == "posix" and sys.platform == "darwin":
+        prefix, ext = "lib", ".dylib"
+    elif sys.platform == "win32":
+        prefix, ext = "", ".dll"
+    else:
+        prefix, ext = "lib", ".{}.so".format(_get_libc_name())
+    fn = None
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass is not None:
+        fn = os.path.join(meipass, prefix + name + ext)
+    if fn is None and pkg_resources is not None:
+        fn = pkg_resources.resource_filename("py_mini_racer", prefix + name + ext)
+    if fn is None:
+        root_dir = os.path.dirname(os.path.abspath(__file__))
+        fn = os.path.join(root_dir, prefix + name + ext)
+    return fn
+
 
 # In python 3 the extension file name depends on the python version
-try:
-    EXTENSION_NAME = fnmatch.filter(resource_listdir('py_mini_racer', '.'), '_v8*.so')[0]
-    EXTENSION_PATH = resource_filename('py_mini_racer', EXTENSION_NAME)
-except NotImplementedError:
-    if not hasattr(sys, "_MEIPASS"):
-        raise
-    __location__ = os.path.join(sys._MEIPASS, "_v8") # pylint: disable=no-member, protected-access
-    EXTENSION_NAME = fnmatch.filter(os.listdir(__location__), '_v8*.so')[0]
-    EXTENSION_PATH = os.path.join(__location__, EXTENSION_NAME)
+EXTENSION_PATH = _get_lib_path("mini_racer")
+EXTENSION_NAME = os.path.basename(EXTENSION_PATH) if EXTENSION_PATH is not None else None
+
+
+if sys.version_info[0] < 3:
+    UNICODE_TYPE = unicode
+else:
+    UNICODE_TYPE = str
+
 
 class MiniRacerBaseException(Exception):
     """ base MiniRacer exception class """
@@ -59,6 +92,7 @@ class JSSymbol(object):
     """ type for JS symbols """
     pass
 
+
 def is_unicode(value):
     """ Check if a value is a valid unicode string, compatible with python 2 and python 3
 
@@ -73,14 +107,7 @@ def is_unicode(value):
     >>> is_unicode(('abc',))
     False
     """
-    python_version = sys.version_info[0]
-
-    if python_version == 2:
-        return isinstance(value, unicode)
-    elif python_version == 3:
-        return isinstance(value, str)
-    else:
-        raise NotImplementedError()
+    return isinstance(value, UNICODE_TYPE)
 
 
 _ext_handle = None
@@ -92,6 +119,8 @@ def _fetch_ext_handle():
     if _ext_handle:
         return _ext_handle
 
+    if EXTENSION_PATH is None or not os.path.exists(EXTENSION_PATH):
+        raise RuntimeError("Native library not available at {}".format(EXTENSION_PATH))
     _ext_handle = ctypes.CDLL(EXTENSION_PATH)
 
     _ext_handle.mr_init_context.restype = ctypes.c_void_p
@@ -103,7 +132,8 @@ def _fetch_ext_handle():
         ctypes.c_char_p,
         ctypes.c_int,
         ctypes.c_ulong,
-        ctypes.c_size_t]
+        ctypes.c_size_t,
+        ctypes.c_bool]
     _ext_handle.mr_call_context.restype = ctypes.POINTER(PythonValue)
 
     _ext_handle.mr_eval_context.argtypes = [
@@ -111,7 +141,8 @@ def _fetch_ext_handle():
         ctypes.c_char_p,
         ctypes.c_int,
         ctypes.c_ulong,
-        ctypes.c_size_t]
+        ctypes.c_size_t,
+        ctypes.c_bool]
     _ext_handle.mr_eval_context.restype = ctypes.POINTER(PythonValue)
 
     _ext_handle.mr_free_value.argtypes = [ctypes.c_void_p]
@@ -139,6 +170,8 @@ class MiniRacer(object):
     """ Ctypes wrapper arround binary mini racer
         https://docs.python.org/2/library/ctypes.html
     """
+
+    basic_types_only = False
 
     def __init__(self):
         """ Init a JS context """
@@ -181,12 +214,12 @@ class MiniRacer(object):
                                            bytes_val,
                                            len(bytes_val),
                                            ctypes.c_ulong(timeout),
-                                           ctypes.c_size_t(max_memory))
+                                           ctypes.c_size_t(max_memory),
+                                           ctypes.c_bool(self.basic_types_only))
 
             if bool(res) is False:
                 raise JSConversionException()
-            python_value = res.contents.to_python()
-            return python_value
+            return self._eval_return(res)
         finally:
             self.lock.release()
             if res is not None:
@@ -231,7 +264,8 @@ class MiniRacer(object):
                                            json_args,
                                            len(json_args),
                                            ctypes.c_ulong(timeout),
-                                           ctypes.c_size_t(max_memory))
+                                           ctypes.c_size_t(max_memory),
+                                           ctypes.c_bool(self.basic_types_only))
 
             if bool(res) is False:
                 raise JSConversionException()
@@ -272,6 +306,43 @@ class MiniRacer(object):
 
         self.ext.mr_free_context(self.ctx)
 
+    @staticmethod
+    def _eval_return(res):
+        return res.contents.to_python()
+
+
+class StrictMiniRacer(MiniRacer):
+    """
+    A stricter version of MiniRacer accepting only basic types as a return value
+    (boolean, integer, strings, ...), array and mapping are disallowed.
+    """
+
+    json_impl = json
+    basic_types_only = True
+
+    def execute(self, expr, **kwargs):
+        """ Stricter Execute with JSON serialization of returned value.
+        """
+        wrapped_expr = "JSON.stringify((function(){return (%s)})())" % expr
+        ret = self.eval(wrapped_expr, **kwargs)
+        if is_unicode(ret):
+            return self.json_impl.loads(ret)
+
+    def call(self, identifier, *args, **kwargs):
+        """ Stricter Call with JSON serialization of returned value.
+        """
+        json_args = self.json_impl.dumps(args, separators=(',', ':'),
+                                         cls=kwargs.pop("encoder", None))
+        js = "JSON.stringify({identifier}.apply(this, {json_args}))"
+        ret = self.eval(js.format(identifier=identifier, json_args=json_args),
+                        **kwargs)
+        if is_unicode(ret):
+            return self.json_impl.loads(ret)
+
+    @staticmethod
+    def _eval_return(res):
+        return res.contents.basic_to_python()
+
 
 class PythonTypes(object):
     """ Python types identifier - need to be coherent with
@@ -309,9 +380,22 @@ class PythonValue(ctypes.Structure):
             ptr = ctypes.c_char_p.from_buffer(self)
             return ctypes.c_double.from_buffer(ptr).value
 
-    def to_python(self):
-        """ Return an object as native Python """
+    def _raise_from_error(self):
+        if self.type == PythonTypes.parse_exception:
+            msg = ctypes.c_char_p(self.value).value
+            raise JSParseException(msg)
+        elif self.type == PythonTypes.execute_exception:
+            msg = ctypes.c_char_p(self.value).value
+            raise JSEvalException(msg.decode('utf-8', errors='replace'))
+        elif self.type == PythonTypes.oom_exception:
+            msg = ctypes.c_char_p(self.value).value
+            raise JSOOMException(msg)
+        elif self.type == PythonTypes.timeout_exception:
+            msg = ctypes.c_char_p(self.value).value
+            raise JSTimeoutException(msg)
 
+    def basic_to_python(self):
+        self._raise_from_error()
         result = None
         if self.type == PythonTypes.null:
             result = None
@@ -328,7 +412,23 @@ class PythonValue(ctypes.Structure):
             buf = ctypes.c_char_p(self.value)
             ptr = ctypes.cast(buf, ctypes.POINTER(ctypes.c_char))
             result = ptr[0:self.len].decode("utf8")
-        elif self.type == PythonTypes.array:
+        elif self.type == PythonTypes.function:
+            result = JSFunction()
+        elif self.type == PythonTypes.date:
+            timestamp = self._double_value()
+            # JS timestamp are milliseconds, in python we are in seconds
+            result = datetime.datetime.utcfromtimestamp(timestamp / 1000.)
+        elif self.type == PythonTypes.symbol:
+            result = JSSymbol()
+        else:
+            raise JSConversionException()
+        return result
+
+    def to_python(self):
+        """ Return an object as native Python """
+        self._raise_from_error()
+        result = None
+        if self.type == PythonTypes.array:
             if self.len == 0:
                 return []
             ary = []
@@ -349,26 +449,6 @@ class PythonValue(ctypes.Structure):
                 pval = PythonValue.from_address(ptr_to_hash[i*2+1])
                 res[pkey.to_python()] = pval.to_python()
             result = res
-        elif self.type == PythonTypes.function:
-            result = JSFunction()
-        elif self.type == PythonTypes.parse_exception:
-            msg = ctypes.c_char_p(self.value).value
-            raise JSParseException(msg)
-        elif self.type == PythonTypes.execute_exception:
-            msg = ctypes.c_char_p(self.value).value
-            raise JSEvalException(msg.decode('utf-8', errors='replace'))
-        elif self.type == PythonTypes.oom_exception:
-            msg = ctypes.c_char_p(self.value).value
-            raise JSOOMException(msg)
-        elif self.type == PythonTypes.timeout_exception:
-            msg = ctypes.c_char_p(self.value).value
-            raise JSTimeoutException(msg)
-        elif self.type == PythonTypes.date:
-            timestamp = self._double_value()
-            # JS timestamp are milliseconds, in python we are in seconds
-            result = datetime.datetime.utcfromtimestamp(timestamp / 1000.)
-        elif self.type == PythonTypes.symbol:
-            result = JSSymbol()
         else:
-            raise WrongReturnTypeException("unknown type %d" % self.type)
+            result = self.basic_to_python()
         return result

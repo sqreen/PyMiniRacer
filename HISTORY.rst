@@ -3,6 +3,23 @@
 History
 -------
 
+0.5.0b1 (2020-10-02)
+--------------------
+
+* Update V8 to 8.5
+
+0.4.0 (2020-09-22)
+------------------
+
+* Universal wheels for Linux, Mac and Windows
+* Fallback to source package for Alpine Linux
+
+0.3.0 (2020-06-29)
+------------------
+
+* Introduce a strict mode
+* Fix array conversion when size changes dynamically (CVE-2020-25489)
+
 0.2.0 (2020-03-11)
 ------------------
 
