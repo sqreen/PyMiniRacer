@@ -137,6 +137,7 @@ struct EvalResult {
     bool executed;
     bool terminated;
     bool timed_out;
+    bool oom;
     Persistent<Value>* value;
     Persistent<Value>* message;
     Persistent<Value>* backtrace;
@@ -161,9 +162,10 @@ typedef struct {
     ContextInfo* context_info;
     Local<String>* eval;
     unsigned long timeout;
-    EvalResult* result;
+    EvalResult result;
     size_t max_memory;
     bool basic_only;
+    std::timed_mutex breaker_mutex;
 } EvalParams;
 
 enum IsolateData {
@@ -184,9 +186,11 @@ static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
     isolate->GetHeapStatistics(&stats);
     size_t used = stats.used_heap_size();
 
-    context_info->soft_memory_limit_reached = (used > context_info->soft_memory_limit);
-    isolate->MemoryPressureNotification((context_info->soft_memory_limit_reached) ? v8::MemoryPressureLevel::kModerate : v8::MemoryPressureLevel::kNone);
-    if(used > context_info->hard_memory_limit) {
+    if (context_info->soft_memory_limit) {
+        context_info->soft_memory_limit_reached = (used > context_info->soft_memory_limit);
+        isolate->MemoryPressureNotification((context_info->soft_memory_limit_reached) ? v8::MemoryPressureLevel::kModerate : v8::MemoryPressureLevel::kNone);
+    }
+    if(context_info->hard_memory_limit && used > context_info->hard_memory_limit) {
         context_info->hard_memory_limit_reached = true;
         isolate->TerminateExecution();
     }
@@ -208,23 +212,37 @@ static void init_v8() {
     platform_lock.unlock();
 }
 
-static void breaker(std::timed_mutex& breaker_mutex, void * d) {
-  EvalParams* data = (EvalParams*)d;
 
-  if (!breaker_mutex.try_lock_for(std::chrono::milliseconds(data->timeout))) {
-    data->result->timed_out = true;
-    data->context_info->isolate->TerminateExecution();
-  }
-}
+class BreakerTask: public Task {
+    public:
+    BreakerTask(std::shared_ptr<EvalParams> params): params_(params), deadline_(current_platform->MonotonicallyIncreasingTime() + (params->timeout / 1000.0)) {
+    }
+    void Run() {
+      std::shared_ptr<EvalParams> params = params_.lock();
+      double remaining = deadline_ - current_platform->MonotonicallyIncreasingTime();
+
+      // Do not run the breaker if too late (params do not exist anymore)
+      if (params && remaining > 0) {
+          if (!params->breaker_mutex.try_lock_for(std::chrono::duration<double>(remaining))) {
+            params->result.timed_out = true;
+            params->context_info->isolate->TerminateExecution();
+          }
+      }
+    }
+    private:
+    std::weak_ptr<EvalParams> params_;
+    double deadline_;
+};
+
 
 static void set_hard_memory_limit(ContextInfo *context_info, size_t limit) {
     context_info->hard_memory_limit = limit;
     context_info->hard_memory_limit_reached = false;
 }
 
-static void* nogvl_context_eval(void* arg) {
-    EvalParams* eval_params = (EvalParams*)arg;
-    EvalResult* result = eval_params->result;
+
+static void* nogvl_context_eval(std::shared_ptr<EvalParams> eval_params) {
+    EvalResult* result = &eval_params->result;
     Isolate* isolate = eval_params->context_info->isolate;
     Isolate::Scope isolate_scope(isolate);
     HandleScope handle_scope(isolate);
@@ -235,7 +253,11 @@ static void* nogvl_context_eval(void* arg) {
 
     Context::Scope context_scope(context);
 
-    set_hard_memory_limit(eval_params->context_info, eval_params->max_memory);
+    size_t old_hard_limit = eval_params->context_info->hard_memory_limit;
+
+    if (eval_params->max_memory) {
+        set_hard_memory_limit(eval_params->context_info, eval_params->max_memory);
+    }
 
     MaybeLocal<Script> parsed_script = Script::Compile(context, *eval_params->eval);
     result->parsed = !parsed_script.IsEmpty();
@@ -247,90 +269,88 @@ static void* nogvl_context_eval(void* arg) {
     if (!result->parsed) {
         result->message = new Persistent<Value>();
         result->message->Reset(isolate, trycatch.Exception());
+        return NULL;
+
+    }
+
+    // timeout limit
+    if (eval_params->timeout > 0) {
+        eval_params->breaker_mutex.lock();
+        current_platform->CallOnWorkerThread(std::make_unique<BreakerTask>(eval_params));
+    }
+
+    MaybeLocal<Value> maybe_value = parsed_script.ToLocalChecked()->Run(context);
+
+    if (eval_params->timeout > 0) {
+        eval_params->breaker_mutex.unlock();
+    }
+
+    // restore memory limit
+    if (eval_params->max_memory > 0) {
+        eval_params->result.oom = eval_params->context_info->hard_memory_limit_reached;
+        set_hard_memory_limit(eval_params->context_info, old_hard_limit);
+    }
+
+    result->executed = !maybe_value.IsEmpty();
+    if (!result->executed) {
+        if (trycatch.HasCaught()) {
+            if (!trycatch.Exception()->IsNull()) {
+                result->message = new Persistent<Value>();
+                    Local<Message> message = trycatch.Message();
+                    char buf[1000];
+                    int len, line, column;
+
+                    if (!message->GetLineNumber(context).To(&line)) {
+                      line = 0;
+                    }
+
+                    if (!message->GetStartColumn(context).To(&column)) {
+                      column = 0;
+                    }
+
+                    len = snprintf(buf, sizeof(buf), "%s at %s:%i:%i", *String::Utf8Value(isolate, message->Get()),
+                                   *String::Utf8Value(isolate, message->GetScriptResourceName()->ToString(context).ToLocalChecked()),
+                                   line,
+                                   column);
+
+                    if ((size_t) len >= sizeof(buf)) {
+                        len = sizeof(buf) - 1;
+                        buf[len] = '\0';
+                    }
+
+                    Local<String> v8_message = String::NewFromUtf8(isolate, buf, NewStringType::kNormal, len).ToLocalChecked();
+                    result->message->Reset(isolate, v8_message);
+            } else if(trycatch.HasTerminated()) {
+                result->terminated = true;
+                result->message = new Persistent<Value>();
+                Local<String> tmp;
+                if (result->timed_out) {
+                    tmp = String::NewFromUtf8(isolate, "JavaScript was terminated by timeout").ToLocalChecked();
+                } else {
+                    tmp = String::NewFromUtf8(isolate, "JavaScript was terminated").ToLocalChecked();
+                }
+                result->message->Reset(isolate, tmp);
+            }
+
+            if (!trycatch.StackTrace(context).IsEmpty()) {
+                Local<Value> stacktrace;
+
+                if (trycatch.StackTrace(context).ToLocal(&stacktrace)) {
+                    Local<Value> tmp;
+
+                    if (stacktrace->ToString(context).ToLocal(&tmp)) {
+                        result->backtrace = new Persistent<Value>();
+                        result->backtrace->Reset(isolate, tmp);
+                    }
+                }
+            }
+        }
     } else {
+        Local<Value> tmp;
 
-        std::timed_mutex breaker_mutex;
-        std::thread breaker_thread;
-
-        // timeout limit
-        auto timeout = eval_params->timeout;
-        if (timeout > 0) {
-            breaker_mutex.lock();
-            breaker_thread = std::thread(&breaker, std::ref(breaker_mutex), (void *) eval_params);
-        }
-        // memory limit
-        if (eval_params->max_memory > 0) {
-            isolate->AddGCEpilogueCallback(gc_callback);
-        }
-
-        MaybeLocal<Value> maybe_value = parsed_script.ToLocalChecked()->Run(context);
-
-        if (timeout > 0) {
-            breaker_mutex.unlock();
-            breaker_thread.join();
-        }
-
-        result->executed = !maybe_value.IsEmpty();
-        if (!result->executed) {
-            if (trycatch.HasCaught()) {
-                if (!trycatch.Exception()->IsNull()) {
-                    result->message = new Persistent<Value>();
-                        Local<Message> message = trycatch.Message();
-                        char buf[1000];
-                        int len, line, column;
-
-                        if (!message->GetLineNumber(context).To(&line)) {
-                          line = 0;
-                        }
-
-                        if (!message->GetStartColumn(context).To(&column)) {
-                          column = 0;
-                        }
-
-                        len = snprintf(buf, sizeof(buf), "%s at %s:%i:%i", *String::Utf8Value(isolate, message->Get()),
-                                       *String::Utf8Value(isolate, message->GetScriptResourceName()->ToString(context).ToLocalChecked()),
-                                       line,
-                                       column);
-
-                        if ((size_t) len >= sizeof(buf)) {
-                            len = sizeof(buf) - 1;
-                            buf[len] = '\0';
-                        }
-
-                        Local<String> v8_message = String::NewFromUtf8(isolate, buf, NewStringType::kNormal, len).ToLocalChecked();
-                        result->message->Reset(isolate, v8_message);
-                } else if(trycatch.HasTerminated()) {
-                    result->terminated = true;
-                    result->message = new Persistent<Value>();
-                    Local<String> tmp;
-                    if (result->timed_out) {
-                        tmp = String::NewFromUtf8(isolate, "JavaScript was terminated by timeout").ToLocalChecked();
-                    } else {
-                        tmp = String::NewFromUtf8(isolate, "JavaScript was terminated").ToLocalChecked();
-                    }
-                    result->message->Reset(isolate, tmp);
-                }
-
-                if (!trycatch.StackTrace(context).IsEmpty()) {
-                    Local<Value> stacktrace;
-
-                    if (trycatch.StackTrace(context).ToLocal(&stacktrace)) {
-                        Local<Value> tmp;
-
-                        if (stacktrace->ToString(context).ToLocal(&tmp)) {
-                            result->backtrace = new Persistent<Value>();
-                            result->backtrace->Reset(isolate, tmp);
-                        }
-                    }
-                }
-            }
-        } else {
-            Local<Value> tmp;
-
-            if (maybe_value.ToLocal(&tmp)) {
-                result->value = new Persistent<Value>();
-                result->value->Reset(isolate, tmp);
-            }
+        if (maybe_value.ToLocal(&tmp)) {
+            result->value = new Persistent<Value>();
+            result->value->Reset(isolate, tmp);
         }
     }
 
@@ -642,6 +662,8 @@ ContextInfo *MiniRacer_init_context()
     context_info->context->Reset(context_info->isolate, context);
     context_info->isolate->SetData(CONTEXT_INFO, (void *)context_info);
 
+    context_info->isolate->AddGCEpilogueCallback(gc_callback);
+
     return context_info;
 }
 
@@ -650,8 +672,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         char *utf_str, int str_len,
         unsigned long timeout, size_t max_memory, bool basic_only)
 {
-    EvalParams eval_params;
-    EvalResult eval_result{};
+    std::shared_ptr<EvalParams> eval_params = std::make_shared<EvalParams>();
 
     BinaryValue *result = NULL;
 
@@ -676,36 +697,29 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
                                                  NewStringType::kNormal,
                                                  str_len).ToLocalChecked();
 
-        eval_params.context_info = context_info;
-        eval_params.eval = &eval;
-        eval_params.result = &eval_result;
-        eval_params.timeout = 0;
-        eval_params.max_memory = 0;
-        eval_params.basic_only = basic_only;
-        if (timeout > 0) {
-            eval_params.timeout = timeout;
-        }
-        if (max_memory > 0) {
-            eval_params.max_memory = max_memory;
-        }
+        eval_params->context_info = context_info;
+        eval_params->eval = &eval;
+        eval_params->basic_only = basic_only;
+        eval_params->timeout = timeout;
+        eval_params->max_memory = max_memory;
 
-        nogvl_context_eval(&eval_params);
+        nogvl_context_eval(eval_params);
 
-        if (eval_result.message) {
+        if (eval_params->result.message) {
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
-                                                 *eval_result.message);
+                                                 *eval_params->result.message);
 
-            if (eval_params.basic_only) {
+            if (eval_params->basic_only) {
                 bmessage = convert_basic_v8_to_binary(context_info->isolate, *context_info->context, tmp);
             } else {
                 bmessage = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
             }
         }
 
-        if (eval_result.backtrace) {
+        if (eval_params->result.backtrace) {
 
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
-                                                 *eval_result.backtrace);
+                                                 *eval_params->result.backtrace);
             bbacktrace = convert_basic_v8_to_binary(context_info->isolate, *context_info->context, tmp);
         }
     }
@@ -715,7 +729,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
 
     // NOTE: this is very important, we can not do an raise from within
     // a v8 scope, if we do the scope is never cleaned up properly and we leak
-    if (!eval_result.parsed) {
+    if (!eval_params->result.parsed) {
         result = xalloc(result);
         result->type = type_parse_exception;
 
@@ -731,14 +745,14 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         }
     }
 
-    else if (!eval_result.executed) {
+    else if (!eval_params->result.executed) {
         result = xalloc(result);
         result->str_val = nullptr;
 
-        if (context_info->hard_memory_limit_reached) {
+        if (eval_params->result.oom) {
             result->type = type_oom_exception;
         } else {
-            if (eval_result.timed_out) {
+            if (eval_params->result.timed_out) {
                 result->type = type_timeout_exception;
             } else {
                 result->type = type_execute_exception;
@@ -769,13 +783,13 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         }
     }
 
-    else if (eval_result.value) {
+    else if (eval_params->result.value) {
         Locker lock(context_info->isolate);
         Isolate::Scope isolate_scope(context_info->isolate);
         HandleScope handle_scope(context_info->isolate);
 
-        Local<Value> tmp = Local<Value>::New(context_info->isolate, *eval_result.value);
-        if (eval_params.basic_only) {
+        Local<Value> tmp = Local<Value>::New(context_info->isolate, *eval_params->result.value);
+        if (eval_params->basic_only) {
             result = convert_basic_v8_to_binary(context_info->isolate, *context_info->context, tmp);
         } else {
             result = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
