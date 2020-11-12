@@ -3,10 +3,12 @@ include CONTRIBUTING.rst
 include HISTORY.rst
 include LICENSE
 include README.rst
-include py_mini_racer/extension/*.gn
+
+include py_mini_racer/libmini_racer.glibc.so py_mini_racer/libmini_racer.muslc.so
+include py_mini_racer/libmini_racer.dylib
+include py_mini_racer/mini_racer.dll
 
 recursive-include tests *
-recursive-include requirements *
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
 
