@@ -2,10 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """ Basic JS types tests """
-
+import sys
 import time
 import unittest
-import six
 
 from py_mini_racer import py_mini_racer
 
@@ -56,11 +55,12 @@ class Test(unittest.TestCase):
         with self.assertRaises(py_mini_racer.JSEvalException):
             context.eval("f()")
 
+    @unittest.skipIf(sys.version_info[0] < 3, "no assertRaisesRegex on Python 2")
     def test_cannot_parse(self):
         context = py_mini_racer.MiniRacer()
         js_source = "var f = function("
 
-        with six.assertRaisesRegex(
+        with self.assertRaisesRegex(
             self, py_mini_racer.JSParseException, '.*Unknown JavaScript error during parse.*'
         ):
             context.eval(js_source)
