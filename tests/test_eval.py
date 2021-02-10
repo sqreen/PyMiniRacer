@@ -60,9 +60,7 @@ class Test(unittest.TestCase):
         context = py_mini_racer.MiniRacer()
         js_source = "var f = function("
 
-        with self.assertRaisesRegex(
-            self, py_mini_racer.JSParseException, '.*Unknown JavaScript error during parse.*'
-        ):
+        with self.assertRaisesRegex(py_mini_racer.JSParseException, '.*Unknown JavaScript error during parse.*'):
             context.eval(js_source)
 
     def test_null_byte(self):
