@@ -199,8 +199,9 @@ static void init_v8() {
     platform_lock.lock();
 
     if (current_platform == NULL) {
+        V8::SetFlagsFromString("--single-threaded");
         V8::InitializeICU();
-        current_platform = platform::NewDefaultPlatform();
+        current_platform = platform::NewSingleThreadedDefaultPlatform();
         V8::InitializePlatform(current_platform.get());
         V8::Initialize();
     }
