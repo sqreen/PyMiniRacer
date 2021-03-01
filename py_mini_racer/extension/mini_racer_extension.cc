@@ -229,7 +229,6 @@ static void* nogvl_context_eval(void* arg) {
     Isolate* isolate = eval_params->context_info->isolate;
     Isolate::Scope isolate_scope(isolate);
     HandleScope handle_scope(isolate);
-    std::function<MaybeLocal<Value>()> call_func;
 
     TryCatch trycatch(isolate);
 
@@ -245,33 +244,6 @@ static void* nogvl_context_eval(void* arg) {
     result->timed_out = false;
     result->value = NULL;
 
-    if (eval_params->fast_call) {
-        Local<Object> global = context->Global();
-        MaybeLocal<Value> func_global = global->Get(context, *eval_params->eval);
-        Local<Value> func;
-        result->parsed = func_global.ToLocal(&func) && func->IsFunction();
-
-        if (!result->parsed) {
-            result->message = new Persistent<Value>();
-            result->message->Reset(isolate, String::NewFromUtf8(isolate, "Function to call not found").ToLocalChecked());
-            return NULL;
-        }
-
-        call_func = [=] () { return Local<Function>::Cast(func)->Call(context, v8::Undefined(isolate), 0, {}); };
-    } else {
-        MaybeLocal<Script> parsed_script = Script::Compile(context, *eval_params->eval);
-        Local<Script> script;
-        result->parsed = parsed_script.ToLocal(&script) && !script.IsEmpty();
-
-	if (!result->parsed) {
-            result->message = new Persistent<Value>();
-            result->message->Reset(isolate, trycatch.Exception());
-            return NULL;
-	}
-
-        call_func = [=] () { return script->Run(context); };
-    }
-
     std::timed_mutex breaker_mutex;
     std::thread breaker_thread;
 
@@ -286,7 +258,34 @@ static void* nogvl_context_eval(void* arg) {
         isolate->AddGCEpilogueCallback(gc_callback);
     }
 
-    MaybeLocal<Value> maybe_value = call_func();
+	MaybeLocal<Value> maybe_value;
+
+	if (eval_params->fast_call) {
+        Local<Object> global = context->Global();
+        MaybeLocal<Value> func_global = global->Get(context, *eval_params->eval);
+        Local<Value> func;
+        result->parsed = func_global.ToLocal(&func) && func->IsFunction();
+
+        if (!result->parsed) {
+            result->message = new Persistent<Value>();
+            result->message->Reset(isolate, String::NewFromUtf8(isolate, "Function to call not found").ToLocalChecked());
+            return NULL;
+        }
+
+        maybe_value = Local<Function>::Cast(func)->Call(context, v8::Undefined(isolate), 0, {});
+    } else {
+        MaybeLocal<Script> parsed_script = Script::Compile(context, *eval_params->eval);
+        Local<Script> script;
+        result->parsed = parsed_script.ToLocal(&script) && !script.IsEmpty();
+
+    	if (!result->parsed) {
+            result->message = new Persistent<Value>();
+            result->message->Reset(isolate, trycatch.Exception());
+            return NULL;
+    	}
+
+        maybe_value = script->Run(context);
+    }
 
     if (timeout > 0) {
         breaker_mutex.unlock();
