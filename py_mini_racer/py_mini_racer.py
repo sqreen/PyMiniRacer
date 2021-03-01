@@ -131,7 +131,6 @@ def _fetch_ext_handle():
         ctypes.c_int,
         ctypes.c_ulong,
         ctypes.c_size_t,
-        ctypes.c_bool,
         ctypes.c_bool]
     _ext_handle.mr_eval_context.restype = ctypes.POINTER(PythonValue)
 
@@ -153,6 +152,8 @@ def _fetch_ext_handle():
     _ext_handle.mr_soft_memory_limit_reached.argtypes = [ctypes.c_void_p]
     _ext_handle.mr_soft_memory_limit_reached.restype = ctypes.c_bool
 
+    _ext_handle.mr_v8_version.restype = ctypes.c_char_p
+
     return _ext_handle
 
 
@@ -161,7 +162,7 @@ class MiniRacer(object):
         https://docs.python.org/2/library/ctypes.html
     """
 
-    basic_types_only = False
+    json_impl = json
 
     def __init__(self):
         """ Init a JS context """
@@ -169,11 +170,6 @@ class MiniRacer(object):
         self.ext = _fetch_ext_handle()
         self.ctx = self.ext.mr_init_context()
         self.lock = threading.Lock()
-
-    def free(self, res):
-        """ Free value returned by mr_eval_context """
-
-        self.ext.mr_free_value(res)
 
     def set_soft_memory_limit(self, limit):
         """ Set instance soft memory limit """
@@ -183,121 +179,106 @@ class MiniRacer(object):
         """ Tell if the instance soft memory limit was reached """
         return self.ext.mr_soft_memory_limit_reached(self.ctx)
 
-    def execute(self, js_str, timeout=0, max_memory=0):
-        """ Exec the given JS value """
-        wrapped = "(function(){return (%s)})()" % js_str
-        return self.eval(wrapped, timeout=timeout, max_memory=max_memory)
+    def execute(self, expr, timeout=0, max_memory=0):
+        """ Helper method to execute an expression with JSON serialization of returned value.
+        """
+        wrapped_expr = u"JSON.stringify((function(){return (%s)})())" % expr
+        ret = self.eval(wrapped_expr, timeout=timeout, max_memory=max_memory)
+        if not is_unicode(ret):
+            raise ValueError(u"Unexpected return value type {}".format(type(ret)))
+        return self.json_impl.loads(ret)
 
-    def call(self, js_identifier, *args, **kwargs):
-        """ Call the function referenced by a global identifier with provided arguments.
+    def call(self, expr, *args, **kwargs):
+        """ Helper method to call a function returned by expr with the given arguments.
 
-        This method is optimized to execute function without argument faster. In fact
-        arguments are encoded to JSON. You can pass a custom JSON encoder in the encoder
-        keyword argument to encode arguments.
+        You can pass a custom JSON encoder in the encoder keyword argument to encode arguments
+        and the function return value.
         """
 
         encoder = kwargs.get('encoder', None)
         timeout = kwargs.get('timeout', 0)
         max_memory = kwargs.get('max_memory', 0)
 
-        if args:
-            # Slower path when arguments are present
-            json_args = json.dumps(args, separators=(',', ':'), cls=encoder)
-            js = "{identifier}.apply(this, {json_args})"
-            return self.eval(js.format(identifier=js_identifier, json_args=json_args), timeout=timeout, max_memory=max_memory)
+        json_args = self.json_impl.dumps(args, separators=(',', ':'), cls=encoder)
+        js = u"{expr}.apply(this, {json_args})".format(expr=expr, json_args=json_args)
+        return self.execute(js, timeout=timeout, max_memory=max_memory)
 
+    def fast_call(self, js_identifier, timeout=0, max_memory=0):
+        """ Call the function referenced by a global identifier with provided arguments.
+        """
         return self.eval(js_identifier, timeout=timeout, max_memory=max_memory, fast_call=True)
 
     def eval(self, js_str, timeout=0, max_memory=0, fast_call=False):
         """ Eval the JavaScript string """
 
         if is_unicode(js_str):
-            bytes_val = js_str.encode("utf8")
-        else:
-            bytes_val = js_str
+            js_str = js_str.encode("utf8")
 
-        res = None
-        self.lock.acquire()
-        try:
+        with self.lock:
             res = self.ext.mr_eval_context(self.ctx,
-                                           bytes_val,
-                                           len(bytes_val),
+                                           js_str,
+                                           len(js_str),
                                            ctypes.c_ulong(timeout),
                                            ctypes.c_size_t(max_memory),
-                                           ctypes.c_bool(self.basic_types_only),
                                            ctypes.c_bool(fast_call))
-
-            if bool(res) is False:
-                raise JSConversionException()
-            return self._eval_return(res)
+        if not res:
+            raise JSConversionException()
+        try:
+            return res.contents.to_python()
         finally:
-            self.lock.release()
-            if res is not None:
-                self.free(res)
+            self.free(res)
+
+    def low_memory_notification(self):
+        """ Ask the V8 VM to collect memory more aggressively.
+        """
+        self.ext.mr_low_memory_notification(self.ctx)
 
     def heap_stats(self):
         """ Return heap statistics """
 
-        self.lock.acquire()
-        res = self.ext.mr_heap_stats(self.ctx)
-        self.lock.release()
+        with self.lock:
+            res = self.ext.mr_heap_stats(self.ctx)
 
-        python_value = res.contents.to_python()
-        self.free(res)
-        return python_value
-
-    def low_memory_notification(self):
-        self.ext.mr_low_memory_notification(self.ctx)
+        if not res:
+            return {
+                u"total_physical_size": 0,
+                u"used_heap_size": 0,
+                u"total_heap_size": 0,
+                u"total_heap_size_executable": 0,
+                u"heap_size_limit": 0
+            }
+        try:
+            return self.json_impl.loads(res.contents.to_python())
+        finally:
+            self.free(res)
 
     def heap_snapshot(self):
         """ Return heap snapshot """
 
-        self.lock.acquire()
-        res = self.ext.mr_heap_snapshot(self.ctx)
-        self.lock.release()
+        with self.lock:
+            res = self.ext.mr_heap_snapshot(self.ctx)
 
-        python_value = res.contents.to_python()
-        self.free(res)
-        return python_value
+        try:
+            return res.contents.to_python()
+        finally:
+            self.free(res)
+
+    def free(self, res):
+        """ Free value returned by mr_eval_context """
+
+        self.ext.mr_free_value(res)
 
     def __del__(self):
         """ Free the context """
 
         self.ext.mr_free_context(self.ctx)
 
-    @staticmethod
-    def _eval_return(res):
-        return res.contents.to_python()
+    def v8_version(self):
+        return UNICODE_TYPE(self.ext.mr_v8_version())
 
 
-class StrictMiniRacer(MiniRacer):
-    """
-    A stricter version of MiniRacer accepting only basic types as a return value
-    (boolean, integer, strings, ...), array and mapping are disallowed.
-    """
-
-    json_impl = json
-    basic_types_only = True
-
-    def execute(self, expr, timeout=0, max_memory=0):
-        """ Stricter Execute with JSON serialization of returned value.
-        """
-        wrapped_expr = "JSON.stringify((function(){return (%s)})())" % expr
-        ret = self.eval(wrapped_expr, timeout=timeout, max_memory=max_memory)
-        if is_unicode(ret):
-            return self.json_impl.loads(ret)
-
-    def call(self, identifier, *args, **kwargs):
-        """ Stricter Call with JSON serialization of returned value.
-        """
-        json_args = self.json_impl.dumps(args, separators=(',', ':'),
-                                         cls=kwargs.pop("encoder", None))
-        js = "{identifier}.apply(this, {json_args})"
-        return self.execute(js.format(identifier=identifier, json_args=json_args), **kwargs)
-
-    @staticmethod
-    def _eval_return(res):
-        return res.contents.basic_to_python()
+# Compatibility with versions 0.4 & 0.5
+StrictMiniRacer = MiniRacer
 
 
 class PythonTypes(object):
@@ -310,8 +291,8 @@ class PythonTypes(object):
     integer   =   3
     double    =   4
     str_utf8  =   5
-    array     =   6
-    hash      =   7
+    array     =   6  # deprecated
+    hash      =   7  # deprecated
     date      =   8
     symbol    =   9
 
@@ -350,7 +331,7 @@ class PythonValue(ctypes.Structure):
             msg = ctypes.c_char_p(self.value).value
             raise JSTimeoutException(msg)
 
-    def basic_to_python(self):
+    def to_python(self):
         self._raise_from_error()
         result = None
         if self.type == PythonTypes.null:
@@ -378,33 +359,4 @@ class PythonValue(ctypes.Structure):
             result = JSSymbol()
         else:
             raise JSConversionException()
-        return result
-
-    def to_python(self):
-        """ Return an object as native Python """
-        self._raise_from_error()
-        result = None
-        if self.type == PythonTypes.array:
-            if self.len == 0:
-                return []
-            ary = []
-            ary_addr = ctypes.c_void_p.from_address(self.value)
-            ptr_to_ary = ctypes.pointer(ary_addr)
-            for i in range(self.len):
-                pval = PythonValue.from_address(ptr_to_ary[i])
-                ary.append(pval.to_python())
-            result = ary
-        elif self.type == PythonTypes.hash:
-            if self.len == 0:
-                return {}
-            res = {}
-            hash_ary_addr = ctypes.c_void_p.from_address(self.value)
-            ptr_to_hash = ctypes.pointer(hash_ary_addr)
-            for i in range(self.len):
-                pkey = PythonValue.from_address(ptr_to_hash[i*2])
-                pval = PythonValue.from_address(ptr_to_hash[i*2+1])
-                res[pkey.to_python()] = pval.to_python()
-            result = res
-        else:
-            result = self.basic_to_python()
         return result
