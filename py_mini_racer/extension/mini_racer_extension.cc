@@ -193,7 +193,7 @@ static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
     }
 }
 
-static void init_v8() {
+static void init_v8(char const *icu_data_file) {
     // no need to wait for the lock if already initialized
     if (current_platform != NULL) return;
 
@@ -201,7 +201,7 @@ static void init_v8() {
 
     if (current_platform == NULL) {
         V8::SetFlagsFromString("--single-threaded");
-        V8::InitializeICU();
+        V8::InitializeICU(icu_data_file);
         current_platform = platform::NewSingleThreadedDefaultPlatform();
         V8::InitializePlatform(current_platform.get());
         V8::Initialize();
@@ -642,9 +642,9 @@ static void deallocate(void * data) {
 }
 
 
-ContextInfo *MiniRacer_init_context()
+ContextInfo *MiniRacer_init_context(char const *icu_data_file)
 {
-    init_v8();
+    init_v8(icu_data_file);
 
     ContextInfo* context_info = xalloc(context_info);
     memset(context_info, 0, sizeof(*context_info));
@@ -842,9 +842,8 @@ LIB_EXPORT BinaryValue * mr_eval_context(ContextInfo *context_info, char *str, i
     return res;
 }
 
-LIB_EXPORT ContextInfo * mr_init_context() {
-    ContextInfo *res = MiniRacer_init_context();
-    return res;
+LIB_EXPORT ContextInfo * mr_init_context(char const *icu_data_file) {
+    return MiniRacer_init_context(icu_data_file);
 }
 
 LIB_EXPORT void mr_free_value(BinaryValue *val) {

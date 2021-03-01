@@ -144,7 +144,6 @@ def gen_makefiles(build_path, no_sysroot=False):
                 "treat_warnings_as_errors": "true",
 
                 "v8_monolithic": "false",
-                "v8_use_external_startup_data": "false",
 
                 "v8_untrusted_code_mitigations": "false",
                 # See https://v8.dev/docs/untrusted-code-mitigations
