@@ -64,13 +64,13 @@ class Test(unittest.TestCase):
     def test_complex(self):
 
         self.valid({
-            1: [
+            '1': [
                 1, 2, 'qwe', {
                     'z': [
                         4, 5, 6, {
                             'eqewr': 1,
                             'zxczxc': 'qweqwe',
-                            'z': {1: 2}
+                            'z': {'1': 2}
                         }
                     ]
                 }

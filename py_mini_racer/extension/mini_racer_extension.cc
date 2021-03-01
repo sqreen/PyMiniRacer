@@ -7,6 +7,7 @@
 #include <string.h>
 #include <v8.h>
 #include <v8-profiler.h>
+#include <v8-version-string.h>
 #include <libplatform/libplatform.h>
 
 #ifdef V8_OS_WIN
@@ -163,7 +164,6 @@ typedef struct {
     unsigned long timeout;
     EvalResult* result;
     size_t max_memory;
-    bool basic_only;
     bool fast_call;
 } EvalParams;
 
@@ -359,95 +359,9 @@ static void* nogvl_context_eval(void* arg) {
     return NULL;
 }
 
-static BinaryValue *new_bv_str(const char *str) {
-    BinaryValue *bv = xalloc(bv);
-    bv->type = type_str_utf8;
-    if (str) {
-        bv->len     = strlen(str);
-        bv->str_val = strdup(str);
-    } else {
-        bv->len     = 0;
-        bv->str_val = NULL;
-    }
-    return bv;
-}
-
-template<class T> static BinaryValue *new_bv_int(T val) {
-    BinaryValue *bv = xalloc(bv);
-    bv->type        = type_integer;
-    bv->len         = 0;
-    bv->int_val     = uint32_t(val);
-    return bv;
-}
-
-#define HEAP_NB_ITEMS 5
-
-static BinaryValue *heap_stats(ContextInfo *context_info) {
-
-    Isolate* isolate;
-    v8::HeapStatistics stats;
-
-    if (!context_info) {
-        return NULL;
-    }
-
-    isolate = context_info->isolate;
-
-    BinaryValue **content = xalloc(content, sizeof(BinaryValue *) * 2 * HEAP_NB_ITEMS);
-    BinaryValue *hash = xalloc(hash);
-    hash->type = type_hash;
-    hash->len = HEAP_NB_ITEMS;
-    hash->hash_val = content;
-
-    if (!hash || !content) {
-        free(hash);
-        free(content);
-        return NULL;
-    }
-
-    uint32_t idx = 0;
-    content[idx++ * 2] = new_bv_str("total_physical_size");
-    content[idx++ * 2] = new_bv_str("total_heap_size_executable");
-    content[idx++ * 2] = new_bv_str("total_heap_size");
-    content[idx++ * 2] = new_bv_str("used_heap_size");
-    content[idx++ * 2] = new_bv_str("heap_size_limit");
-
-    idx = 0;
-    if (!isolate) {
-        content[idx++ * 2 + 1] = new_bv_int(0);
-        content[idx++ * 2 + 1] = new_bv_int(0);
-        content[idx++ * 2 + 1] = new_bv_int(0);
-        content[idx++ * 2 + 1] = new_bv_int(0);
-        content[idx++ * 2 + 1] = new_bv_int(0);
-    } else {
-        isolate->GetHeapStatistics(&stats);
-
-        content[idx++ * 2 + 1] = new_bv_int(stats.total_physical_size());
-        content[idx++ * 2 + 1] = new_bv_int(stats.total_heap_size_executable());
-        content[idx++ * 2 + 1] = new_bv_int(stats.total_heap_size());
-        content[idx++ * 2 + 1] = new_bv_int(stats.used_heap_size());
-        content[idx++ * 2 + 1] = new_bv_int(stats.heap_size_limit());
-    }
-
-    for(idx=0; idx < HEAP_NB_ITEMS; idx++) {
-        if(content[idx*2] == NULL || content[idx*2+1] == NULL) {
-            goto err;
-        }
-    }
-    return hash;
-
-err:
-    for(idx=0; idx < HEAP_NB_ITEMS; idx++) {
-        free(content[idx*2]);
-        free(content[idx*2+1]);
-    }
-    free(hash);
-    free(content);
-    return NULL;
-}
 
 
-static BinaryValue *convert_basic_v8_to_binary(Isolate * isolate,
+static BinaryValue *convert_v8_to_binary(Isolate * isolate,
                                                 Local<Context> context,
                                                 Local<Value> value)
 {
@@ -506,116 +420,15 @@ static BinaryValue *convert_basic_v8_to_binary(Isolate * isolate,
 
 
 static BinaryValue *convert_v8_to_binary(Isolate * isolate,
-                                         Local<Context> context,
-                                         Local<Value> value)
-{
-    Isolate::Scope isolate_scope(isolate);
-    HandleScope scope(isolate);
-    BinaryValue *res;
-
-    res = convert_basic_v8_to_binary(isolate, context, value);
-    if (res) {
-        return res;
-    }
-
-    res = new (xalloc(res)) BinaryValue();
-
-    if (value->IsArray()) {
-        Local<Array> arr = Local<Array>::Cast(value);
-        uint32_t len = arr->Length();
-
-        BinaryValue **ary = xalloc(ary, sizeof(*ary) * len);
-
-        res->type = type_array;
-        res->array_val = ary;
-        res->len = (size_t) len;
-
-        for(uint32_t i = 0; i < len; i++) {
-            Local<Value> element = arr->Get(context, i).ToLocalChecked();
-            BinaryValue *bin_value = convert_v8_to_binary(isolate, context, element);
-            if (bin_value == NULL) {
-                // adjust final array length
-                res->len = (size_t) i;
-                goto err;
-            }
-            ary[i] = bin_value;
-        }
-    }
-    else if (value->IsObject()) {
-        res->type = type_hash;
-
-        TryCatch trycatch(isolate);
-
-        Local<Object> object = value->ToObject(context).ToLocalChecked();
-        MaybeLocal<Array> maybe_props = object->GetOwnPropertyNames(context);
-        if (!maybe_props.IsEmpty()) {
-            Local<Array> props = maybe_props.ToLocalChecked();
-            uint32_t hash_len = props->Length();
-
-            if (hash_len > 0) {
-                res->hash_val = xalloc(res->hash_val,
-                                       sizeof(*res->hash_val) * hash_len * 2);
-            }
-
-            for (uint32_t i = 0; i < hash_len; i++) {
-
-                MaybeLocal<Value> maybe_pkey = props->Get(context, i);
-                if (maybe_pkey.IsEmpty()) {
-                        goto err;
-                }
-                Local<Value> pkey = maybe_pkey.ToLocalChecked();
-                MaybeLocal<Value> maybe_pvalue = object->Get(context, pkey);
-                // this may have failed due to Get raising
-                if (maybe_pvalue.IsEmpty() || trycatch.HasCaught()) {
-                    // TODO: factor out code converting exception in
-                    //       nogvl_context_eval() and use it here/?
-                    goto err;
-                }
-
-                BinaryValue *bin_key = convert_v8_to_binary(isolate, context, pkey);
-                BinaryValue *bin_value = convert_v8_to_binary(isolate, context, maybe_pvalue.ToLocalChecked());
-
-                if (!bin_key || !bin_value) {
-                    BinaryValueFree(bin_key);
-                    BinaryValueFree(bin_value);
-                    goto err;
-                }
-
-                res->hash_val[i * 2]     = bin_key;
-                res->hash_val[i * 2 + 1] = bin_value;
-                res->len++;
-            }
-        } // else empty hash
-    } else {
-        goto err;
-    }
-    return res;
-
-err:
-    BinaryValueFree(res);
-    return NULL;
-}
-
-
-static BinaryValue *convert_basic_v8_to_binary(Isolate * isolate,
                                                const Persistent<Context> & context,
                                                Local<Value> value)
-{
-    HandleScope scope(isolate);
-    return convert_basic_v8_to_binary(isolate,
-                                Local<Context>::New(isolate, context),
-                                value);
-}
-
-static BinaryValue *convert_v8_to_binary(Isolate * isolate,
-                                         const Persistent<Context> & context,
-                                         Local<Value> value)
 {
     HandleScope scope(isolate);
     return convert_v8_to_binary(isolate,
                                 Local<Context>::New(isolate, context),
                                 value);
 }
+
 
 static void deallocate(void * data) {
     ContextInfo* context_info = (ContextInfo*)data;
@@ -670,7 +483,7 @@ ContextInfo *MiniRacer_init_context()
 static BinaryValue* MiniRacer_eval_context_unsafe(
         ContextInfo *context_info,
         char *utf_str, int str_len,
-        unsigned long timeout, size_t max_memory, bool basic_only, bool fast_call)
+        unsigned long timeout, size_t max_memory, bool fast_call)
 {
     EvalParams eval_params;
     EvalResult eval_result{};
@@ -703,7 +516,6 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         eval_params.result = &eval_result;
         eval_params.timeout = 0;
         eval_params.max_memory = 0;
-        eval_params.basic_only = basic_only;
         eval_params.fast_call = fast_call;
         if (timeout > 0) {
             eval_params.timeout = timeout;
@@ -718,18 +530,14 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.message);
 
-            if (eval_params.basic_only) {
-                bmessage = convert_basic_v8_to_binary(context_info->isolate, *context_info->context, tmp);
-            } else {
-                bmessage = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
-            }
+            bmessage = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
         }
 
         if (eval_result.backtrace) {
 
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.backtrace);
-            bbacktrace = convert_basic_v8_to_binary(context_info->isolate, *context_info->context, tmp);
+            bbacktrace = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
         }
     }
 
@@ -798,17 +606,47 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         HandleScope handle_scope(context_info->isolate);
 
         Local<Value> tmp = Local<Value>::New(context_info->isolate, *eval_result.value);
-        if (eval_params.basic_only) {
-            result = convert_basic_v8_to_binary(context_info->isolate, *context_info->context, tmp);
-        } else {
-            result = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
-        }
+        result = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
     }
 
     BinaryValueFree(bmessage);
     BinaryValueFree(bbacktrace);
 
     return result;
+}
+
+
+static BinaryValue *heap_stats(ContextInfo *context_info) {
+
+    v8::HeapStatistics stats;
+
+    if (!context_info || !context_info->isolate) {
+        return NULL;
+    }
+
+    Locker lock(context_info->isolate);
+    Isolate::Scope isolate_scope(context_info->isolate);
+    HandleScope handle_scope(context_info->isolate);
+
+    TryCatch trycatch(context_info->isolate);
+    Local<Context> context = context_info->context->Get(context_info->isolate);
+    Context::Scope context_scope(context);
+
+    context_info->isolate->GetHeapStatistics(&stats);
+
+    Local<Object> stats_obj = Object::New(context_info->isolate);
+
+    stats_obj->Set(context, String::NewFromUtf8Literal(context_info->isolate, "total_physical_size"), Number::New(context_info->isolate, (double)stats.total_physical_size())).Check();
+    stats_obj->Set(context, String::NewFromUtf8Literal(context_info->isolate, "total_heap_size_executable"), Number::New(context_info->isolate, (double)stats.total_heap_size_executable())).Check();
+    stats_obj->Set(context, String::NewFromUtf8Literal(context_info->isolate, "total_heap_size"), Number::New(context_info->isolate, (double)stats.total_heap_size())).Check();
+    stats_obj->Set(context, String::NewFromUtf8Literal(context_info->isolate, "used_heap_size"), Number::New(context_info->isolate, (double)stats.used_heap_size())).Check();
+    stats_obj->Set(context, String::NewFromUtf8Literal(context_info->isolate, "heap_size_limit"), Number::New(context_info->isolate, (double)stats.heap_size_limit())).Check();
+
+    Local<String> output;
+    if (!JSON::Stringify(context, stats_obj).ToLocal(&output) || output.IsEmpty()) {
+        return NULL;
+    }
+	return convert_v8_to_binary(context_info->isolate, context, output);
 }
 
 class BufferOutputStream: public OutputStream {
@@ -837,8 +675,8 @@ public:
 
 extern "C" {
 
-LIB_EXPORT BinaryValue * mr_eval_context(ContextInfo *context_info, char *str, int len, unsigned long timeout, size_t max_memory, bool basic_only, bool fast_call) {
-    BinaryValue *res = MiniRacer_eval_context_unsafe(context_info, str, len, timeout, max_memory, basic_only, fast_call);
+LIB_EXPORT BinaryValue * mr_eval_context(ContextInfo *context_info, char *str, int len, unsigned long timeout, size_t max_memory, bool fast_call) {
+    BinaryValue *res = MiniRacer_eval_context_unsafe(context_info, str, len, timeout, max_memory, fast_call);
     return res;
 }
 
@@ -876,7 +714,9 @@ LIB_EXPORT void mr_low_memory_notification(ContextInfo *context_info) {
     context_info->isolate->LowMemoryNotification();
 }
 
-
+LIB_EXPORT char const * mr_v8_version() {
+	return V8_VERSION_STRING;
+}
 
 // FOR DEBUGGING ONLY
 LIB_EXPORT BinaryValue * mr_heap_snapshot(ContextInfo *context_info) {

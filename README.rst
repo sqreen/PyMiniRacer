@@ -32,13 +32,13 @@ py_mini_racer is straightforward to use:
 
 .. code-block:: python
 
-    >>> from py_mini_racer import py_mini_racer
-    >>> ctx = py_mini_racer.MiniRacer()
+    >>> from py_mini_racer import MiniRacer
+    >>> ctx = MiniRacer()
     >>> ctx.eval('1+1')
     2
     >>> ctx.eval("var x = {company: 'Sqreen'}; x.company")
     u'Sqreen'
-    >>> print ctx.eval(u"'\N{HEAVY BLACK HEART}'")
+    >>> print(ctx.eval(u"'\N{HEAVY BLACK HEART}'"))
     ❤
     >>> ctx.eval("var fun = () => ({ foo: 1 });")
     >>> ctx.call("fun")
@@ -76,12 +76,18 @@ parameters:
     >>> ctx.call("f", datetime.now(), encoder=CustomEncoder)
     u'2017-03-31T16:51:02.474118'
 
+You can return composite values when they are compatible with JSON:
+
+.. code-block:: python
+
+    >>> ctx.execute("[1,2,3]")
+    [1, 2, 3]
 
 PyMiniRacer is ES6 capable:
 
 .. code-block:: python
 
-    >>> ctx.eval("[1,2,3].includes(5)")
+    >>> ctx.execute("[1,2,3].includes(5)")
     False
 
 V8 heap information can be retrieved:
@@ -193,11 +199,11 @@ Credits
 
 Built with love by Sqreen_.
 
-.. _Sqreen: https://www.sqreen.io
+.. _Sqreen: https://www.sqreen.com
 
 PyMiniRacer launch was described in `this blog post`_.
 
-.. _`this blog post`: https://blog.sqreen.io/embedding-javascript-into-python/
+.. _`this blog post`: https://blog.sqreen.com/embedding-javascript-into-python/
 
 PyMiniRacer is inspired by mini_racer_, built for the Ruby world by Sam Saffron.
 
