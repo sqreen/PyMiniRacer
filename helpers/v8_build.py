@@ -134,7 +134,6 @@ def gen_makefiles(build_path, no_sysroot=False):
                 "use_glib": "false",
                 "use_ozone": "false",
                 "use_udev": "false",
-                "is_desktop_linux": "false",
 
                 "is_cfi": "false",
                 "is_debug": "false",
@@ -146,13 +145,14 @@ def gen_makefiles(build_path, no_sysroot=False):
 
                 "v8_monolithic": "false",
                 "v8_use_external_startup_data": "false",
-                "v8_enable_i18n_support": "false",
 
                 "v8_untrusted_code_mitigations": "false",
                 # See https://v8.dev/docs/untrusted-code-mitigations
 
                 # See cc_wrapper
                 "clang_use_chrome_plugins": "false",
+
+                "icu_use_data_file": "false",
             }
             if no_sysroot:
                 opts.update({
