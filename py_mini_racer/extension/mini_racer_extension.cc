@@ -272,89 +272,89 @@ static void* nogvl_context_eval(void* arg) {
         call_func = [=] () { return script->Run(context); };
     }
 
-        std::timed_mutex breaker_mutex;
-        std::thread breaker_thread;
+    std::timed_mutex breaker_mutex;
+    std::thread breaker_thread;
 
-        // timeout limit
-        auto timeout = eval_params->timeout;
-        if (timeout > 0) {
-            breaker_mutex.lock();
-            breaker_thread = std::thread(&breaker, std::ref(breaker_mutex), (void *) eval_params);
-        }
-        // memory limit
-        if (eval_params->max_memory > 0) {
-            isolate->AddGCEpilogueCallback(gc_callback);
-        }
+    // timeout limit
+    auto timeout = eval_params->timeout;
+    if (timeout > 0) {
+        breaker_mutex.lock();
+        breaker_thread = std::thread(&breaker, std::ref(breaker_mutex), (void *) eval_params);
+    }
+    // memory limit
+    if (eval_params->max_memory > 0) {
+        isolate->AddGCEpilogueCallback(gc_callback);
+    }
 
-        MaybeLocal<Value> maybe_value = call_func();
+    MaybeLocal<Value> maybe_value = call_func();
 
-        if (timeout > 0) {
-            breaker_mutex.unlock();
-            breaker_thread.join();
-        }
+    if (timeout > 0) {
+        breaker_mutex.unlock();
+        breaker_thread.join();
+    }
 
-        result->executed = !maybe_value.IsEmpty();
-        if (!result->executed) {
-            if (trycatch.HasCaught()) {
-                if (!trycatch.Exception()->IsNull()) {
-                    result->message = new Persistent<Value>();
-                        Local<Message> message = trycatch.Message();
-                        char buf[1000];
-                        int len, line, column;
+    result->executed = !maybe_value.IsEmpty();
+    if (!result->executed) {
+        if (trycatch.HasCaught()) {
+            if (!trycatch.Exception()->IsNull()) {
+                result->message = new Persistent<Value>();
+                    Local<Message> message = trycatch.Message();
+                    char buf[1000];
+                    int len, line, column;
 
-                        if (!message->GetLineNumber(context).To(&line)) {
-                          line = 0;
-                        }
-
-                        if (!message->GetStartColumn(context).To(&column)) {
-                          column = 0;
-                        }
-
-                        len = snprintf(buf, sizeof(buf), "%s at %s:%i:%i", *String::Utf8Value(isolate, message->Get()),
-                                       *String::Utf8Value(isolate, message->GetScriptResourceName()->ToString(context).ToLocalChecked()),
-                                       line,
-                                       column);
-
-                        if ((size_t) len >= sizeof(buf)) {
-                            len = sizeof(buf) - 1;
-                            buf[len] = '\0';
-                        }
-
-                        Local<String> v8_message = String::NewFromUtf8(isolate, buf, NewStringType::kNormal, len).ToLocalChecked();
-                        result->message->Reset(isolate, v8_message);
-                } else if(trycatch.HasTerminated()) {
-                    result->terminated = true;
-                    result->message = new Persistent<Value>();
-                    Local<String> tmp;
-                    if (result->timed_out) {
-                        tmp = String::NewFromUtf8(isolate, "JavaScript was terminated by timeout").ToLocalChecked();
-                    } else {
-                        tmp = String::NewFromUtf8(isolate, "JavaScript was terminated").ToLocalChecked();
+                    if (!message->GetLineNumber(context).To(&line)) {
+                      line = 0;
                     }
-                    result->message->Reset(isolate, tmp);
+
+                    if (!message->GetStartColumn(context).To(&column)) {
+                      column = 0;
+                    }
+
+                    len = snprintf(buf, sizeof(buf), "%s at %s:%i:%i", *String::Utf8Value(isolate, message->Get()),
+                                   *String::Utf8Value(isolate, message->GetScriptResourceName()->ToString(context).ToLocalChecked()),
+                                   line,
+                                   column);
+
+                    if ((size_t) len >= sizeof(buf)) {
+                        len = sizeof(buf) - 1;
+                        buf[len] = '\0';
+                    }
+
+                    Local<String> v8_message = String::NewFromUtf8(isolate, buf, NewStringType::kNormal, len).ToLocalChecked();
+                    result->message->Reset(isolate, v8_message);
+            } else if(trycatch.HasTerminated()) {
+                result->terminated = true;
+                result->message = new Persistent<Value>();
+                Local<String> tmp;
+                if (result->timed_out) {
+                    tmp = String::NewFromUtf8(isolate, "JavaScript was terminated by timeout").ToLocalChecked();
+                } else {
+                    tmp = String::NewFromUtf8(isolate, "JavaScript was terminated").ToLocalChecked();
                 }
+                result->message->Reset(isolate, tmp);
+            }
 
-                if (!trycatch.StackTrace(context).IsEmpty()) {
-                    Local<Value> stacktrace;
+            if (!trycatch.StackTrace(context).IsEmpty()) {
+                Local<Value> stacktrace;
 
-                    if (trycatch.StackTrace(context).ToLocal(&stacktrace)) {
-                        Local<Value> tmp;
+                if (trycatch.StackTrace(context).ToLocal(&stacktrace)) {
+                    Local<Value> tmp;
 
-                        if (stacktrace->ToString(context).ToLocal(&tmp)) {
-                            result->backtrace = new Persistent<Value>();
-                            result->backtrace->Reset(isolate, tmp);
-                        }
+                    if (stacktrace->ToString(context).ToLocal(&tmp)) {
+                        result->backtrace = new Persistent<Value>();
+                        result->backtrace->Reset(isolate, tmp);
                     }
                 }
             }
-        } else {
-            Local<Value> tmp;
-
-            if (maybe_value.ToLocal(&tmp)) {
-                result->value = new Persistent<Value>();
-                result->value->Reset(isolate, tmp);
-            }
         }
+    } else {
+        Local<Value> tmp;
+
+        if (maybe_value.ToLocal(&tmp)) {
+            result->value = new Persistent<Value>();
+            result->value->Reset(isolate, tmp);
+        }
+    }
 
     return NULL;
 }
