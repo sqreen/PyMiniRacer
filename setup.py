@@ -15,7 +15,7 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 about = {}  # type: ignore
 
 # Read the version from the source
-with io.open(os.path.join(ROOT_DIR, "py_mini_racer", "__init__.py"), encoding="utf-8") as f:
+with io.open(os.path.join(ROOT_DIR, "py_mini_racer", "__about__.py"), encoding="utf-8") as f:
     exec(f.read(), about)
 
 with io.open(os.path.join(ROOT_DIR, 'README.rst'), 'r', encoding='utf8') as readme_file:
