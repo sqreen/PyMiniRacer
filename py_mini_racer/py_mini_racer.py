@@ -125,23 +125,13 @@ def _fetch_ext_handle():
 
     _ext_handle.mr_init_context.restype = ctypes.c_void_p
 
-    _ext_handle.mr_call_context.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_char_p,
-        ctypes.c_int,
-        ctypes.c_char_p,
-        ctypes.c_int,
-        ctypes.c_ulong,
-        ctypes.c_size_t,
-        ctypes.c_bool]
-    _ext_handle.mr_call_context.restype = ctypes.POINTER(PythonValue)
-
     _ext_handle.mr_eval_context.argtypes = [
         ctypes.c_void_p,
         ctypes.c_char_p,
         ctypes.c_int,
         ctypes.c_ulong,
         ctypes.c_size_t,
+        ctypes.c_bool,
         ctypes.c_bool]
     _ext_handle.mr_eval_context.restype = ctypes.POINTER(PythonValue)
 
@@ -195,11 +185,30 @@ class MiniRacer(object):
 
     def execute(self, js_str, timeout=0, max_memory=0):
         """ Exec the given JS value """
-
         wrapped = "(function(){return (%s)})()" % js_str
-        return self.eval(wrapped, timeout, max_memory)
+        return self.eval(wrapped, timeout=timeout, max_memory=max_memory)
 
-    def eval(self, js_str, timeout=0, max_memory=0):
+    def call(self, js_identifier, *args, **kwargs):
+        """ Call the function referenced by a global identifier with provided arguments.
+
+        This method is optimized to execute function without argument faster. In fact
+        arguments are encoded to JSON. You can pass a custom JSON encoder in the encoder
+        keyword argument to encode arguments.
+        """
+
+        encoder = kwargs.get('encoder', None)
+        timeout = kwargs.get('timeout', 0)
+        max_memory = kwargs.get('max_memory', 0)
+
+        if args:
+            # Slower path when arguments are present
+            json_args = json.dumps(args, separators=(',', ':'), cls=encoder)
+            js = "{identifier}.apply(this, {json_args})"
+            return self.eval(js.format(identifier=js_identifier, json_args=json_args), timeout=timeout, max_memory=max_memory)
+
+        return self.eval(js_identifier, timeout=timeout, max_memory=max_memory, fast_call=True)
+
+    def eval(self, js_str, timeout=0, max_memory=0, fast_call=False):
         """ Eval the JavaScript string """
 
         if is_unicode(js_str):
@@ -215,62 +224,12 @@ class MiniRacer(object):
                                            len(bytes_val),
                                            ctypes.c_ulong(timeout),
                                            ctypes.c_size_t(max_memory),
-                                           ctypes.c_bool(self.basic_types_only))
+                                           ctypes.c_bool(self.basic_types_only),
+                                           ctypes.c_bool(fast_call))
 
             if bool(res) is False:
                 raise JSConversionException()
             return self._eval_return(res)
-        finally:
-            self.lock.release()
-            if res is not None:
-                self.free(res)
-
-    def fake_call(self, identifier, *args, **kwargs):
-        """ Call the named function with provided arguments
-        You can pass a custom JSON encoder by passing it in the encoder
-        keyword only argument.
-        """
-
-        encoder = kwargs.get('encoder', None)
-        timeout = kwargs.get('timeout', 0)
-        max_memory = kwargs.get('max_memory', 0)
-
-        json_args = json.dumps(args, separators=(',', ':'), cls=encoder)
-        js = "{identifier}.apply(this, {json_args})"
-        return self.eval(js.format(identifier=identifier, json_args=json_args), timeout, max_memory)
-
-    def call(self, identifier, *args, **kwargs):
-        """ Call the named function with provided arguments
-        You can pass a custom JSON encoder by passing it in the encoder
-        keyword only argument.
-        """
-
-        encoder = kwargs.get('encoder', None)
-        timeout = kwargs.get('timeout', 0)
-        max_memory = kwargs.get('max_memory', 0)
-
-
-        if is_unicode(identifier):
-            identifier = identifier.encode("utf8")
-
-        json_args = json.dumps(args, separators=(',', ':'), cls=encoder).encode("utf-8")
-
-        res = None
-        self.lock.acquire()
-        try:
-            res = self.ext.mr_call_context(self.ctx,
-                                           identifier,
-                                           len(identifier),
-                                           json_args,
-                                           len(json_args),
-                                           ctypes.c_ulong(timeout),
-                                           ctypes.c_size_t(max_memory),
-                                           ctypes.c_bool(self.basic_types_only))
-
-            if bool(res) is False:
-                raise JSConversionException()
-            python_value = res.contents.to_python()
-            return python_value
         finally:
             self.lock.release()
             if res is not None:
@@ -320,11 +279,11 @@ class StrictMiniRacer(MiniRacer):
     json_impl = json
     basic_types_only = True
 
-    def execute(self, expr, **kwargs):
+    def execute(self, expr, timeout=0, max_memory=0):
         """ Stricter Execute with JSON serialization of returned value.
         """
         wrapped_expr = "JSON.stringify((function(){return (%s)})())" % expr
-        ret = self.eval(wrapped_expr, **kwargs)
+        ret = self.eval(wrapped_expr, timeout=timeout, max_memory=max_memory)
         if is_unicode(ret):
             return self.json_impl.loads(ret)
 
@@ -333,11 +292,8 @@ class StrictMiniRacer(MiniRacer):
         """
         json_args = self.json_impl.dumps(args, separators=(',', ':'),
                                          cls=kwargs.pop("encoder", None))
-        js = "JSON.stringify({identifier}.apply(this, {json_args}))"
-        ret = self.eval(js.format(identifier=identifier, json_args=json_args),
-                        **kwargs)
-        if is_unicode(ret):
-            return self.json_impl.loads(ret)
+        js = "{identifier}.apply(this, {json_args})"
+        return self.execute(js.format(identifier=identifier, json_args=json_args), **kwargs)
 
     @staticmethod
     def _eval_return(res):
