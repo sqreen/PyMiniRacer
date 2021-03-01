@@ -28,7 +28,7 @@ class Test(unittest.TestCase):
           }
         """ % babel_source
         context.eval(source)
-        self.assertEqual(64, context.call("babel.eval", "((x) => x * x)(8)"))
+        self.assertEqual(64, context.eval("babel.eval(((x) => x * x)(8))"))
 
 
 if __name__ == '__main__':

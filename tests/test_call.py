@@ -20,15 +20,16 @@ class TestEval(unittest.TestCase):
 
     def test_call_js(self):
 
-        js_func = """var f = function(args) {
-            return args.length;
+        js_func = """var f = function() {
+            return arguments.length;
         }"""
 
         self.mr.eval(js_func)
 
-        self.assertEqual(self.mr.call('f', list(range(5))), 5)
-        self.assertEqual(self.mr.call('f', list(range(10))), 10)
-        self.assertEqual(self.mr.call('f', list(range(20))), 20)
+        self.assertEqual(self.mr.call('f'), 0)
+        self.assertEqual(self.mr.call('f', *list(range(5))), 5)
+        self.assertEqual(self.mr.call('f', *list(range(10))), 10)
+        self.assertEqual(self.mr.call('f', *list(range(20))), 20)
 
     def test_call_custom_encoder(self):
 
