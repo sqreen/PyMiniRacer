@@ -164,11 +164,23 @@ class MiniRacer(object):
 
     basic_types_only = False
 
-    def __init__(self):
+    def __init__(self, icu_data_file=None):
         """ Init a JS context """
 
         self.ext = _fetch_ext_handle()
-        self.ctx = self.ext.mr_init_context(os.path.join(os.path.dirname(os.path.abspath(__file__)), "icudtl.dat").encode("utf-8"))
+
+        if icu_data_file is None and pkg_resources is not None:
+            fn = pkg_resources.resource_filename("py_mini_racer", "icudtl.dat")
+        else:
+            fn = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icudtl.dat")
+
+        if icu_data_file is None and os.path.exists(fn):
+            icu_data_file = fn
+
+        if is_unicode(icu_data_file):
+            icu_data_file = icu_data_file.encode("utf-8")
+
+        self.ctx = self.ext.mr_init_context(icu_data_file)
         self.lock = threading.Lock()
 
     def free(self, res):

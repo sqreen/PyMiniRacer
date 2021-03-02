@@ -201,7 +201,11 @@ static void init_v8(char const *icu_data_file) {
 
     if (current_platform == NULL) {
         V8::SetFlagsFromString("--single-threaded");
-        V8::InitializeICU(icu_data_file);
+        if (icu_data_file != NULL) {
+            V8::InitializeICU(icu_data_file);
+        } else {
+            V8::InitializeICU();
+        }
         current_platform = platform::NewSingleThreadedDefaultPlatform();
         V8::InitializePlatform(current_platform.get());
         V8::Initialize();

@@ -7,6 +7,7 @@ include README.rst
 include py_mini_racer/libmini_racer.glibc.so py_mini_racer/libmini_racer.muslc.so
 include py_mini_racer/libmini_racer.dylib
 include py_mini_racer/mini_racer.dll
+include py_mini_racer/icudtl.dat
 
 recursive-include tests *
 recursive-exclude * __pycache__
