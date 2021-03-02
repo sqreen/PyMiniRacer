@@ -275,6 +275,8 @@ __asm__(".symver lgammal, lgammal@GLIBC_2.2.5");
 __asm__(".symver log2f, log2f@GLIBC_2.2.5");
 __asm__(".symver logf, logf@GLIBC_2.2.5");
 __asm__(".symver powf, powf@GLIBC_2.2.5");
+__asm__(".symver log, logf@GLIBC_2.2.5");
+__asm__(".symver pow, logf@GLIBC_2.2.5");
             """)
 
 
