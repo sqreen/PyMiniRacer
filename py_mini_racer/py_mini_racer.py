@@ -142,6 +142,14 @@ def _fetch_ext_handle():
         ctypes.c_bool]
     _ext_handle.mr_eval_context.restype = ctypes.POINTER(MiniRacerValue)
 
+    _ext_handle.mr_pump_message_loop.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_bool,
+    ]
+    _ext_handle.mr_pump_message_loop.restype = ctypes.c_int
+
+    _ext_handle.mr_run_microtasks.argtypes = [ctypes.c_void_p]
+
     _ext_handle.mr_free_value.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
 
     _ext_handle.mr_free_context.argtypes = [ctypes.c_void_p]
@@ -218,6 +226,19 @@ class MiniRacer(object):
         """ Call the function referenced by a global identifier with provided arguments.
         """
         return self.eval(js_identifier, timeout=timeout, max_memory=max_memory, fast_call=True)
+
+    def pump_message_loop(self, wait=False):
+        """ Process V8 tasks (like timers).
+
+        Returns true if a task was executed, false otherwise.
+        """
+        with self.lock:
+            return bool(self.ext.mr_pump_message_loop(self.ctx, wait))
+
+    def run_microtasks(self):
+        """ Run Javascript Microtasks (like promise callbacks). """
+        with self.lock:
+            self.ext.mr_run_microtasks(self.ctx)
 
     def eval(self, js_str, timeout=0, max_memory=0, fast_call=False):
         """ Eval the JavaScript string """

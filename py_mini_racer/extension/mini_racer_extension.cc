@@ -722,6 +722,15 @@ LIB_EXPORT void mr_low_memory_notification(ContextInfo *context_info) {
     context_info->isolate->LowMemoryNotification();
 }
 
+LIB_EXPORT int mr_pump_message_loop(ContextInfo *context_info, bool wait) {
+    return platform::PumpMessageLoop(current_platform.get(), context_info->isolate,
+                                     (wait) ? v8::platform::MessageLoopBehavior::kWaitForWork : v8::platform::MessageLoopBehavior::kDoNotWait);
+}
+
+LIB_EXPORT void mr_run_microtasks(ContextInfo *context_info) {
+    context_info->isolate->PerformMicrotaskCheckpoint();
+}
+
 LIB_EXPORT char const * mr_v8_version() {
 	return V8_VERSION_STRING;
 }

@@ -113,6 +113,21 @@ class Test(unittest.TestCase):
         res = self.mr.eval('Symbol.toPrimitive')
         self.assertEqual(type(res), py_mini_racer.JSSymbol)
 
+    def test_async(self):
+        shared = self.mr.eval("""
+        var done = false;
+        const shared = new SharedArrayBuffer(8);
+        const view = new Int32Array(shared);
+
+        const p = Atomics.waitAsync(view, 0, 0, 1); // 1 ms timeout
+        p.value.then(() => { done = true; });
+        """)
+        self.assertFalse(self.mr.eval("done"))
+        self.mr.pump_message_loop(wait=True)
+        self.assertFalse(self.mr.eval("done"))
+        self.mr.run_microtasks()
+        self.assertTrue(self.mr.eval("done"))
+
 
 if __name__ == '__main__':
     import sys
