@@ -3,6 +3,7 @@
 
 """ Basic JS types tests """
 
+import struct
 import unittest
 import json
 import time
@@ -113,6 +114,19 @@ class Test(unittest.TestCase):
             self.mr.eval("f(42)")
 
         self.assertIn('error: 42', cm.exception.args[0])
+
+    def test_shared_array(self):
+        js_source = """
+        var b = new SharedArrayBuffer(1024);
+        var v = new Uint8Array(b);
+        v[0] = 42;
+        b
+        """
+        ret = self.mr.eval(js_source)
+        self.assertEqual(len(ret), 1024)
+        self.assertEqual(ord(ret[0]), 42)
+        ret[1] = '\xFF'
+        self.assertEqual(self.mr.eval("v[1]"), 0xFF)
 
 
 if __name__ == '__main__':

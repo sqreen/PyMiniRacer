@@ -1,3 +1,4 @@
+#include <map>
 #include <thread>
 #include <mutex>
 #include <chrono>
@@ -28,88 +29,6 @@ template<class T> static inline T* xalloc(T*& ptr, size_t x = sizeof(T))
     return static_cast<T*>(ptr);
 }
 
-enum BinaryTypes {
-    type_invalid   =   0,
-    type_null      =   1,
-    type_bool      =   2,
-    type_integer   =   3,
-    type_double    =   4,
-    type_str_utf8  =   5,
-    type_array     =   6,
-    type_hash      =   7,
-    type_date      =   8,
-    type_symbol    =   9,
-
-    type_function  = 100,
-
-    type_execute_exception = 200,
-    type_parse_exception   = 201,
-    type_oom_exception = 202,
-    type_timeout_exception = 203,
-};
-
-/* This is a generic store for arbitrary JSON like values.
- * Non scalar values are:
- *  - Strings: pointer to a string
- *  - Arrays: contiguous map of pointers to BinaryValue
- *  - Hash: contiguous map of pair of pointers to BinaryTypes (first is key,
- *          second is value)
- */
-struct BinaryValue {
-    union {
-        BinaryValue **array_val;
-        BinaryValue **hash_val;
-        char *str_val;
-        uint32_t int_val;
-        double double_val;
-    };
-    enum BinaryTypes type = type_invalid;
-    size_t len;
-};
-
-void BinaryValueFree(BinaryValue *v) {
-    if (!v) {
-        return;
-    }
-    switch(v->type) {
-    case type_execute_exception:
-    case type_parse_exception:
-    case type_oom_exception:
-    case type_timeout_exception:
-    case type_str_utf8:
-        free(v->str_val);
-        break;
-    case type_array:
-        for (size_t i = 0; i < v->len; i++) {
-            BinaryValue *w = v->array_val[i];
-            BinaryValueFree(w);
-        }
-        free(v->array_val);
-        break;
-    case type_hash:
-        for(size_t i = 0; i < v->len; i++) {
-            BinaryValue *k = v->hash_val[i*2];
-            BinaryValue *w = v->hash_val[i*2+1];
-            BinaryValueFree(k);
-            BinaryValueFree(w);
-        }
-        free(v->hash_val);
-        break;
-    case type_bool:
-    case type_double:
-    case type_date:
-    case type_null:
-    case type_integer:
-    case type_function: // no value implemented
-    case type_symbol:
-    case type_invalid:
-        // the other types are scalar values
-        break;
-    }
-    free(v);
-}
-
-
 using namespace v8;
 
 class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
@@ -126,6 +45,7 @@ struct ContextInfo {
     Isolate* isolate;
     Persistent<Context>* context;
     ArrayBufferAllocator* allocator;
+    std::map<void *, std::shared_ptr<BackingStore>> shared_array_buffers;
     bool interrupted;
     size_t soft_memory_limit;
     bool soft_memory_limit_reached;
@@ -166,6 +86,69 @@ typedef struct {
     size_t max_memory;
     bool fast_call;
 } EvalParams;
+
+
+enum BinaryTypes {
+    type_invalid   =   0,
+    type_null      =   1,
+    type_bool      =   2,
+    type_integer   =   3,
+    type_double    =   4,
+    type_str_utf8  =   5,
+    //type_array     =   6,  // deprecated
+    //type_hash      =   7,  // deprecated
+    type_date      =   8,
+    type_symbol    =   9,
+
+    type_function  = 100,
+    type_shared_array_buffer = 101,
+
+    type_execute_exception = 200,
+    type_parse_exception   = 201,
+    type_oom_exception = 202,
+    type_timeout_exception = 203,
+};
+
+struct BinaryValue {
+    union {
+        void *ptr_val;
+        char *str_val;
+        uint32_t int_val;
+        double double_val;
+    };
+    enum BinaryTypes type = type_invalid;
+    size_t len;
+};
+
+void BinaryValueFree(ContextInfo *context_info, BinaryValue *v) {
+    if (!v) {
+        return;
+    }
+    switch(v->type) {
+    case type_execute_exception:
+    case type_parse_exception:
+    case type_oom_exception:
+    case type_timeout_exception:
+    case type_str_utf8:
+        free(v->str_val);
+        break;
+    case type_bool:
+    case type_double:
+    case type_date:
+    case type_null:
+    case type_integer:
+    case type_function: // no value implemented
+    case type_symbol:
+    case type_invalid:
+        // the other types are scalar values
+        break;
+    case type_shared_array_buffer:
+        context_info->shared_array_buffers.erase(v->ptr_val);
+        break;
+    }
+    free(v);
+}
+
 
 enum IsolateData {
     CONTEXT_INFO,
@@ -361,12 +344,12 @@ static void* nogvl_context_eval(void* arg) {
 
 
 
-static BinaryValue *convert_v8_to_binary(Isolate * isolate,
-                                                Local<Context> context,
-                                                Local<Value> value)
+static BinaryValue *convert_v8_to_binary(ContextInfo * context_info,
+                                         Local<Context> context,
+                                         Local<Value> value)
 {
-    Isolate::Scope isolate_scope(isolate);
-    HandleScope scope(isolate);
+    Isolate::Scope isolate_scope(context_info->isolate);
+    HandleScope scope(context_info->isolate);
 
     BinaryValue *res = new (xalloc(res)) BinaryValue();
 
@@ -406,26 +389,35 @@ static BinaryValue *convert_v8_to_binary(Isolate * isolate,
         Local<String> rstr = value->ToString(context).ToLocalChecked();
 
         res->type = type_str_utf8;
-        res->len = size_t(rstr->Utf8Length(isolate)); // in bytes
+        res->len = size_t(rstr->Utf8Length(context_info->isolate)); // in bytes
         size_t capacity = res->len + 1;
         res->str_val = xalloc(res->str_val, capacity);
-        rstr->WriteUtf8(isolate, res->str_val);
+        rstr->WriteUtf8(context_info->isolate, res->str_val);
+    }
+    else if (value->IsSharedArrayBuffer()) {
+        Local<SharedArrayBuffer> buffer = Local<SharedArrayBuffer>::Cast(value);
+        auto backing_store = buffer->GetBackingStore();
+
+        context_info->shared_array_buffers[backing_store->Data()] = backing_store;
+        res->type = type_shared_array_buffer;
+        res->ptr_val = backing_store->Data();
+        res->len = backing_store->ByteLength();
     }
     else {
-        BinaryValueFree(res);
+        BinaryValueFree(context_info, res);
         res = nullptr;
     }
     return res;
 }
 
 
-static BinaryValue *convert_v8_to_binary(Isolate * isolate,
-                                               const Persistent<Context> & context,
-                                               Local<Value> value)
+static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
+                                         const Persistent<Context> & context,
+                                         Local<Value> value)
 {
-    HandleScope scope(isolate);
-    return convert_v8_to_binary(isolate,
-                                Local<Context>::New(isolate, context),
+    HandleScope scope(context_info->isolate);
+    return convert_v8_to_binary(context_info,
+                                Local<Context>::New(context_info->isolate, context),
                                 value);
 }
 
@@ -459,8 +451,7 @@ ContextInfo *MiniRacer_init_context()
 {
     init_v8();
 
-    ContextInfo* context_info = xalloc(context_info);
-    memset(context_info, 0, sizeof(*context_info));
+    ContextInfo* context_info = new (xalloc(context_info)) ContextInfo();
     context_info->allocator = new ArrayBufferAllocator();
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator = context_info->allocator;
@@ -530,14 +521,14 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.message);
 
-            bmessage = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
+            bmessage = convert_v8_to_binary(context_info, *context_info->context, tmp);
         }
 
         if (eval_result.backtrace) {
 
             Local<Value> tmp = Local<Value>::New(context_info->isolate,
                                                  *eval_result.backtrace);
-            bbacktrace = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
+            bbacktrace = convert_v8_to_binary(context_info, *context_info->context, tmp);
         }
     }
 
@@ -606,11 +597,11 @@ static BinaryValue* MiniRacer_eval_context_unsafe(
         HandleScope handle_scope(context_info->isolate);
 
         Local<Value> tmp = Local<Value>::New(context_info->isolate, *eval_result.value);
-        result = convert_v8_to_binary(context_info->isolate, *context_info->context, tmp);
+        result = convert_v8_to_binary(context_info, *context_info->context, tmp);
     }
 
-    BinaryValueFree(bmessage);
-    BinaryValueFree(bbacktrace);
+    BinaryValueFree(context_info, bmessage);
+    BinaryValueFree(context_info, bbacktrace);
 
     return result;
 }
@@ -646,7 +637,7 @@ static BinaryValue *heap_stats(ContextInfo *context_info) {
     if (!JSON::Stringify(context, stats_obj).ToLocal(&output) || output.IsEmpty()) {
         return NULL;
     }
-	return convert_v8_to_binary(context_info->isolate, context, output);
+	return convert_v8_to_binary(context_info, context, output);
 }
 
 class BufferOutputStream: public OutputStream {
@@ -685,8 +676,8 @@ LIB_EXPORT ContextInfo * mr_init_context() {
     return res;
 }
 
-LIB_EXPORT void mr_free_value(BinaryValue *val) {
-    BinaryValueFree(val);
+LIB_EXPORT void mr_free_value(ContextInfo *context_info, BinaryValue *val) {
+    BinaryValueFree(context_info, val);
 }
 
 LIB_EXPORT void mr_free_context(ContextInfo *context_info) {

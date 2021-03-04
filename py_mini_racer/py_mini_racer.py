@@ -132,19 +132,19 @@ def _fetch_ext_handle():
         ctypes.c_ulong,
         ctypes.c_size_t,
         ctypes.c_bool]
-    _ext_handle.mr_eval_context.restype = ctypes.POINTER(PythonValue)
+    _ext_handle.mr_eval_context.restype = ctypes.POINTER(MiniRacerValue)
 
-    _ext_handle.mr_free_value.argtypes = [ctypes.c_void_p]
+    _ext_handle.mr_free_value.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
 
     _ext_handle.mr_free_context.argtypes = [ctypes.c_void_p]
 
     _ext_handle.mr_heap_stats.argtypes = [ctypes.c_void_p]
-    _ext_handle.mr_heap_stats.restype = ctypes.POINTER(PythonValue)
+    _ext_handle.mr_heap_stats.restype = ctypes.POINTER(MiniRacerValue)
 
     _ext_handle.mr_low_memory_notification.argtypes = [ctypes.c_void_p]
 
     _ext_handle.mr_heap_snapshot.argtypes = [ctypes.c_void_p]
-    _ext_handle.mr_heap_snapshot.restype = ctypes.POINTER(PythonValue)
+    _ext_handle.mr_heap_snapshot.restype = ctypes.POINTER(MiniRacerValue)
 
     _ext_handle.mr_set_soft_memory_limit.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
     _ext_handle.mr_set_soft_memory_limit.restype = None
@@ -223,10 +223,8 @@ class MiniRacer(object):
                                            ctypes.c_bool(fast_call))
         if not res:
             raise JSConversionException()
-        try:
-            return res.contents.to_python()
-        finally:
-            self.free(res)
+
+        return PythonValue(self, res).to_python()
 
     def low_memory_notification(self):
         """ Ask the V8 VM to collect memory more aggressively.
@@ -247,10 +245,8 @@ class MiniRacer(object):
                 u"total_heap_size_executable": 0,
                 u"heap_size_limit": 0
             }
-        try:
-            return self.json_impl.loads(res.contents.to_python())
-        finally:
-            self.free(res)
+
+        return self.json_impl.loads(PythonValue(self, res).to_python())
 
     def heap_snapshot(self):
         """ Return heap snapshot """
@@ -258,15 +254,12 @@ class MiniRacer(object):
         with self.lock:
             res = self.ext.mr_heap_snapshot(self.ctx)
 
-        try:
-            return res.contents.to_python()
-        finally:
-            self.free(res)
+        return PythonValue(self, res).to_python()
 
-    def free(self, res):
+    def _free(self, res):
         """ Free value returned by mr_eval_context """
 
-        self.ext.mr_free_value(res)
+        self.ext.mr_free_value(self.ctx, res)
 
     def __del__(self):
         """ Free the context """
@@ -297,6 +290,7 @@ class PythonTypes(object):
     symbol    =   9
 
     function  = 100
+    shared_array_buffer = 101
 
     execute_exception = 200
     parse_exception = 201
@@ -304,18 +298,37 @@ class PythonTypes(object):
     timeout_exception = 203
 
 
-class PythonValue(ctypes.Structure):
-    """ Map to C PythonValue """
+class MiniRacerValue(ctypes.Structure):
+    """ Map to C """
     _fields_ = [("value", ctypes.c_void_p),
                 ("type", ctypes.c_int),
                 ("len", ctypes.c_size_t)]
 
+
+class PythonValue:
+
+    def __init__(self, ctx, ptr):
+        self.ctx = ctx
+        self.ptr = ptr
+
     def __str__(self):
         return str(self.to_python())
 
+    @property
+    def type(self):
+        return self.ptr.contents.type
+
+    @property
+    def value(self):
+        return self.ptr.contents.value
+
+    @property
+    def len(self):
+        return self.ptr.contents.len
+
     def _double_value(self):
-            ptr = ctypes.c_char_p.from_buffer(self)
-            return ctypes.c_double.from_buffer(ptr).value
+        ptr = ctypes.c_char_p.from_buffer(self.ptr.contents)
+        return ctypes.c_double.from_buffer(ptr).value
 
     def _raise_from_error(self):
         if self.type == PythonTypes.parse_exception:
@@ -357,6 +370,14 @@ class PythonValue(ctypes.Structure):
             result = datetime.datetime.utcfromtimestamp(timestamp / 1000.)
         elif self.type == PythonTypes.symbol:
             result = JSSymbol()
+        elif self.type == PythonTypes.shared_array_buffer:
+            cdata = (ctypes.c_char * self.len).from_address(self.value)
+            # Keep a reference to prevent the GC to free the backing store
+            cdata._origin = self
+            result = memoryview(cdata)
         else:
             raise JSConversionException()
         return result
+
+    def __del__(self):
+        self.ctx._free(self.ptr)
