@@ -305,6 +305,13 @@ class MiniRacerValue(ctypes.Structure):
                 ("len", ctypes.c_size_t)]
 
 
+class SharedArrayBufferByte(ctypes.Structure):
+    # Cannot use c_ubyte directly because it uses <B
+    # as an internal type but we need B for memoryview.
+    _fields_ = [("b", ctypes.c_ubyte)]
+    _pack_ = 1
+
+
 class PythonValue:
 
     def __init__(self, ctx, ptr):
@@ -371,7 +378,7 @@ class PythonValue:
         elif self.type == PythonTypes.symbol:
             result = JSSymbol()
         elif self.type == PythonTypes.shared_array_buffer:
-            cdata = (ctypes.c_ubyte * self.len).from_address(self.value)
+            cdata = (SharedArrayBufferByte * self.len).from_address(self.value)
             # Keep a reference to prevent the GC to free the backing store
             cdata._origin = self
             result = memoryview(cdata)
