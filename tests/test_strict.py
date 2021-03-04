@@ -21,10 +21,6 @@ class StrictTestCase(unittest.TestCase):
     def test_basic_array(self):
         self.assertEqual([1, 2, 3], self.mr.execute('[1, 2, 3]'))
 
-    def test_not_allowed_type(self):
-        with self.assertRaises(py_mini_racer.JSConversionException):
-            self.mr.eval("Object()")
-
     def test_call(self):
         js_func = """var f = function(args) {
             return args.length;

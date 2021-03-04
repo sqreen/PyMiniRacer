@@ -82,15 +82,9 @@ class Test(unittest.TestCase):
         res = self.mr.eval('var a = function(){}; a')
         self.assertTrue(isinstance(res, py_mini_racer.JSFunction))
 
-    def test_invalid_key(self):
-
-        fun = """
-            var o = {};
-            o.__defineGetter__("bar", function() { return null(); });
-            o
-        """
-        with self.assertRaises(py_mini_racer.JSConversionException):
-            self.mr.eval(fun)
+    def test_object(self):
+        res = self.mr.eval('var a = {}; a')
+        self.assertTrue(isinstance(res, py_mini_racer.JSObject))
 
     def test_timestamp(self):
         val = int(time.time())

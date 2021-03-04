@@ -84,13 +84,20 @@ class WrongReturnTypeException(MiniRacerBaseException):
     """ type returned by JS cannot be parsed """
     pass
 
+class JSObject(object):
+    """ type for JS objects """
+
+    def __init__(self, id):
+        self.id = id
+
+    def __hash__(self):
+        return self.id
+
 class JSFunction(object):
     """ type for JS functions """
-    pass
 
 class JSSymbol(object):
     """ type for JS symbols """
-    pass
 
 
 def is_unicode(value):
@@ -123,6 +130,7 @@ def _fetch_ext_handle():
         raise RuntimeError("Native library not available at {}".format(EXTENSION_PATH))
     _ext_handle = ctypes.CDLL(EXTENSION_PATH)
 
+    _ext_handle.mr_init_context.argtypes = [ctypes.c_char_p]
     _ext_handle.mr_init_context.restype = ctypes.c_void_p
 
     _ext_handle.mr_eval_context.argtypes = [
@@ -133,6 +141,14 @@ def _fetch_ext_handle():
         ctypes.c_size_t,
         ctypes.c_bool]
     _ext_handle.mr_eval_context.restype = ctypes.POINTER(MiniRacerValue)
+
+    _ext_handle.mr_pump_message_loop.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_bool,
+    ]
+    _ext_handle.mr_pump_message_loop.restype = ctypes.c_int
+
+    _ext_handle.mr_run_microtasks.argtypes = [ctypes.c_void_p]
 
     _ext_handle.mr_free_value.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
 
@@ -164,11 +180,14 @@ class MiniRacer(object):
 
     json_impl = json
 
-    def __init__(self):
-        """ Init a JS context """
+    def __init__(self, v8_args=[]):
+        """ Initialize a JS context.
+
+        Only the first instantiated MiniRacer instance can set v8 arguments.
+        """
 
         self.ext = _fetch_ext_handle()
-        self.ctx = self.ext.mr_init_context()
+        self.ctx = self.ext.mr_init_context(" ".join(v8_args).encode("utf-8"))
         self.lock = threading.Lock()
 
     def set_soft_memory_limit(self, limit):
@@ -207,6 +226,19 @@ class MiniRacer(object):
         """ Call the function referenced by a global identifier with provided arguments.
         """
         return self.eval(js_identifier, timeout=timeout, max_memory=max_memory, fast_call=True)
+
+    def pump_message_loop(self, wait=False):
+        """ Process V8 tasks (like timers).
+
+        Returns true if a task was executed, false otherwise.
+        """
+        with self.lock:
+            return bool(self.ext.mr_pump_message_loop(self.ctx, wait))
+
+    def run_microtasks(self):
+        """ Run Javascript Microtasks (like promise callbacks). """
+        with self.lock:
+            self.ext.mr_run_microtasks(self.ctx)
 
     def eval(self, js_str, timeout=0, max_memory=0, fast_call=False):
         """ Eval the JavaScript string """
@@ -288,6 +320,7 @@ class PythonTypes(object):
     hash      =   7  # deprecated
     date      =   8
     symbol    =   9
+    object    =  10
 
     function  = 100
     shared_array_buffer = 101
@@ -300,7 +333,7 @@ class PythonTypes(object):
 
 class MiniRacerValue(ctypes.Structure):
     """ Map to C """
-    _fields_ = [("value", ctypes.c_void_p),
+    _fields_ = [("value", ctypes.c_void_p),  # value is 8 bytes, works only for 64bit systems
                 ("type", ctypes.c_int),
                 ("len", ctypes.c_size_t)]
 
@@ -354,34 +387,38 @@ class PythonValue:
     def to_python(self):
         self._raise_from_error()
         result = None
-        if self.type == PythonTypes.null:
+        typ = self.type
+        if typ == PythonTypes.null:
             result = None
-        elif self.type == PythonTypes.bool:
+        elif typ == PythonTypes.bool:
             result = self.value == 1
-        elif self.type == PythonTypes.integer:
-            if self.value is None:
+        elif typ == PythonTypes.integer:
+            val = self.value
+            if val is None:
                 result = 0
             else:
-                result = ctypes.c_int32(self.value).value
-        elif self.type == PythonTypes.double:
+                result = ctypes.c_int32(val).value
+        elif typ == PythonTypes.double:
             result = self._double_value()
-        elif self.type == PythonTypes.str_utf8:
+        elif typ == PythonTypes.str_utf8:
             buf = ctypes.c_char_p(self.value)
             ptr = ctypes.cast(buf, ctypes.POINTER(ctypes.c_char))
             result = ptr[0:self.len].decode("utf8")
-        elif self.type == PythonTypes.function:
+        elif typ == PythonTypes.function:
             result = JSFunction()
-        elif self.type == PythonTypes.date:
+        elif typ == PythonTypes.date:
             timestamp = self._double_value()
             # JS timestamp are milliseconds, in python we are in seconds
             result = datetime.datetime.utcfromtimestamp(timestamp / 1000.)
-        elif self.type == PythonTypes.symbol:
+        elif typ == PythonTypes.symbol:
             result = JSSymbol()
-        elif self.type == PythonTypes.shared_array_buffer:
+        elif typ == PythonTypes.shared_array_buffer:
             cdata = (SharedArrayBufferByte * self.len).from_address(self.value)
             # Keep a reference to prevent the GC to free the backing store
             cdata._origin = self
             result = memoryview(cdata)
+        elif typ == PythonTypes.object:
+            return JSObject(self.value)
         else:
             raise JSConversionException()
         return result
