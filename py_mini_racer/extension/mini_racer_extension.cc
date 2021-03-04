@@ -424,14 +424,19 @@ static BinaryValue *convert_v8_to_binary(ContextInfo *context_info,
 
 static void deallocate(void * data) {
     ContextInfo* context_info = (ContextInfo*)data;
-    {
-        // XXX: what is the point of this?
-        Locker lock(context_info->isolate);
+
+    if (context_info == NULL || context_info->isolate == NULL) {
+        return;
     }
 
-    {
+	if (context_info->context) {
+        Locker lock(context_info->isolate);
+        Isolate::Scope isolate_scope(context_info->isolate);
+
+        context_info->shared_array_buffers.clear();
         context_info->context->Reset();
         delete context_info->context;
+        context_info->context = NULL;
     }
 
     if (context_info->interrupted) {
@@ -440,10 +445,11 @@ static void deallocate(void * data) {
                         "reclaimed till the Python process exits.");
     } else {
         context_info->isolate->Dispose();
+        context_info->isolate = NULL;
     }
 
     delete context_info->allocator;
-    free(context_info);
+    delete context_info;
 }
 
 

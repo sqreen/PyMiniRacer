@@ -371,7 +371,7 @@ class PythonValue:
         elif self.type == PythonTypes.symbol:
             result = JSSymbol()
         elif self.type == PythonTypes.shared_array_buffer:
-            cdata = (ctypes.c_char * self.len).from_address(self.value)
+            cdata = (ctypes.c_ubyte * self.len).from_address(self.value)
             # Keep a reference to prevent the GC to free the backing store
             cdata._origin = self
             result = memoryview(cdata)
