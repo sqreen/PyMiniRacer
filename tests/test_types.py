@@ -119,13 +119,13 @@ class Test(unittest.TestCase):
         js_source = """
         var b = new SharedArrayBuffer(1024);
         var v = new Uint8Array(b);
-        v[0] = 42;
+        v[0] = 0x42;
         b
         """
         ret = self.mr.eval(js_source)
         self.assertEqual(len(ret), 1024)
-        self.assertEqual(ord(ret[0]), 42)
-        ret[1] = '\xFF'
+        self.assertEqual(ret[0:1].tobytes(), b"\x42")
+        ret[1:2] = b"\xFF"
         self.assertEqual(self.mr.eval("v[1]"), 0xFF)
 
 
