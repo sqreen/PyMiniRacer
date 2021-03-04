@@ -176,16 +176,22 @@ static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
     }
 }
 
-static void init_v8() {
+static void init_v8(char const * flags) {
     // no need to wait for the lock if already initialized
     if (current_platform != NULL) return;
 
     platform_lock.lock();
 
     if (current_platform == NULL) {
-        V8::SetFlagsFromString("--single-threaded");
         V8::InitializeICU();
-        current_platform = platform::NewSingleThreadedDefaultPlatform();
+        if (flags != NULL) {
+            V8::SetFlagsFromString(flags);
+        }
+        if (flags != NULL && strstr(flags, "--single-threaded") != NULL) {
+            current_platform = platform::NewSingleThreadedDefaultPlatform();
+        } else {
+            current_platform = platform::NewDefaultPlatform();
+        }
         V8::InitializePlatform(current_platform.get());
         V8::Initialize();
     }
@@ -453,9 +459,9 @@ static void deallocate(void * data) {
 }
 
 
-ContextInfo *MiniRacer_init_context()
+ContextInfo *MiniRacer_init_context(char const * v8_flags)
 {
-    init_v8();
+    init_v8(v8_flags);
 
     ContextInfo* context_info = new (xalloc(context_info)) ContextInfo();
     context_info->allocator = new ArrayBufferAllocator();
@@ -677,9 +683,8 @@ LIB_EXPORT BinaryValue * mr_eval_context(ContextInfo *context_info, char *str, i
     return res;
 }
 
-LIB_EXPORT ContextInfo * mr_init_context() {
-    ContextInfo *res = MiniRacer_init_context();
-    return res;
+LIB_EXPORT ContextInfo * mr_init_context(const char * v8_flags) {
+    return MiniRacer_init_context(v8_flags);
 }
 
 LIB_EXPORT void mr_free_value(ContextInfo *context_info, BinaryValue *val) {

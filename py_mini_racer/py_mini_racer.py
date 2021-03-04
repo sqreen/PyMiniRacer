@@ -123,6 +123,7 @@ def _fetch_ext_handle():
         raise RuntimeError("Native library not available at {}".format(EXTENSION_PATH))
     _ext_handle = ctypes.CDLL(EXTENSION_PATH)
 
+    _ext_handle.mr_init_context.argtypes = [ctypes.c_char_p]
     _ext_handle.mr_init_context.restype = ctypes.c_void_p
 
     _ext_handle.mr_eval_context.argtypes = [
@@ -164,11 +165,14 @@ class MiniRacer(object):
 
     json_impl = json
 
-    def __init__(self):
-        """ Init a JS context """
+    def __init__(self, v8_args=[]):
+        """ Initialize a JS context.
+
+        Only the first instantiated MiniRacer instance can set v8 arguments.
+        """
 
         self.ext = _fetch_ext_handle()
-        self.ctx = self.ext.mr_init_context()
+        self.ctx = self.ext.mr_init_context(" ".join(v8_args).encode("utf-8"))
         self.lock = threading.Lock()
 
     def set_soft_memory_limit(self, limit):
