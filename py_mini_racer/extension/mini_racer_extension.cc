@@ -99,6 +99,7 @@ enum BinaryTypes {
     //type_hash      =   7,  // deprecated
     type_date      =   8,
     type_symbol    =   9,
+    type_object    =  10,
 
     type_function  = 100,
     type_shared_array_buffer = 101,
@@ -139,6 +140,7 @@ void BinaryValueFree(ContextInfo *context_info, BinaryValue *v) {
     case type_integer:
     case type_function: // no value implemented
     case type_symbol:
+    case type_object:
     case type_invalid:
         // the other types are scalar values
         break;
@@ -408,6 +410,10 @@ static BinaryValue *convert_v8_to_binary(ContextInfo * context_info,
         res->type = type_shared_array_buffer;
         res->ptr_val = backing_store->Data();
         res->len = backing_store->ByteLength();
+    }
+    else if (value->IsObject()) {
+        res->type = type_object;
+        res->int_val = value->ToObject(context).ToLocalChecked()->GetIdentityHash();
     }
     else {
         BinaryValueFree(context_info, res);

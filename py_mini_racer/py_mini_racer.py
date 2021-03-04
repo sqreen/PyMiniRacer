@@ -84,13 +84,20 @@ class WrongReturnTypeException(MiniRacerBaseException):
     """ type returned by JS cannot be parsed """
     pass
 
+class JSObject(object):
+    """ type for JS objects """
+
+    def __init__(self, id):
+        self.id = id
+
+    def __hash__(self):
+        return self.id
+
 class JSFunction(object):
     """ type for JS functions """
-    pass
 
 class JSSymbol(object):
     """ type for JS symbols """
-    pass
 
 
 def is_unicode(value):
@@ -292,6 +299,7 @@ class PythonTypes(object):
     hash      =   7  # deprecated
     date      =   8
     symbol    =   9
+    object    =  10
 
     function  = 100
     shared_array_buffer = 101
@@ -304,7 +312,7 @@ class PythonTypes(object):
 
 class MiniRacerValue(ctypes.Structure):
     """ Map to C """
-    _fields_ = [("value", ctypes.c_void_p),
+    _fields_ = [("value", ctypes.c_void_p),  # value is 8 bytes, works only for 64bit systems
                 ("type", ctypes.c_int),
                 ("len", ctypes.c_size_t)]
 
@@ -358,34 +366,38 @@ class PythonValue:
     def to_python(self):
         self._raise_from_error()
         result = None
-        if self.type == PythonTypes.null:
+        typ = self.type
+        if typ == PythonTypes.null:
             result = None
-        elif self.type == PythonTypes.bool:
+        elif typ == PythonTypes.bool:
             result = self.value == 1
-        elif self.type == PythonTypes.integer:
-            if self.value is None:
+        elif typ == PythonTypes.integer:
+            val = self.value
+            if val is None:
                 result = 0
             else:
-                result = ctypes.c_int32(self.value).value
-        elif self.type == PythonTypes.double:
+                result = ctypes.c_int32(val).value
+        elif typ == PythonTypes.double:
             result = self._double_value()
-        elif self.type == PythonTypes.str_utf8:
+        elif typ == PythonTypes.str_utf8:
             buf = ctypes.c_char_p(self.value)
             ptr = ctypes.cast(buf, ctypes.POINTER(ctypes.c_char))
             result = ptr[0:self.len].decode("utf8")
-        elif self.type == PythonTypes.function:
+        elif typ == PythonTypes.function:
             result = JSFunction()
-        elif self.type == PythonTypes.date:
+        elif typ == PythonTypes.date:
             timestamp = self._double_value()
             # JS timestamp are milliseconds, in python we are in seconds
             result = datetime.datetime.utcfromtimestamp(timestamp / 1000.)
-        elif self.type == PythonTypes.symbol:
+        elif typ == PythonTypes.symbol:
             result = JSSymbol()
-        elif self.type == PythonTypes.shared_array_buffer:
+        elif typ == PythonTypes.shared_array_buffer:
             cdata = (SharedArrayBufferByte * self.len).from_address(self.value)
             # Keep a reference to prevent the GC to free the backing store
             cdata._origin = self
             result = memoryview(cdata)
+        elif typ == PythonTypes.object:
+            return JSObject(self.value)
         else:
             raise JSConversionException()
         return result
