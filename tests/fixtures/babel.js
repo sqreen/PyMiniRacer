@@ -12458,7 +12458,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
       width++;
       type = _assign;
     }
-    
+
     return finishOp(type, width);
   }
 
@@ -12814,7 +12814,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
 
   function readCodePoint() {
     var ch = input.charCodeAt(tokPos), code;
-    
+
     if (ch === 123) {
       if (options.ecmaVersion < 6) unexpected();
       ++tokPos;
@@ -13738,7 +13738,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
     this.start = tokStart;
     this.end = null;
   }
-  
+
   exports.Node = Node;
 
   function SourceLocation() {
@@ -14110,7 +14110,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
         if (strict && (isStrictBadIdWord(expr.name) || isStrictReservedWord(expr.name)))
           raise(expr.start, (isBinding ? "Binding " : "Assigning to ") + expr.name + " in strict mode");
         break;
-      
+
       case "MemberExpression":
         if (isBinding) raise(expr.start, "Binding to member expression");
         break;
@@ -14259,7 +14259,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
       return parseExpressionStatement(node, expr);
     }
   }
-  
+
   function parseBreakContinueStatement(node, keyword) {
     var isBreak = keyword == "break";
     next();
@@ -14282,13 +14282,13 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
     if (i === labels.length) raise(node.start, "Unsyntactic " + keyword);
     return finishNode(node, isBreak ? "BreakStatement" : "ContinueStatement");
   }
-  
+
   function parseDebuggerStatement(node) {
     next();
     semicolon();
     return finishNode(node, "DebuggerStatement");
   }
-  
+
   function parseDoStatement(node) {
     next();
     labels.push(loopLabel);
@@ -14302,7 +14302,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
       semicolon();
     return finishNode(node, "DoWhileStatement");
   }
-  
+
   // Disambiguating between a `for` and a `for`/`in` or `for`/`of`
   // loop is non-trivial. Basically, we have to parse the init `var`
   // statement or expression, disallowing the `in` operator (see
@@ -14310,7 +14310,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
   // whether the next token is `in` or `of`. When there is no init
   // part (semicolon immediately after the opening parenthesis), it
   // is a regular `for` loop.
-  
+
   function parseForStatement(node) {
     next();
     labels.push(loopLabel);
@@ -14337,12 +14337,12 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
     }
     return parseFor(node, init);
   }
-  
+
   function parseFunctionStatement(node) {
     next();
     return parseFunction(node, true, false);
   }
-  
+
   function parseIfStatement(node) {
     next();
     node.test = parseParenExpression();
@@ -14350,7 +14350,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
     node.alternate = eat(_else) ? parseStatement(false) : null;
     return finishNode(node, "IfStatement");
   }
-  
+
   function parseReturnStatement(node) {
     if (!inFunction && !options.allowReturnOutsideFunction)
       raise(tokStart, "'return' outside of function");
@@ -14364,7 +14364,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
     else { node.argument = parseExpression(); semicolon(); }
     return finishNode(node, "ReturnStatement");
   }
-  
+
   function parseSwitchStatement(node) {
     next();
     node.discriminant = parseParenExpression();
@@ -14399,7 +14399,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
     labels.pop();
     return finishNode(node, "SwitchStatement");
   }
-  
+
   function parseThrowStatement(node) {
     next();
     if (newline.test(input.slice(lastEnd, tokStart)))
@@ -14408,7 +14408,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
     semicolon();
     return finishNode(node, "ThrowStatement");
   }
-  
+
   function parseTryStatement(node) {
     next();
     node.block = parseBlock();
@@ -14430,14 +14430,14 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
       raise(node.start, "Missing catch or finally clause");
     return finishNode(node, "TryStatement");
   }
-  
+
   function parseVarStatement(node, kind) {
     next();
     parseVar(node, false, kind);
     semicolon();
     return finishNode(node, "VariableDeclaration");
   }
-  
+
   function parseWhileStatement(node) {
     next();
     node.test = parseParenExpression();
@@ -14446,7 +14446,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
     labels.pop();
     return finishNode(node, "WhileStatement");
   }
-  
+
   function parseWithStatement(node) {
     if (strict) raise(tokStart, "'with' in strict mode");
     next();
@@ -14454,12 +14454,12 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
     node.body = parseStatement(false);
     return finishNode(node, "WithStatement");
   }
-  
+
   function parseEmptyStatement(node) {
     next();
     return finishNode(node, "EmptyStatement");
   }
-  
+
   function parseLabeledStatement(node, maybeName, expr) {
     for (var i = 0; i < labels.length; ++i)
       if (labels[i].name === maybeName) raise(expr.start, "Label '" + maybeName + "' is already declared");
@@ -14470,7 +14470,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
     node.label = expr;
     return finishNode(node, "LabeledStatement");
   }
-  
+
   function parseExpressionStatement(node, expr) {
     node.expression = expr;
     semicolon();
@@ -14766,7 +14766,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
       var node = startNode();
       next();
       return finishNode(node, "ThisExpression");
-    
+
     case _yield:
       if (inGenerator) return parseYield();
 
@@ -14812,7 +14812,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
         return parseArrowExpression(startNodeAt(start), [id]);
       }
       return id;
-      
+
     case _regexp:
       var node = startNode();
       node.regex = {pattern: tokVal.pattern, flags: tokVal.flags};
@@ -15222,7 +15222,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
 
   // Parse a class declaration or literal (depending on the
   // `isStatement` parameter).
-  
+
   function parseClass(node, isStatement) {
     next();
     node.id = tokType === _name ? parseIdent() : isStatement ? unexpected() : null;
@@ -15445,7 +15445,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
 
   function parseImport(node) {
     next();
-    
+
     node.isType = false;
     node.specifiers = [];
 
@@ -15461,7 +15461,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
       }
     }
 
-    
+
     // import '...';
     if (tokType === _string) {
       if (typeId) unexpected(typeId.start);
@@ -15794,7 +15794,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
   }
 
   // Declare
-  
+
   function parseDeclareClass(node) {
     next();
     parseInterfaceish(node, true);
@@ -15886,7 +15886,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
 
   function parseInterfaceish(node, allowStatic) {
     node.id = parseIdent();
-    
+
     if (isRelational("<")) {
       node.typeParameters = parseTypeParameterDeclaration();
     } else {
@@ -15923,7 +15923,7 @@ switch(str.length){case 5:switch(str){case "break":case "catch":case "throw":cas
   }
 
   // Type aliases
-  
+
   function parseTypeAlias(node) {
     node.id = parseIdent();
 
@@ -17301,7 +17301,7 @@ def("FunctionTypeParam")
   .field("name", def("Identifier"))
   .field("typeAnnotation", def("Type"))
   .field("optional", isBoolean);
-  
+
 def("ArrayTypeAnnotation")
   .bases("Type")
   .build("elementType")
@@ -17412,7 +17412,7 @@ def("TypeAlias")
   .field("id", def("Identifier"))
   .field("typeParameters", or(def("TypeParameterDeclaration"), null))
   .field("right", def("Type"));
-  
+
 def("TypeCastExpression")
   .bases("Expression")
   .build("expression", "typeAnnotation")
@@ -26157,7 +26157,7 @@ function forOf(iterable, entries, fn, that){
     });
   }
   $define(GLOBAL + WRAP, {Symbol: Symbol});
-  
+
   var symbolStatics = {
     // 19.4.2.1 Symbol.for(key)
     'for': function(key){
@@ -26193,9 +26193,9 @@ function forOf(iterable, entries, fn, that){
     }
   );
   $define(STATIC, SYMBOL, symbolStatics);
-  
+
   setToStringTag(Symbol, SYMBOL);
-  
+
   $define(STATIC + FORCED * !isNative(Symbol), OBJECT, {
     // 19.1.2.7 Object.getOwnPropertyNames(O)
     getOwnPropertyNames: function(it){
@@ -26210,7 +26210,7 @@ function forOf(iterable, entries, fn, that){
       return result;
     }
   });
-  
+
   // 20.2.1.9 Math[@@toStringTag]
   setToStringTag(Math, MATH, true);
   // 24.3.3 JSON[@@toStringTag]
@@ -26336,7 +26336,7 @@ function forOf(iterable, entries, fn, that){
     , sign = Math.sign || function(x){
         return (x = +x) == 0 || x != x ? x : x < 0 ? -1 : 1;
       };
-  
+
   // 20.2.2.5 Math.asinh(x)
   function asinh(x){
     return !isFinite(x = +x) || x == 0 ? x : x < 0 ? -asinh(-x) : log(x + sqrt(x * x + 1));
@@ -26345,7 +26345,7 @@ function forOf(iterable, entries, fn, that){
   function expm1(x){
     return (x = +x) == 0 ? x : x > -1e-6 && x < 1e-6 ? x + x * x / 2 : exp(x) - 1;
   }
-    
+
   $define(STATIC, MATH, {
     // 20.2.2.3 Math.acosh(x)
     acosh: function(x){
@@ -26439,7 +26439,7 @@ function forOf(iterable, entries, fn, that){
   function assertNotRegExp(it){
     if(cof(it) == REGEXP)throw TypeError();
   }
-  
+
   $define(STATIC, STRING, {
     // 21.1.2.2 String.fromCodePoint(...codePoints)
     fromCodePoint: function(x){
@@ -26469,7 +26469,7 @@ function forOf(iterable, entries, fn, that){
       } return res.join('');
     }
   });
-  
+
   $define(PROTO, STRING, {
     // 21.1.3.3 String.prototype.codePointAt(pos)
     codePointAt: createPointAt(false),
@@ -26539,7 +26539,7 @@ function forOf(iterable, entries, fn, that){
       return result;
     }
   });
-  
+
   $define(STATIC, ARRAY, {
     // 22.1.2.3 Array.of( ...items)
     of: function(/* ...args */){
@@ -26551,7 +26551,7 @@ function forOf(iterable, entries, fn, that){
       return result;
     }
   });
-  
+
   setSpecies(Array);
 }();
 
@@ -26598,7 +26598,7 @@ function forOf(iterable, entries, fn, that){
     // 22.1.3.9 Array.prototype.findIndex(predicate, thisArg = undefined)
     findIndex: createArrayMethod(6)
   });
-  
+
   if(framework){
     // 22.1.3.31 Array.prototype[@@unscopables]
     forEach.call(array('find,findIndex,fill,copyWithin,entries,keys,values'), function(it){
@@ -26633,10 +26633,10 @@ function forOf(iterable, entries, fn, that){
     if(kind == VALUE)return iterResult(0, O[index]);
                      return iterResult(0, [index, O[index]]);
   }, VALUE);
-  
+
   // argumentsList[@@iterator] is %ArrayProto_values% (9.4.4.6, 9.4.4.7)
   Iterators[ARGUMENTS] = Iterators[ARRAY];
-  
+
   // 21.1.3.27 String.prototype[@@iterator]()
   defineStdIterators(String, STRING, function(iterated){
     set(this, ITER, {o: String(iterated), i: 0});
@@ -26924,7 +26924,7 @@ $define(GLOBAL + BIND, {
     , SIZE  = DESC ? safeSymbol('size') : 'size'
     , uid   = 0
     , tmp   = {};
-  
+
   function getCollection(C, NAME, methods, commonMethods, isMap, isWeak){
     var ADDER = isMap ? 'set' : 'add'
       , proto = C && C[PROTOTYPE]
@@ -26989,10 +26989,10 @@ $define(GLOBAL + BIND, {
     }
     setToStringTag(C, NAME);
     setSpecies(C);
-    
+
     O[NAME] = C;
     $define(GLOBAL + WRAP + FORCED * !isNative(C), O);
-    
+
     // add .keys, .values, .entries, [@@iterator]
     // 23.1.3.4, 23.1.3.8, 23.1.3.11, 23.1.3.12, 23.2.3.5, 23.2.3.8, 23.2.3.10, 23.2.3.11
     isWeak || defineStdIterators(C, NAME, function(iterated, kind){
@@ -27012,12 +27012,12 @@ $define(GLOBAL + BIND, {
       // return step by kind
       if(kind == KEY)  return iterResult(0, entry.k);
       if(kind == VALUE)return iterResult(0, entry.v);
-                       return iterResult(0, [entry.k, entry.v]);   
+                       return iterResult(0, [entry.k, entry.v]);
     }, isMap ? KEY+VALUE : VALUE, !isMap);
-    
+
     return C;
   }
-  
+
   function fastKey(it, create){
     // return primitive with prefix
     if(!isObject(it))return (typeof it == 'string' ? 'S' : 'P') + it;
@@ -27109,7 +27109,7 @@ $define(GLOBAL + BIND, {
       return !!getEntry(this, key);
     }
   }
-  
+
   // 23.1 Map Objects
   Map = getCollection(Map, MAP, {
     // 23.1.3.6 Map.prototype.get(key)
@@ -27122,7 +27122,7 @@ $define(GLOBAL + BIND, {
       return def(this, key === 0 ? 0 : key, value);
     }
   }, collectionMethods, true);
-  
+
   // 23.2 Set Objects
   Set = getCollection(Set, SET, {
     // 23.2.3.1 Set.prototype.add(value)
@@ -27130,7 +27130,7 @@ $define(GLOBAL + BIND, {
       return def(this, value = value === 0 ? 0 : value, value);
     }
   }, collectionMethods);
-  
+
   function defWeak(that, key, value){
     if(isFrozen(assertObject(key)))leakStore(that).set(key, value);
     else {
@@ -27141,7 +27141,7 @@ $define(GLOBAL + BIND, {
   function leakStore(that){
     return that[LEAK] || hidden(that, LEAK, new Map)[LEAK];
   }
-  
+
   var weakMethods = {
     // 23.3.3.2 WeakMap.prototype.delete(key)
     // 23.4.3.3 WeakSet.prototype.delete(value)
@@ -27158,7 +27158,7 @@ $define(GLOBAL + BIND, {
       return has(key, WEAK) && has(key[WEAK], this[UID]);
     }
   };
-  
+
   // 23.3 WeakMap Objects
   WeakMap = getCollection(WeakMap, WEAKMAP, {
     // 23.3.3.3 WeakMap.prototype.get(key)
@@ -27173,7 +27173,7 @@ $define(GLOBAL + BIND, {
       return defWeak(this, key, value);
     }
   }, weakMethods, true, true);
-  
+
   // IE11 WeakMap frozen keys fix
   if(framework && new WeakMap().set(Object.freeze(tmp), 7).get(tmp) != 7){
     forEach.call(array('delete,has,get,set'), function(key){
@@ -27188,7 +27188,7 @@ $define(GLOBAL + BIND, {
       };
     });
   }
-  
+
   // 23.4 WeakSet Objects
   WeakSet = getCollection(WeakSet, WEAKSET, {
     // 23.4.3.1 WeakSet.prototype.add(value)
@@ -27217,7 +27217,7 @@ $define(GLOBAL + BIND, {
     } while(!((key = keys[iter.i++]) in iter.o));
     return iterResult(0, key);
   });
-  
+
   function wrap(fn){
     return function(it){
       assertObject(it);
@@ -27228,7 +27228,7 @@ $define(GLOBAL + BIND, {
       }
     }
   }
-  
+
   function reflectGet(target, propertyKey/*, receiver*/){
     var receiver = arguments.length < 3 ? target : arguments[2]
       , desc = getOwnDescriptor(assertObject(target), propertyKey), proto;
@@ -27262,7 +27262,7 @@ $define(GLOBAL + BIND, {
       : (ownDesc.set.call(receiver, V), true);
   }
   var isExtensible = Object.isExtensible || returnIt;
-  
+
   var reflect = {
     // 26.1.1 Reflect.apply(target, thisArgument, argumentsList)
     apply: ctx(call, apply, 3),
@@ -27313,7 +27313,7 @@ $define(GLOBAL + BIND, {
   if(setPrototypeOf)reflect.setPrototypeOf = function(target, proto){
     return setPrototypeOf(assertObject(target), proto), true;
   };
-  
+
   $define(GLOBAL, {Reflect: {}});
   $define(STATIC, 'Reflect', reflect);
 }();
@@ -27331,7 +27331,7 @@ $define(GLOBAL + BIND, {
     // https://github.com/mathiasbynens/String.prototype.at
     at: createPointAt(true)
   });
-  
+
   function createObjectToArray(isEntries){
     return function(object){
       var O      = toObject(object)
@@ -27374,15 +27374,15 @@ $define(GLOBAL + BIND, {
   REFERENCE_GET = getWellKnownSymbol(REFERENCE+'Get', true);
   var REFERENCE_SET = getWellKnownSymbol(REFERENCE+SET, true)
     , REFERENCE_DELETE = getWellKnownSymbol(REFERENCE+'Delete', true);
-  
+
   $define(STATIC, SYMBOL, {
     referenceGet: REFERENCE_GET,
     referenceSet: REFERENCE_SET,
     referenceDelete: REFERENCE_DELETE
   });
-  
+
   hidden(FunctionProto, REFERENCE_GET, returnThis);
-  
+
   function setMapMethods(Constructor){
     if(Constructor){
       var MapProto = Constructor[PROTOTYPE];
@@ -27412,7 +27412,7 @@ $define(GLOBAL + BIND, {
     return dict;
   }
   Dict[PROTOTYPE] = null;
-  
+
   function DictIterator(iterated, kind){
     set(this, ITER, {o: toObject(iterated), a: getKeys(iterated), i: 0, k: kind});
   }
@@ -27437,7 +27437,7 @@ $define(GLOBAL + BIND, {
       return new DictIterator(it, kind);
     }
   }
-  
+
   /*
    * 0 -> forEach
    * 1 -> map
@@ -27499,7 +27499,7 @@ $define(GLOBAL + BIND, {
   function includes(object, el){
     return (el == el ? keyOf(object, el) : findKey(object, sameNaN)) !== undefined;
   }
-  
+
   var dictMethods = {
     keys:    createDictIter(KEY),
     values:  createDictIter(VALUE),
@@ -27524,7 +27524,7 @@ $define(GLOBAL + BIND, {
       return isObject(it) && getPrototypeOf(it) === Dict[PROTOTYPE];
     }
   };
-  
+
   if(REFERENCE_GET)for(var key in dictMethods)!function(fn){
     function method(){
       for(var args = [this], i = 0; i < arguments.length;)args.push(arguments[i++]);
@@ -27534,7 +27534,7 @@ $define(GLOBAL + BIND, {
       return method;
     }
   }(dictMethods[key]);
-  
+
   $define(GLOBAL + FORCED, {Dict: assignHidden(Dict, dictMethods)});
 }('Dict');
 
@@ -27542,13 +27542,13 @@ $define(GLOBAL + BIND, {
  * Module : core.$for                                                         *
  ******************************************************************************/
 
-!function(ENTRIES, FN){  
+!function(ENTRIES, FN){
   function $for(iterable, entries){
     if(!(this instanceof $for))return new $for(iterable, entries);
     this[ITER]    = getIterator(iterable);
     this[ENTRIES] = !!entries;
   }
-  
+
   createIterator($for, 'Wrapper', function(){
     return this[ITER].next();
   });
@@ -27556,7 +27556,7 @@ $define(GLOBAL + BIND, {
   setIterator($forProto, function(){
     return this[ITER]; // unwrap
   });
-  
+
   function createChainIterator(next){
     function Iter(I, fn, that){
       this[ITER]    = getIterator(I);
@@ -27567,19 +27567,19 @@ $define(GLOBAL + BIND, {
     setIterator(Iter[PROTOTYPE], returnThis); // override $forProto iterator
     return Iter;
   }
-  
+
   var MapIter = createChainIterator(function(){
     var step = this[ITER].next();
     return step.done ? step : iterResult(0, stepCall(this[FN], step.value, this[ENTRIES]));
   });
-  
+
   var FilterIter = createChainIterator(function(){
     for(;;){
       var step = this[ITER].next();
       if(step.done || stepCall(this[FN], step.value, this[ENTRIES]))return step;
     }
   });
-  
+
   assignHidden($forProto, {
     of: function(fn, that){
       forOf(this, this[ENTRIES], fn, that);
@@ -27596,10 +27596,10 @@ $define(GLOBAL + BIND, {
       return new MapIter(this, fn, that);
     }
   });
-  
+
   $for.isIterable  = isIterable;
   $for.getIterator = getIterator;
-  
+
   $define(GLOBAL + FORCED, {$for: $for});
 }('entries', safeSymbol('fn'));
 
@@ -27639,7 +27639,7 @@ $define(GLOBAL + FORCED, {
       }
     }
   });
-  
+
   function tie(key){
     var that  = this
       , bound = {};
@@ -27648,11 +27648,11 @@ $define(GLOBAL + FORCED, {
       return has(bound, key) ? bound[key] : (bound[key] = ctx(that[key], that, -1));
     })[_](key);
   }
-  
+
   hidden(path._, TO_STRING, function(){
     return _;
   });
-  
+
   hidden(ObjectProto, _, tie);
   DESC || hidden(ArrayProto, _, tie);
   // IE8- dirty hack - redefined toLocaleString is not enumerable
@@ -27701,7 +27701,7 @@ if(framework)ArrayUnscopables.turn = true;
  * Module : core.number                                                       *
  ******************************************************************************/
 
-!function(numberMethods){  
+!function(numberMethods){
   function NumberIterator(iterated){
     set(this, ITER, {l: toLength(iterated), i: 0});
   }
@@ -27713,7 +27713,7 @@ if(framework)ArrayUnscopables.turn = true;
   defineIterator(Number, NUMBER, function(){
     return new NumberIterator(this);
   });
-  
+
   numberMethods.random = function(lim /* = 0 */){
     var a = +this
       , b = lim == undefined ? 0 : +lim
@@ -27737,7 +27737,7 @@ if(framework)ArrayUnscopables.turn = true;
       }
     }
   );
-  
+
   $define(PROTO + FORCED, NUMBER, numberMethods);
 }({});
 

@@ -5,7 +5,6 @@
 
 import json
 import unittest
-
 from datetime import datetime
 
 from py_mini_racer import py_mini_racer

@@ -31,4 +31,4 @@ class StrictTestCase(unittest.TestCase):
 
     def test_message(self):
         with self.assertRaises(py_mini_racer.JSEvalException):
-            res = self.mr.eval("throw new EvalError('Hello', 'someFile.js', 10);")
+            self.mr.eval("throw new EvalError('Hello', 'someFile.js', 10);")

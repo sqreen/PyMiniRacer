@@ -1,0 +1,10 @@
+[flake8]
+ignore =
+    E203,
+    E501,
+    W503
+exclude =
+    .tox,
+	docs/conf.py,
+    build,
+    py_mini_racer/extension

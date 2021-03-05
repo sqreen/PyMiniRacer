@@ -8,6 +8,7 @@ import unittest
 
 from py_mini_racer import py_mini_racer
 
+
 class Test(unittest.TestCase):
     """ Test basic types """
 
@@ -24,12 +25,11 @@ class Test(unittest.TestCase):
         self.mr.eval('var xabc = 22;')
         self.assertEqual(22, self.mr.eval('xabc'))
 
-
     def test_fun(self):
-        res = self.mr.eval('var x = function(y) {return y+1;}')
+        self.mr.eval('var x = function(y) {return y+1;}')
 
-        self.assertEqual(2,   self.mr.eval('x(1)'))
-        self.assertEqual(11,  self.mr.eval('x(10)'))
+        self.assertEqual(2, self.mr.eval('x(1)'))
+        self.assertEqual(11, self.mr.eval('x(10)'))
         self.assertEqual(101, self.mr.eval('x(100)'))
 
     def test_multiple_ctx(self):
@@ -108,13 +108,12 @@ class Test(unittest.TestCase):
                     a = a.concat(n);
                 }''', max_memory=200000000)
 
-
     def test_symbol(self):
         res = self.mr.eval('Symbol.toPrimitive')
         self.assertEqual(type(res), py_mini_racer.JSSymbol)
 
     def test_async(self):
-        shared = self.mr.eval("""
+        self.mr.eval("""
         var done = false;
         const shared = new SharedArrayBuffer(8);
         const view = new Int32Array(shared);

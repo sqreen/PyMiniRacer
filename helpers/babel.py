@@ -5,13 +5,12 @@ import sys
 
 from py_mini_racer import py_mini_racer
 
+
 def babel_transform(es_string):
     """ Transform the provided string using babel.transform """
 
     path_to_babel = os.path.join(os.path.dirname(__file__), '..', 'tests',
                                  'fixtures', 'babel.js')
-
-    es6 = '[1,2,3].map(n => n + 1);'
 
     babel_source = open(path_to_babel, "r").read()
 
