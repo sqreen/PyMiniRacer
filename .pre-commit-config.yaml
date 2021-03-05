@@ -18,3 +18,11 @@ repos:
      exclude: \.patch$
    - id: check-yaml
    - id: check-added-large-files
+- repo: local
+  hooks:
+   - id: clang-format
+     name: Check C++ format
+     entry: clang-format
+     language: system
+     files: py_mini_racer/extension/mini_racer_extension.cc
+     args: ['-style=Chromium', '-i']
