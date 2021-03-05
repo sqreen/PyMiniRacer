@@ -3,10 +3,9 @@
 
 """ Basic JS types tests """
 
-from io import open
-
-import unittest
 import os
+import unittest
+from io import open
 
 from py_mini_racer import py_mini_racer
 

@@ -2,14 +2,13 @@
 """ PyMiniRacer main wrappers """
 # pylint: disable=bad-whitespace,too-few-public-methods
 
-import sys
-import os
-import json
 import ctypes
-import threading
 import datetime
-import fnmatch
+import json
+import os
+import sys
 import sysconfig
+import threading
 
 try:
     import pkg_resources
@@ -51,38 +50,38 @@ EXTENSION_NAME = os.path.basename(EXTENSION_PATH) if EXTENSION_PATH is not None 
 
 
 if sys.version_info[0] < 3:
-    UNICODE_TYPE = unicode
+    UNICODE_TYPE = unicode  # noqa: F821
 else:
     UNICODE_TYPE = str
 
 
 class MiniRacerBaseException(Exception):
     """ base MiniRacer exception class """
-    pass
+
 
 class JSParseException(MiniRacerBaseException):
     """ JS could not be parsed """
-    pass
+
 
 class JSEvalException(MiniRacerBaseException):
     """ JS could not be executed """
-    pass
+
 
 class JSOOMException(JSEvalException):
     """ JS execution out of memory """
-    pass
+
 
 class JSTimeoutException(JSEvalException):
     """ JS execution timed out """
-    pass
+
 
 class JSConversionException(MiniRacerBaseException):
     """ type could not be converted """
-    pass
+
 
 class WrongReturnTypeException(MiniRacerBaseException):
     """ type returned by JS cannot be parsed """
-    pass
+
 
 class JSObject(object):
     """ type for JS objects """
@@ -93,8 +92,10 @@ class JSObject(object):
     def __hash__(self):
         return self.id
 
+
 class JSFunction(object):
     """ type for JS functions """
+
 
 class JSSymbol(object):
     """ type for JS symbols """
@@ -310,19 +311,19 @@ class PythonTypes(object):
     """ Python types identifier - need to be coherent with
     mini_racer_extension.cc """
 
-    invalid   =   0
-    null      =   1
-    bool      =   2
-    integer   =   3
-    double    =   4
-    str_utf8  =   5
-    array     =   6  # deprecated
-    hash      =   7  # deprecated
-    date      =   8
-    symbol    =   9
-    object    =  10
+    invalid = 0
+    null = 1
+    bool = 2
+    integer = 3
+    double = 4
+    str_utf8 = 5
+    array = 6  # deprecated
+    hash = 7  # deprecated
+    date = 8
+    symbol = 9
+    object = 10
 
-    function  = 100
+    function = 100
     shared_array_buffer = 101
 
     execute_exception = 200

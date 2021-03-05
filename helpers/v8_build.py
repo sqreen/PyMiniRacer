@@ -1,18 +1,14 @@
 # -*- coding: utf-8 -*-"
-import json
 import argparse
 import errno
-import sys
+import glob
+import json
 import logging
 import os
 import os.path
 import subprocess
-import multiprocessing
-import glob
-
+import sys
 from contextlib import contextmanager
-from distutils.dir_util import copy_tree
-
 
 logging.basicConfig()
 LOGGER = logging.getLogger(__name__)
@@ -113,11 +109,13 @@ def dependencies_sync(path):
     with chdir(path):
         call("gclient sync")
 
+
 def run_hooks(path):
     """ Run v8 build hooks
     """
     with chdir(path):
         call("gclient runhooks")
+
 
 def gen_makefiles(build_path, no_sysroot=False):
     with chdir(local_path("../py_mini_racer/extension")):
@@ -176,6 +174,7 @@ def gen_makefiles(build_path, no_sysroot=False):
                 f.write("\n".join(extra_args.split()))
                 f.write("\n")
         call("gn gen {}".format(local_path(build_path)))
+
 
 def make(build_path, target, cmd_prefix=""):
     """ Create a release of v8

@@ -4,14 +4,16 @@ import os
 import re
 import sys
 
+from auditwheel.wheeltools import InWheelCtx, _dist_info_dir
 from wheel import pkginfo
-from auditwheel.wheeltools import InWheelCtx, add_platforms, _dist_info_dir
+
 
 def get_filenames(directory):
     """Get all the file to copy"""
     for filename in os.listdir(directory):
         if re.search(r"cp\d{2}mu?-manylinux1_\S+\.whl", filename):
             yield filename
+
 
 def copy_file(filename, destination):
     """Copy the file and put the correct tag"""
@@ -40,6 +42,7 @@ def copy_file(filename, destination):
 
         print("Saving new wheel into %s" % ctx.out_wheel)
 
+
 def main():
     if len(sys.argv) == 2:
         directory = sys.argv[1]
@@ -47,6 +50,7 @@ def main():
         directory = "dist"
     for filename in get_filenames(directory):
         copy_file(filename, directory)
+
 
 if __name__ == "__main__":
     main()

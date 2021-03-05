@@ -1,16 +1,15 @@
-import os
-import sys
 import glob
+import os
 import shutil
+import sys
 
 from setuptools.build_meta import (
-    get_requires_for_build_wheel,
-    get_requires_for_build_sdist,
-    prepare_metadata_for_build_wheel,
-    build_wheel as setuptools_build_wheel,
     build_sdist as setuptools_build_sdist,
+    build_wheel as setuptools_build_wheel,
+    get_requires_for_build_sdist,
+    get_requires_for_build_wheel,
+    prepare_metadata_for_build_wheel,
 )
-
 from v8_build import build_v8
 
 

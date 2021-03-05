@@ -3,11 +3,9 @@
 
 """ Basic JS types tests """
 
-import struct
-import unittest
 import json
 import time
-
+import unittest
 from datetime import datetime
 
 from py_mini_racer import py_mini_racer
@@ -42,7 +40,7 @@ class Test(unittest.TestCase):
         self.valid(1)
         self.valid(1.0)
         self.valid(2**16)
-        self.valid(2**31-1)
+        self.valid(2**31 - 1)
         self.valid(2**31)
         self.valid(2**33)
 
