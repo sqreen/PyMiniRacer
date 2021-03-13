@@ -44,7 +44,7 @@ struct ContextInfo {
   Isolate* isolate;
   Persistent<Context>* context;
   ArrayBufferAllocator* allocator;
-  std::map<void*, std::shared_ptr<BackingStore>> shared_array_buffers;
+  std::map<void*, std::shared_ptr<BackingStore>> backing_stores;
   bool interrupted;
   size_t soft_memory_limit;
   bool soft_memory_limit_reached;
@@ -101,6 +101,7 @@ enum BinaryTypes {
 
   type_function = 100,
   type_shared_array_buffer = 101,
+  type_array_buffer = 102,
 
   type_execute_exception = 200,
   type_parse_exception = 201,
@@ -143,7 +144,8 @@ void BinaryValueFree(ContextInfo* context_info, BinaryValue* v) {
       // the other types are scalar values
       break;
     case type_shared_array_buffer:
-      context_info->shared_array_buffers.erase(v->ptr_val);
+    case type_array_buffer:
+      context_info->backing_stores.erase(v);
       break;
   }
   free(v);
@@ -406,14 +408,32 @@ static BinaryValue* convert_v8_to_binary(ContextInfo* context_info,
     size_t capacity = res->len + 1;
     res->str_val = xalloc(res->str_val, capacity);
     rstr->WriteUtf8(context_info->isolate, res->str_val);
-  } else if (value->IsSharedArrayBuffer()) {
-    Local<SharedArrayBuffer> buffer = Local<SharedArrayBuffer>::Cast(value);
-    auto backing_store = buffer->GetBackingStore();
+  } else if (value->IsSharedArrayBuffer() || value->IsArrayBuffer() ||
+             value->IsArrayBufferView()) {
+    std::shared_ptr<BackingStore> backing_store;
+    size_t offset = 0;
+    size_t size = 0;
 
-    context_info->shared_array_buffers[backing_store->Data()] = backing_store;
-    res->type = type_shared_array_buffer;
-    res->ptr_val = backing_store->Data();
-    res->len = backing_store->ByteLength();
+    if (value->IsArrayBufferView()) {
+      Local<ArrayBufferView> view = Local<ArrayBufferView>::Cast(value);
+
+      backing_store = view->Buffer()->GetBackingStore();
+      offset = view->ByteOffset();
+      size = view->ByteLength();
+    } else if (value->IsSharedArrayBuffer()) {
+      backing_store = Local<SharedArrayBuffer>::Cast(value)->GetBackingStore();
+      size = backing_store->ByteLength();
+    } else {
+      backing_store = Local<ArrayBuffer>::Cast(value)->GetBackingStore();
+      size = backing_store->ByteLength();
+    }
+
+    context_info->backing_stores[res] = backing_store;
+    res->type = value->IsSharedArrayBuffer() ? type_shared_array_buffer
+                                             : type_array_buffer;
+    res->ptr_val = static_cast<char*>(backing_store->Data()) + offset;
+    res->len = size;
+
   } else if (value->IsObject()) {
     res->type = type_object;
     res->int_val = value->ToObject(context).ToLocalChecked()->GetIdentityHash();
@@ -443,7 +463,7 @@ static void deallocate(void* data) {
     Locker lock(context_info->isolate);
     Isolate::Scope isolate_scope(context_info->isolate);
 
-    context_info->shared_array_buffers.clear();
+    context_info->backing_stores.clear();
     context_info->context->Reset();
     delete context_info->context;
     context_info->context = NULL;
