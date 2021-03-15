@@ -107,7 +107,29 @@ class Test(unittest.TestCase):
 
         self.assertIn('error: 42', cm.exception.args[0])
 
-    def test_shared_array(self):
+    def test_array_buffer(self):
+        js_source = """
+        var b = new ArrayBuffer(1024);
+        var v = new Uint8Array(b);
+        v[0] = 0x42;
+        b
+        """
+        ret = self.mr.eval(js_source)
+        self.assertEqual(len(ret), 1024)
+        self.assertEqual(ret[0:1].tobytes(), b"\x42")
+
+    def test_array_buffer_view(self):
+        js_source = """
+        var b = new ArrayBuffer(1024);
+        var v = new Uint8Array(b, 1, 1);
+        v[0] = 0x42;
+        v
+        """
+        ret = self.mr.eval(js_source)
+        self.assertEqual(len(ret), 1)
+        self.assertEqual(ret.tobytes(), b"\x42")
+
+    def test_shared_array_buffer(self):
         js_source = """
         var b = new SharedArrayBuffer(1024);
         var v = new Uint8Array(b);
