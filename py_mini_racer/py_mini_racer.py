@@ -161,12 +161,12 @@ class MiniRacer(object):
     """
     MiniRacer evaluates JavaScript code using V8.
 
-    V8 arguments are a class attribute because they cannot be changed
+    V8 flags are a class attribute because they cannot be changed
     after the first MiniRacer instantiation.
     """
 
     json_impl = json
-    v8_args = []
+    v8_flags = []
     ext = None
 
     def __init__(self):
@@ -175,7 +175,7 @@ class MiniRacer(object):
         if self.__class__.ext is None:
             self.__class__.ext = _build_ext_handle()
 
-        self.ctx = self.ext.mr_init_context(" ".join(self.v8_args).encode("utf-8"))
+        self.ctx = self.ext.mr_init_context(" ".join(self.v8_flags).encode("utf-8"))
         self.lock = threading.Lock()
 
     def set_soft_memory_limit(self, limit):
