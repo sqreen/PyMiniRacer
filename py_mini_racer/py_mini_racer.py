@@ -118,15 +118,7 @@ def is_unicode(value):
     return isinstance(value, UNICODE_TYPE)
 
 
-_ext_handle = None
-
-
-def _fetch_ext_handle():
-    global _ext_handle
-
-    if _ext_handle:
-        return _ext_handle
-
+def _build_ext_handle():
     if EXTENSION_PATH is None or not os.path.exists(EXTENSION_PATH):
         raise RuntimeError("Native library not available at {}".format(EXTENSION_PATH))
     _ext_handle = ctypes.CDLL(EXTENSION_PATH)
@@ -139,29 +131,20 @@ def _fetch_ext_handle():
         ctypes.c_char_p,
         ctypes.c_int,
         ctypes.c_ulong,
-        ctypes.c_size_t,
-        ctypes.c_bool]
-    _ext_handle.mr_eval_context.restype = ctypes.POINTER(MiniRacerValue)
-
-    _ext_handle.mr_pump_message_loop.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_bool,
-    ]
-    _ext_handle.mr_pump_message_loop.restype = ctypes.c_int
-
-    _ext_handle.mr_run_microtasks.argtypes = [ctypes.c_void_p]
+        ctypes.c_size_t]
+    _ext_handle.mr_eval_context.restype = ctypes.POINTER(MiniRacerValueStruct)
 
     _ext_handle.mr_free_value.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
 
     _ext_handle.mr_free_context.argtypes = [ctypes.c_void_p]
 
     _ext_handle.mr_heap_stats.argtypes = [ctypes.c_void_p]
-    _ext_handle.mr_heap_stats.restype = ctypes.POINTER(MiniRacerValue)
+    _ext_handle.mr_heap_stats.restype = ctypes.POINTER(MiniRacerValueStruct)
 
     _ext_handle.mr_low_memory_notification.argtypes = [ctypes.c_void_p]
 
     _ext_handle.mr_heap_snapshot.argtypes = [ctypes.c_void_p]
-    _ext_handle.mr_heap_snapshot.restype = ctypes.POINTER(MiniRacerValue)
+    _ext_handle.mr_heap_snapshot.restype = ctypes.POINTER(MiniRacerValueStruct)
 
     _ext_handle.mr_set_soft_memory_limit.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
     _ext_handle.mr_set_soft_memory_limit.restype = None
@@ -175,20 +158,24 @@ def _fetch_ext_handle():
 
 
 class MiniRacer(object):
-    """ Ctypes wrapper arround binary mini racer
-        https://docs.python.org/2/library/ctypes.html
+    """
+    MiniRacer evaluates JavaScript code using V8.
+
+    V8 arguments are a class attribute because they cannot be changed
+    after the first MiniRacer instantiation.
     """
 
     json_impl = json
+    v8_args = []
+    ext = None
 
-    def __init__(self, v8_args=[]):
-        """ Initialize a JS context.
+    def __init__(self):
+        """ Initialize a JS context. """
 
-        Only the first instantiated MiniRacer instance can set v8 arguments.
-        """
+        if self.__class__.ext is None:
+            self.__class__.ext = _build_ext_handle()
 
-        self.ext = _fetch_ext_handle()
-        self.ctx = self.ext.mr_init_context(" ".join(v8_args).encode("utf-8"))
+        self.ctx = self.ext.mr_init_context(" ".join(self.v8_args).encode("utf-8"))
         self.lock = threading.Lock()
 
     def set_soft_memory_limit(self, limit):
@@ -223,25 +210,7 @@ class MiniRacer(object):
         js = u"{expr}.apply(this, {json_args})".format(expr=expr, json_args=json_args)
         return self.execute(js, timeout=timeout, max_memory=max_memory)
 
-    def fast_call(self, js_identifier, timeout=0, max_memory=0):
-        """ Call the function referenced by a global identifier with provided arguments.
-        """
-        return self.eval(js_identifier, timeout=timeout, max_memory=max_memory, fast_call=True)
-
-    def pump_message_loop(self, wait=False):
-        """ Process V8 tasks (like timers).
-
-        Returns true if a task was executed, false otherwise.
-        """
-        with self.lock:
-            return bool(self.ext.mr_pump_message_loop(self.ctx, wait))
-
-    def run_microtasks(self):
-        """ Run Javascript Microtasks (like promise callbacks). """
-        with self.lock:
-            self.ext.mr_run_microtasks(self.ctx)
-
-    def eval(self, js_str, timeout=0, max_memory=0, fast_call=False):
+    def eval(self, js_str, timeout=0, max_memory=0):
         """ Eval the JavaScript string """
 
         if is_unicode(js_str):
@@ -252,12 +221,11 @@ class MiniRacer(object):
                                            js_str,
                                            len(js_str),
                                            ctypes.c_ulong(timeout),
-                                           ctypes.c_size_t(max_memory),
-                                           ctypes.c_bool(fast_call))
+                                           ctypes.c_size_t(max_memory))
         if not res:
             raise JSConversionException()
 
-        return PythonValue(self, res).to_python()
+        return MiniRacerValue(self, res).to_python()
 
     def low_memory_notification(self):
         """ Ask the V8 VM to collect memory more aggressively.
@@ -279,7 +247,7 @@ class MiniRacer(object):
                 u"heap_size_limit": 0
             }
 
-        return self.json_impl.loads(PythonValue(self, res).to_python())
+        return self.json_impl.loads(MiniRacerValue(self, res).to_python())
 
     def heap_snapshot(self):
         """ Return heap snapshot """
@@ -287,7 +255,7 @@ class MiniRacer(object):
         with self.lock:
             res = self.ext.mr_heap_snapshot(self.ctx)
 
-        return PythonValue(self, res).to_python()
+        return MiniRacerValue(self, res).to_python()
 
     def _free(self, res):
         """ Free value returned by mr_eval_context """
@@ -307,8 +275,8 @@ class MiniRacer(object):
 StrictMiniRacer = MiniRacer
 
 
-class PythonTypes(object):
-    """ Python types identifier - need to be coherent with
+class MiniRacerTypes(object):
+    """ MiniRacer types identifier - need to be coherent with
     mini_racer_extension.cc """
 
     invalid = 0
@@ -333,8 +301,7 @@ class PythonTypes(object):
     timeout_exception = 203
 
 
-class MiniRacerValue(ctypes.Structure):
-    """ Map to C """
+class MiniRacerValueStruct(ctypes.Structure):
     _fields_ = [("value", ctypes.c_void_p),  # value is 8 bytes, works only for 64bit systems
                 ("type", ctypes.c_int),
                 ("len", ctypes.c_size_t)]
@@ -347,7 +314,7 @@ class ArrayBufferByte(ctypes.Structure):
     _pack_ = 1
 
 
-class PythonValue:
+class MiniRacerValue(object):
 
     def __init__(self, ctx, ptr):
         self.ctx = ctx
@@ -373,16 +340,16 @@ class PythonValue:
         return ctypes.c_double.from_buffer(ptr).value
 
     def _raise_from_error(self):
-        if self.type == PythonTypes.parse_exception:
+        if self.type == MiniRacerTypes.parse_exception:
             msg = ctypes.c_char_p(self.value).value
             raise JSParseException(msg)
-        elif self.type == PythonTypes.execute_exception:
+        elif self.type == MiniRacerTypes.execute_exception:
             msg = ctypes.c_char_p(self.value).value
             raise JSEvalException(msg.decode('utf-8', errors='replace'))
-        elif self.type == PythonTypes.oom_exception:
+        elif self.type == MiniRacerTypes.oom_exception:
             msg = ctypes.c_char_p(self.value).value
             raise JSOOMException(msg)
-        elif self.type == PythonTypes.timeout_exception:
+        elif self.type == MiniRacerTypes.timeout_exception:
             msg = ctypes.c_char_p(self.value).value
             raise JSTimeoutException(msg)
 
@@ -390,36 +357,36 @@ class PythonValue:
         self._raise_from_error()
         result = None
         typ = self.type
-        if typ == PythonTypes.null:
+        if typ == MiniRacerTypes.null:
             result = None
-        elif typ == PythonTypes.bool:
+        elif typ == MiniRacerTypes.bool:
             result = self.value == 1
-        elif typ == PythonTypes.integer:
+        elif typ == MiniRacerTypes.integer:
             val = self.value
             if val is None:
                 result = 0
             else:
                 result = ctypes.c_int32(val).value
-        elif typ == PythonTypes.double:
+        elif typ == MiniRacerTypes.double:
             result = self._double_value()
-        elif typ == PythonTypes.str_utf8:
+        elif typ == MiniRacerTypes.str_utf8:
             buf = ctypes.c_char_p(self.value)
             ptr = ctypes.cast(buf, ctypes.POINTER(ctypes.c_char))
             result = ptr[0:self.len].decode("utf8")
-        elif typ == PythonTypes.function:
+        elif typ == MiniRacerTypes.function:
             result = JSFunction()
-        elif typ == PythonTypes.date:
+        elif typ == MiniRacerTypes.date:
             timestamp = self._double_value()
             # JS timestamp are milliseconds, in python we are in seconds
             result = datetime.datetime.utcfromtimestamp(timestamp / 1000.)
-        elif typ == PythonTypes.symbol:
+        elif typ == MiniRacerTypes.symbol:
             result = JSSymbol()
-        elif typ == PythonTypes.shared_array_buffer or typ == PythonTypes.array_buffer:
+        elif typ == MiniRacerTypes.shared_array_buffer or typ == MiniRacerTypes.array_buffer:
             cdata = (ArrayBufferByte * self.len).from_address(self.value)
             # Keep a reference to prevent the GC to free the backing store
             cdata._origin = self
             result = memoryview(cdata)
-        elif typ == PythonTypes.object:
+        elif typ == MiniRacerTypes.object:
             return JSObject(self.value)
         else:
             raise JSConversionException()
