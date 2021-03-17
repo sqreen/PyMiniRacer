@@ -79,11 +79,11 @@ struct EvalResult {
 
 typedef struct {
   ContextInfo* context_info;
-  Local<String>* eval;
+  const char* eval;
+  int eval_len;
   unsigned long timeout;
   EvalResult* result;
   size_t max_memory;
-  bool fast_call;
 } EvalParams;
 
 enum BinaryTypes {
@@ -218,6 +218,13 @@ static void set_hard_memory_limit(ContextInfo* context_info, size_t limit) {
   context_info->hard_memory_limit_reached = false;
 }
 
+static bool maybe_fast_call(const char* eval, int eval_len) {
+  // Does the eval string ends with '()'?
+  // TODO check if the string is an identifier
+  return (eval_len > 2 && eval[eval_len - 2] == '(' &&
+          eval[eval_len - 1] == ')');
+}
+
 static void* nogvl_context_eval(void* arg) {
   EvalParams* eval_params = (EvalParams*)arg;
   EvalResult* result = eval_params->result;
@@ -256,27 +263,37 @@ static void* nogvl_context_eval(void* arg) {
 
   MaybeLocal<Value> maybe_value;
 
-  if (eval_params->fast_call) {
-    Local<Object> global = context->Global();
-    MaybeLocal<Value> func_global = global->Get(context, *eval_params->eval);
+  // Is it a single function call?
+  if (maybe_fast_call(eval_params->eval, eval_params->eval_len)) {
+    Local<String> identifier;
     Local<Value> func;
-    result->parsed = func_global.ToLocal(&func) && func->IsFunction();
 
-    if (!result->parsed) {
-      result->message = new Persistent<Value>();
-      result->message->Reset(
-          isolate, String::NewFromUtf8(isolate, "Function to call not found")
-                       .ToLocalChecked());
-      return NULL;
+    // Let's check if the value is a callable identifier
+    result->parsed =
+        String::NewFromUtf8(isolate, eval_params->eval, NewStringType::kNormal,
+                            eval_params->eval_len - 2)
+            .ToLocal(&identifier) &&
+        context->Global()->Get(context, identifier).ToLocal(&func) &&
+        func->IsFunction();
+
+    if (result->parsed) {
+      // Call the identifier
+      maybe_value = Local<Function>::Cast(func)->Call(
+          context, v8::Undefined(isolate), 0, {});
+      result->executed = !maybe_value.IsEmpty();
     }
+  }
 
-    maybe_value = Local<Function>::Cast(func)->Call(
-        context, v8::Undefined(isolate), 0, {});
-  } else {
-    MaybeLocal<Script> parsed_script =
-        Script::Compile(context, *eval_params->eval);
+  // Fallback on a slower full eval
+  if (!result->executed) {
+    Local<String> eval;
     Local<Script> script;
-    result->parsed = parsed_script.ToLocal(&script) && !script.IsEmpty();
+
+    result->parsed =
+        String::NewFromUtf8(isolate, eval_params->eval, NewStringType::kNormal,
+                            eval_params->eval_len)
+            .ToLocal(&eval) &&
+        Script::Compile(context, eval).ToLocal(&script) && !script.IsEmpty();
 
     if (!result->parsed) {
       result->message = new Persistent<Value>();
@@ -285,6 +302,25 @@ static void* nogvl_context_eval(void* arg) {
     }
 
     maybe_value = script->Run(context);
+    result->executed = !maybe_value.IsEmpty();
+  }
+
+  if (result->executed) {
+    // Execute all pending tasks
+    while (!result->timed_out &&
+           !eval_params->context_info->hard_memory_limit_reached) {
+      bool wait =
+          isolate->HasPendingBackgroundTasks();  // Only wait when needed
+                                                 // otherwise it waits forever.
+
+      if (!platform::PumpMessageLoop(
+              current_platform.get(), isolate,
+              (wait) ? v8::platform::MessageLoopBehavior::kWaitForWork
+                     : v8::platform::MessageLoopBehavior::kDoNotWait)) {
+        break;
+      }
+      isolate->PerformMicrotaskCheckpoint();
+    }
   }
 
   if (timeout > 0) {
@@ -292,7 +328,6 @@ static void* nogvl_context_eval(void* arg) {
     breaker_thread.join();
   }
 
-  result->executed = !maybe_value.IsEmpty();
   if (!result->executed) {
     if (trycatch.HasCaught()) {
       if (!trycatch.Exception()->IsNull()) {
@@ -507,11 +542,10 @@ ContextInfo* MiniRacer_init_context(char const* v8_flags) {
 }
 
 static BinaryValue* MiniRacer_eval_context_unsafe(ContextInfo* context_info,
-                                                  char* utf_str,
-                                                  int str_len,
+                                                  const char* eval,
+                                                  size_t eval_len,
                                                   unsigned long timeout,
-                                                  size_t max_memory,
-                                                  bool fast_call) {
+                                                  size_t max_memory) {
   EvalParams eval_params;
   EvalResult eval_result{};
 
@@ -520,11 +554,7 @@ static BinaryValue* MiniRacer_eval_context_unsafe(ContextInfo* context_info,
   BinaryValue* bmessage = NULL;
   BinaryValue* bbacktrace = NULL;
 
-  if (context_info == NULL) {
-    return NULL;
-  }
-
-  if (utf_str == NULL) {
+  if (context_info == NULL || eval == NULL || static_cast<int>(eval_len) < 0) {
     return NULL;
   }
 
@@ -533,22 +563,13 @@ static BinaryValue* MiniRacer_eval_context_unsafe(ContextInfo* context_info,
     Isolate::Scope isolate_scope(context_info->isolate);
     HandleScope handle_scope(context_info->isolate);
 
-    Local<String> eval = String::NewFromUtf8(context_info->isolate, utf_str,
-                                             NewStringType::kNormal, str_len)
-                             .ToLocalChecked();
-
     eval_params.context_info = context_info;
-    eval_params.eval = &eval;
+
+    eval_params.eval = eval;
+    eval_params.eval_len = static_cast<int>(eval_len);
     eval_params.result = &eval_result;
-    eval_params.timeout = 0;
-    eval_params.max_memory = 0;
-    eval_params.fast_call = fast_call;
-    if (timeout > 0) {
-      eval_params.timeout = timeout;
-    }
-    if (max_memory > 0) {
-      eval_params.max_memory = max_memory;
-    }
+    eval_params.timeout = timeout;
+    eval_params.max_memory = max_memory;
 
     nogvl_context_eval(&eval_params);
 
@@ -732,10 +753,9 @@ LIB_EXPORT BinaryValue* mr_eval_context(ContextInfo* context_info,
                                         char* str,
                                         int len,
                                         unsigned long timeout,
-                                        size_t max_memory,
-                                        bool fast_call) {
-  BinaryValue* res = MiniRacer_eval_context_unsafe(
-      context_info, str, len, timeout, max_memory, fast_call);
+                                        size_t max_memory) {
+  BinaryValue* res = MiniRacer_eval_context_unsafe(context_info, str, len,
+                                                   timeout, max_memory);
   return res;
 }
 
@@ -772,17 +792,6 @@ LIB_EXPORT bool mr_soft_memory_limit_reached(ContextInfo* context_info) {
 
 LIB_EXPORT void mr_low_memory_notification(ContextInfo* context_info) {
   context_info->isolate->LowMemoryNotification();
-}
-
-LIB_EXPORT int mr_pump_message_loop(ContextInfo* context_info, bool wait) {
-  return platform::PumpMessageLoop(
-      current_platform.get(), context_info->isolate,
-      (wait) ? v8::platform::MessageLoopBehavior::kWaitForWork
-             : v8::platform::MessageLoopBehavior::kDoNotWait);
-}
-
-LIB_EXPORT void mr_run_microtasks(ContextInfo* context_info) {
-  context_info->isolate->PerformMicrotaskCheckpoint();
 }
 
 LIB_EXPORT char const* mr_v8_version() {

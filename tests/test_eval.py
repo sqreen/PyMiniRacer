@@ -113,19 +113,26 @@ class Test(unittest.TestCase):
         self.assertEqual(type(res), py_mini_racer.JSSymbol)
 
     def test_async(self):
-        self.mr.eval("""
+        self.assertFalse(self.mr.eval("""
         var done = false;
         const shared = new SharedArrayBuffer(8);
         const view = new Int32Array(shared);
 
         const p = Atomics.waitAsync(view, 0, 0, 1); // 1 ms timeout
         p.value.then(() => { done = true; });
-        """)
+        done
+        """))
+        time.sleep(0.01)
         self.assertFalse(self.mr.eval("done"))
-        self.mr.pump_message_loop(wait=True)
-        self.assertFalse(self.mr.eval("done"))
-        self.mr.run_microtasks()
         self.assertTrue(self.mr.eval("done"))
+
+    def test_fast_call(self):
+        self.mr.eval("const test = function () { return 42; }")
+        # this syntax is optimized and takes another execution path in the extension
+        self.assertEqual(self.mr.eval("test()"), 42)
+        # It looks like a fast call but it is not (it ends with '()' but no identifier)
+        # should not fail and do a classical eval.
+        self.assertEqual(self.mr.eval("1+test()"), 43)
 
 
 if __name__ == '__main__':
