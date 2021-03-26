@@ -265,7 +265,7 @@ class MiniRacer(object):
     def __del__(self):
         """ Free the context """
 
-        self.ext.mr_free_context(self.ctx)
+        self.ext.mr_free_context(getattr(self, "ctx", None))
 
     def v8_version(self):
         return UNICODE_TYPE(self.ext.mr_v8_version())

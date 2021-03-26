@@ -488,7 +488,7 @@ static BinaryValue* convert_v8_to_binary(ContextInfo* context_info,
 }
 
 static void deallocate(void* data) {
-  ContextInfo* context_info = (ContextInfo*)data;
+  ContextInfo* context_info = static_cast<ContextInfo*>(data);
 
   if (context_info == NULL || context_info->isolate == NULL) {
     return;
