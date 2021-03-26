@@ -8,7 +8,7 @@ Python Mini Racer
 .. image:: https://dev.azure.com/sqreenci/PyMiniRacer/_apis/build/status/sqreen.PyMiniRacer?branchName=master
         :target: https://dev.azure.com/sqreenci/PyMiniRacer/_build/latest?definitionId=10&branchName=master
 
-Minimal, modern embedded V8 for Python.
+Minimal, modern embedded V8 for Python based on ctypes.
 
 * Free software: ISC license
 
@@ -17,19 +17,19 @@ Minimal, modern embedded V8 for Python.
 Features
 --------
 
-* WASM support
+* Latest ECMAScript support
+* Web Assembly support
 * Unicode support
 * Thread safe
 * Re-usable contexts
-* Binary object is Python agnostic
 
-PyMiniRacer can be easily used by Django or Flask projects to minify assets, run
+MiniRacer can be easily used by Django or Flask projects to minify assets, run
 babel or WASM modules.
 
 Examples
 --------
 
-PyMiniRacer is straightforward to use:
+MiniRacer is straightforward to use:
 
 .. code-block:: python
 
@@ -51,8 +51,8 @@ Variables are kept inside of a context:
     'Sqreen'
 
 
-While `ctx.eval` only supports returning primitive data types such as
-strings, `ctx.call` supports returning composite types such as objects:
+While ``eval`` only supports returning primitive data types such as
+strings, ``call`` supports returning composite types such as objects:
 
 .. code-block:: python
 
@@ -85,7 +85,7 @@ Use a custom JSON encoder when sending non-JSON encodable parameters:
     '2017-03-31T16:51:02.474118'
 
 
-PyMiniRacer is ES6 capable:
+MiniRacer is ES6 capable:
 
 .. code-block:: python
 
@@ -209,10 +209,6 @@ PyMiniRacer is inspired by mini_racer_, built for the Ruby world by Sam Saffron.
 
 .. _`mini_racer`: https://github.com/SamSaffron/mini_racer
 
-Tools used in rendering this package:
+`Cookiecutter-pypackage`_ was used as this package skeleton.
 
-*  Cookiecutter_
-*  `cookiecutter-pypackage`_
-
-.. _Cookiecutter: https://github.com/audreyr/cookiecutter
-.. _`cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
+.. _`Cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
