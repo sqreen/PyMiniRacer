@@ -17,43 +17,51 @@ Minimal, modern embedded V8 for Python.
 Features
 --------
 
+* WASM support
 * Unicode support
 * Thread safe
 * Re-usable contexts
 * Binary object is Python agnostic
 
-MiniRacer can be easily used by Django or Flask projects to minify assets, run
-babel or compile CoffeeScript.
+PyMiniRacer can be easily used by Django or Flask projects to minify assets, run
+babel or WASM modules.
 
 Examples
 --------
 
-py_mini_racer is straightforward to use:
+PyMiniRacer is straightforward to use:
 
 .. code-block:: python
 
     >>> from py_mini_racer import MiniRacer
     >>> ctx = MiniRacer()
-    >>> ctx.eval('1+1')
+    >>> ctx.eval("1+1")
     2
     >>> ctx.eval("var x = {company: 'Sqreen'}; x.company")
-    u'Sqreen'
-    >>> print(ctx.eval(u"'\N{HEAVY BLACK HEART}'"))
+    'Sqreen'
+    >>> print(ctx.eval("'\N{HEAVY BLACK HEART}'"))
     ❤
     >>> ctx.eval("var fun = () => ({ foo: 1 });")
-    >>> ctx.call("fun")
-    {u'foo': 1}
 
 Variables are kept inside of a context:
 
 .. code-block:: python
 
     >>> ctx.eval("x.company")
-    u'Sqreen'
+    'Sqreen'
 
 
-You can give directly a custom JSON encoder when sending non-JSON encodable
-parameters:
+While `ctx.eval` only supports returning primitive data types such as
+strings, `ctx.call` supports returning composite types such as objects:
+
+.. code-block:: python
+
+    >>> ctx.call("fun")
+    {'foo': 1}
+
+
+Composite values are serialized using JSON.
+Use a custom JSON encoder when sending non-JSON encodable parameters:
 
 .. code-block:: python
 
@@ -74,14 +82,8 @@ parameters:
 
     >>> ctx.eval("var f = function(args) { return args; }")
     >>> ctx.call("f", datetime.now(), encoder=CustomEncoder)
-    u'2017-03-31T16:51:02.474118'
+    '2017-03-31T16:51:02.474118'
 
-You can return composite values when they are compatible with JSON:
-
-.. code-block:: python
-
-    >>> ctx.execute("[1,2,3]")
-    [1, 2, 3]
 
 PyMiniRacer is ES6 capable:
 
@@ -95,22 +97,24 @@ V8 heap information can be retrieved:
 .. code-block:: python
 
     >>> ctx.heap_stats()
-    {u'total_physical_size': 1613896,
-     u'used_heap_size': 1512520,
-     u'total_heap_size': 3997696,
-     u'total_heap_size_executable': 3145728,
-     u'heap_size_limit': 1501560832}
+    {'total_physical_size': 1613896,
+     'used_heap_size': 1512520,
+     'total_heap_size': 3997696,
+     'total_heap_size_executable': 3145728,
+     'heap_size_limit': 1501560832}
+
+
+A WASM example is available in the `tests`_.
+
+.. _`tests`: tests/test_wasm.py
 
 
 Compatibility
 -------------
 
-PyMiniRacer is compatible with Python 2 and Python 3. Wheels are generated for python 2.7 and python 3.4 to python 3.8.
+PyMiniRacer is compatible with Python 2 & 3.
 
-Binary builds availability
---------------------------
-
-The PyMiniRacer binary builds have been tested on x86_64 with:
+The binary builds have been tested on x86_64 with:
 
 * macOS >= 10.13
 * Ubuntu >= 16.04
@@ -119,14 +123,8 @@ The PyMiniRacer binary builds have been tested on x86_64 with:
 * Alpine >= 3.11
 * Windows 10
 
-You need pip >= 8.1 to install the wheels - you can check and upgrade yours in this way:
-
-.. code-block:: bash
-
-    $ pip --version
-    $ pip install --upgrade pip
-
 It should work on any Linux with a libc >= 2.12 and a wheel compatible pip (>= 8.1).
+
 If you're running Alpine Linux, you may need to install required dependencies manually using the following command:
 
 .. code-block:: bash
@@ -138,7 +136,7 @@ If you have a up-to-date pip and it doesn't use a wheel, you might have an envir
 Installation
 ------------
 
-We built Python wheels (prebuilt binaries) for macOS 64 bits, Linux 64 bits and Windows 64 bits. You need pip >= 1.4 and setuptools >= 0.8.
+We built Python wheels (prebuilt binaries) for macOS 64 bits, Linux 64 bits and Windows 64 bits.
 
 .. code:: bash
 
@@ -146,6 +144,8 @@ We built Python wheels (prebuilt binaries) for macOS 64 bits, Linux 64 bits and 
 
 Build
 -----
+
+**Warning**: building this package from source takes several GB of disk space and takes ~60 minutes.
 
 First check that your current Python executable is version 2.7. This is required
 by the V8 build system.
