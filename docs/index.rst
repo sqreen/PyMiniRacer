@@ -1,6 +1,3 @@
-PyMiniRacer
-===========
-
 .. include:: ../README.rst
 
 API Reference
