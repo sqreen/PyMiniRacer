@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-""" PyMiniRacer main wrappers """
 # pylint: disable=bad-whitespace,too-few-public-methods
 
 import ctypes
@@ -17,7 +16,7 @@ except ImportError:
 
 
 def _get_libc_name():
-    """Return the libc of the system."""
+    """Return the libc name of the current system."""
     target = sysconfig.get_config_var("HOST_GNU_TYPE")
     if target is not None and target.endswith("musl"):
         return "muslc"
@@ -25,7 +24,7 @@ def _get_libc_name():
 
 
 def _get_lib_path(name):
-    """Return the path of the library called `name`."""
+    """Return the path of the library called `name` on the current system."""
     if os.name == "posix" and sys.platform == "darwin":
         prefix, ext = "lib", ".dylib"
     elif sys.platform == "win32":
@@ -52,39 +51,41 @@ EXTENSION_NAME = os.path.basename(EXTENSION_PATH) if EXTENSION_PATH is not None 
 if sys.version_info[0] < 3:
     UNICODE_TYPE = unicode  # noqa: F821
 else:
+    from typing import Any, Optional
+
     UNICODE_TYPE = str
 
 
 class MiniRacerBaseException(Exception):
-    """ base MiniRacer exception class """
+    """Base MiniRacer exception."""
 
 
 class JSParseException(MiniRacerBaseException):
-    """ JS could not be parsed """
+    """JavaScript could not be parsed."""
 
 
 class JSEvalException(MiniRacerBaseException):
-    """ JS could not be executed """
+    """JavaScript could not be executed."""
 
 
 class JSOOMException(JSEvalException):
-    """ JS execution out of memory """
+    """JavaScript execution ran out of memory."""
 
 
 class JSTimeoutException(JSEvalException):
-    """ JS execution timed out """
+    """JavaScript execution timed out."""
 
 
 class JSConversionException(MiniRacerBaseException):
-    """ type could not be converted """
+    """JavaScript type could not be converted."""
 
 
 class WrongReturnTypeException(MiniRacerBaseException):
-    """ type returned by JS cannot be parsed """
+    """Invalid type returned by the JavaScript runtime."""
 
 
 class JSObject(object):
-    """ type for JS objects """
+    """JavaScript object."""
 
     def __init__(self, id):
         self.id = id
@@ -94,15 +95,15 @@ class JSObject(object):
 
 
 class JSFunction(object):
-    """ type for JS functions """
+    """JavaScript function."""
 
 
 class JSSymbol(object):
-    """ type for JS symbols """
+    """JavaScript symbol."""
 
 
 def is_unicode(value):
-    """ Check if a value is a valid unicode string, compatible with python 2 and python 3
+    """Check if a value is a valid unicode string.
 
     >>> is_unicode(u'foo')
     True
@@ -119,8 +120,10 @@ def is_unicode(value):
 
 
 def _build_ext_handle():
+
     if EXTENSION_PATH is None or not os.path.exists(EXTENSION_PATH):
         raise RuntimeError("Native library not available at {}".format(EXTENSION_PATH))
+
     _ext_handle = ctypes.CDLL(EXTENSION_PATH)
 
     _ext_handle.mr_init_context.argtypes = [ctypes.c_char_p]
@@ -159,10 +162,11 @@ def _build_ext_handle():
 
 class MiniRacer(object):
     """
-    MiniRacer evaluates JavaScript code using V8.
+    MiniRacer evaluates JavaScript code using a V8 isolate.
 
-    V8 flags are a class attribute because they cannot be changed
-    after the first MiniRacer instantiation.
+    :cvar json_impl: JSON module used by helper methods default is :py:mod:`json`
+    :cvar v8_flags: Flags used for V8 initialization
+    :vartype v8_flags: class attribute list of str
     """
 
     json_impl = json
@@ -170,24 +174,62 @@ class MiniRacer(object):
     ext = None
 
     def __init__(self):
-        """ Initialize a JS context. """
-
         if self.__class__.ext is None:
             self.__class__.ext = _build_ext_handle()
 
         self.ctx = self.ext.mr_init_context(" ".join(self.v8_flags).encode("utf-8"))
         self.lock = threading.Lock()
 
-    def set_soft_memory_limit(self, limit):
-        """ Set instance soft memory limit """
-        self.ext.mr_set_soft_memory_limit(self.ctx, limit)
+    @property
+    def v8_version(self):
+        """Return the V8 version string."""
+        return UNICODE_TYPE(self.ext.mr_v8_version())
 
-    def was_soft_memory_limit_reached(self):
-        """ Tell if the instance soft memory limit was reached """
-        return self.ext.mr_soft_memory_limit_reached(self.ctx)
+    def eval(self, code, timeout=None, max_memory=None):
+        # type: (str, Optional[int], Optional[int]) -> Any
+        """Evaluate JavaScript code in the V8 isolate.
 
-    def execute(self, expr, timeout=0, max_memory=0):
-        """ Helper method to execute an expression with JSON serialization of returned value.
+        Side effects from the JavaScript evaluation is persisted inside a context
+        (meaning variables set are kept for the next evaluations).
+
+        The JavaScript value returned by the last expression in `code` is converted
+        to a Python value and returned by this method. Only primitive types are
+        supported (numbers, strings, buffers...). Use the :py:meth:`.execute` method to return
+        more complex types such as arrays or objects.
+
+        The evaluation can be interrupted by an exception for several reasons: a limit
+        was reached, the code could not be parsed, a returned value could not be
+        converted to a Python value.
+
+        :param code: JavaScript code
+        :param timeout: number of milliseconds after which the execution is interrupted
+        :param max_memory: hard memory limit after which the execution is interrupted
+        """
+
+        if is_unicode(code):
+            code = code.encode("utf8")
+
+        with self.lock:
+            res = self.ext.mr_eval_context(self.ctx,
+                                           code,
+                                           len(code),
+                                           ctypes.c_ulong(timeout or 0),
+                                           ctypes.c_size_t(max_memory or 0))
+        if not res:
+            raise JSConversionException()
+
+        return MiniRacerValue(self, res).to_python()
+
+    def execute(self, expr, timeout=None, max_memory=None):
+        # type: (str, Optional[int], Optional[int]) -> Any
+        """Helper to evaluate a JavaScript expression and return composite types.
+
+        Returned value is serialized to JSON inside the V8 isolate and deserialized
+        using :py:attr:`.json_impl`.
+
+        :param expr: JavaScript expression
+        :param timeout: number of milliseconds after which the execution is interrupted
+        :param max_memory: hard memory limit after which the execution is interrupted
         """
         wrapped_expr = u"JSON.stringify((function(){return (%s)})())" % expr
         ret = self.eval(wrapped_expr, timeout=timeout, max_memory=max_memory)
@@ -196,44 +238,53 @@ class MiniRacer(object):
         return self.json_impl.loads(ret)
 
     def call(self, expr, *args, **kwargs):
-        """ Helper method to call a function returned by expr with the given arguments.
+        """Helper to call a JavaScript function and return compositve types.
 
-        You can pass a custom JSON encoder in the encoder keyword argument to encode arguments
-        and the function return value.
+        The `expr` argument refers to a JavaScript function in the current V8
+        isolate context. Further positional arguments are serialized using the JSON
+        implementation :py:attr:`.json_impl` and passed to the JavaScript function
+        as arguments.
+
+        Returned value is serialized to JSON inside the V8 isolate and deserialized
+        using :py:attr:`.json_impl`.
+
+        :param str expr: JavaScript expression referring to a function
+        :param encoder: Custom JSON encoder
+        :type encoder: JSONEncoder or None
+        :param int timeout: number of milliseconds after which the execution is interrupted
+        :param int max_memory: hard memory limit after which the execution is interrupted
         """
 
         encoder = kwargs.get('encoder', None)
-        timeout = kwargs.get('timeout', 0)
-        max_memory = kwargs.get('max_memory', 0)
+        timeout = kwargs.get('timeout', None)
+        max_memory = kwargs.get('max_memory', None)
 
         json_args = self.json_impl.dumps(args, separators=(',', ':'), cls=encoder)
         js = u"{expr}.apply(this, {json_args})".format(expr=expr, json_args=json_args)
         return self.execute(js, timeout=timeout, max_memory=max_memory)
 
-    def eval(self, js_str, timeout=0, max_memory=0):
-        """ Eval the JavaScript string """
+    def set_soft_memory_limit(self, limit):
+        # type: (int) -> None
+        """Set a soft memory limit on this V8 isolate.
 
-        if is_unicode(js_str):
-            js_str = js_str.encode("utf8")
+        The Garbage Collection will use a more aggressive strategy when
+        the soft limit is reached but the execution will not be stopped.
 
-        with self.lock:
-            res = self.ext.mr_eval_context(self.ctx,
-                                           js_str,
-                                           len(js_str),
-                                           ctypes.c_ulong(timeout),
-                                           ctypes.c_size_t(max_memory))
-        if not res:
-            raise JSConversionException()
+        :param int limit: memory limit in bytes or 0 to reset the limit
+        """
+        self.ext.mr_set_soft_memory_limit(self.ctx, limit)
 
-        return MiniRacerValue(self, res).to_python()
+    def was_soft_memory_limit_reached(self):
+        # type: () -> bool
+        """Return true if the soft memory limit was reached on the V8 isolate."""
+        return self.ext.mr_soft_memory_limit_reached(self.ctx)
 
     def low_memory_notification(self):
-        """ Ask the V8 VM to collect memory more aggressively.
-        """
+        """Ask the V8 isolate to collect memory more aggressively."""
         self.ext.mr_low_memory_notification(self.ctx)
 
     def heap_stats(self):
-        """ Return heap statistics """
+        """Return the V8 isolate heap statistics."""
 
         with self.lock:
             res = self.ext.mr_heap_stats(self.ctx)
@@ -250,7 +301,7 @@ class MiniRacer(object):
         return self.json_impl.loads(MiniRacerValue(self, res).to_python())
 
     def heap_snapshot(self):
-        """ Return heap snapshot """
+        """Return a snapshot of the V8 isolate heap."""
 
         with self.lock:
             res = self.ext.mr_heap_snapshot(self.ctx)
@@ -258,17 +309,10 @@ class MiniRacer(object):
         return MiniRacerValue(self, res).to_python()
 
     def _free(self, res):
-        """ Free value returned by mr_eval_context """
-
         self.ext.mr_free_value(self.ctx, res)
 
     def __del__(self):
-        """ Free the context """
-
-        self.ext.mr_free_context(self.ctx)
-
-    def v8_version(self):
-        return UNICODE_TYPE(self.ext.mr_v8_version())
+        self.ext.mr_free_context(getattr(self, "ctx", None))
 
 
 # Compatibility with versions 0.4 & 0.5
@@ -276,8 +320,10 @@ StrictMiniRacer = MiniRacer
 
 
 class MiniRacerTypes(object):
-    """ MiniRacer types identifier - need to be coherent with
-    mini_racer_extension.cc """
+    """MiniRacer types identifier
+
+    Note: it needs to be coherent with mini_racer_extension.cc.
+    """
 
     invalid = 0
     null = 1

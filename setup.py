@@ -34,6 +34,7 @@ setup(
     version=about["__version__"],
     description="Minimal, modern embedded V8 for Python.",
     long_description=readme + '\n\n' + history,
+    long_description_content_type='text/x-rst',
     author=about["__author__"],
     author_email=about["__email__"],
     url='https://github.com/sqreen/PyMiniRacer',
@@ -53,12 +54,7 @@ setup(
         'Natural Language :: English',
         'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.7',
-        'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.4',
-        'Programming Language :: Python :: 3.5',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3'
     ],
     test_suite='tests',
     tests_require=[

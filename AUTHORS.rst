@@ -5,9 +5,10 @@ Credits
 Authors
 -------
 
-* Jean-Baptiste AVIAT <jb@sqreen.io>
-* Boris FELD <boris@sqreen.io>
-* Selim MENOUAR <selim@sqreen.io>
+* Jean-Baptiste AVIAT <jb@sqreen.com>
+* Boris FELD <boris@sqreen.com>
+* Selim MENOUAR <selim@sqreen.com>
+* Nicolas VIVET <nicolas@sqreen.com>
 
 Contributors
 ------------
