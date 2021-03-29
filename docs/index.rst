@@ -1,4 +1,4 @@
-.. include:: ../README.rst
+.. include:: readme.rst
 
 API Reference
 -------------

@@ -104,7 +104,7 @@ V8 heap information can be retrieved:
 
 A WASM example is available in the `tests`_.
 
-.. _`tests`: tests/test_wasm.py
+.. _`tests`: https://github.com/sqreen/PyMiniRacer/blob/master/tests/test_wasm.py
 
 
 Compatibility
