@@ -666,61 +666,46 @@ static BinaryValue* MiniRacer_eval_context_unsafe(ContextInfo* context_info,
 
 static BinaryValue* heap_stats(ContextInfo* context_info) {
   v8::HeapStatistics stats;
+  std::string json_str;
 
   if (!context_info || !context_info->isolate) {
     return NULL;
   }
 
-  Locker lock(context_info->isolate);
-  Isolate::Scope isolate_scope(context_info->isolate);
-  HandleScope handle_scope(context_info->isolate);
-
-  TryCatch trycatch(context_info->isolate);
-  Local<Context> context = context_info->context->Get(context_info->isolate);
-  Context::Scope context_scope(context);
-
   context_info->isolate->GetHeapStatistics(&stats);
 
-  Local<Object> stats_obj = Object::New(context_info->isolate);
+// clang-format off
+#define DICT(s) "{" + s + "}"
+#define LIST(s) "[" + s + "]"
+#define ESCAPE(s) "\"" + s + "\""
+#define MEMBER(s) ESCAPE(s) + ":"
+#define INT(s) std::to_string(s)
 
-  stats_obj
-      ->Set(context,
-            String::NewFromUtf8Literal(context_info->isolate,
-                                       "total_physical_size"),
-            Number::New(context_info->isolate,
-                        (double)stats.total_physical_size()))
-      .Check();
-  stats_obj
-      ->Set(context,
-            String::NewFromUtf8Literal(context_info->isolate,
-                                       "total_heap_size_executable"),
-            Number::New(context_info->isolate,
-                        (double)stats.total_heap_size_executable()))
-      .Check();
-  stats_obj
-      ->Set(
-          context,
-          String::NewFromUtf8Literal(context_info->isolate, "total_heap_size"),
-          Number::New(context_info->isolate, (double)stats.total_heap_size()))
-      .Check();
-  stats_obj
-      ->Set(context,
-            String::NewFromUtf8Literal(context_info->isolate, "used_heap_size"),
-            Number::New(context_info->isolate, (double)stats.used_heap_size()))
-      .Check();
-  stats_obj
-      ->Set(
-          context,
-          String::NewFromUtf8Literal(context_info->isolate, "heap_size_limit"),
-          Number::New(context_info->isolate, (double)stats.heap_size_limit()))
-      .Check();
+  json_str = json_str + DICT(
+    MEMBER("total_heap_size") + INT(stats.total_heap_size()) + ","
+    MEMBER("total_heap_size_executable") + INT(stats.total_heap_size_executable()) + ","
+    MEMBER("total_physical_size") + INT(stats.total_physical_size()) + ","
+    MEMBER("total_available_size") + INT(stats.total_available_size()) + ","
+    MEMBER("used_heap_size") + INT(stats.used_heap_size()) + ","
+    MEMBER("heap_size_limit") + INT(stats.heap_size_limit()) + ","
+    MEMBER("malloced_memory") + INT(stats.malloced_memory()) + ","
+    MEMBER("external_memory") + INT(stats.external_memory()) + ","
+    MEMBER("peak_malloced_memory") + INT(stats.peak_malloced_memory())
+	);
 
-  Local<String> output;
-  if (!JSON::Stringify(context, stats_obj).ToLocal(&output) ||
-      output.IsEmpty()) {
-    return NULL;
-  }
-  return convert_v8_to_binary(context_info, context, output);
+#undef DICT
+#undef LIST
+#undef ESCAPE
+#undef MEMBER
+  // clang-format on
+
+  BinaryValue* res = new (xalloc(res)) BinaryValue();
+  res->type = type_str_utf8;
+  res->str_val = xalloc(res->str_val, json_str.size() + 1);
+  res->str_val[json_str.size()] = '\0';
+  json_str.copy(res->str_val, json_str.size());
+  res->len = json_str.size();
+  return res;
 }
 
 class BufferOutputStream : public OutputStream {

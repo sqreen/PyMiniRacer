@@ -286,19 +286,8 @@ class MiniRacer(object):
     def heap_stats(self):
         """Return the V8 isolate heap statistics."""
 
-        with self.lock:
-            res = self.ext.mr_heap_stats(self.ctx)
-
-        if not res:
-            return {
-                u"total_physical_size": 0,
-                u"used_heap_size": 0,
-                u"total_heap_size": 0,
-                u"total_heap_size_executable": 0,
-                u"heap_size_limit": 0
-            }
-
-        return self.json_impl.loads(MiniRacerValue(self, res).to_python())
+        res = MiniRacerValue(self, self.ext.mr_heap_stats(self.ctx))
+        return self.json_impl.loads(res.to_python())
 
     def heap_snapshot(self):
         """Return a snapshot of the V8 isolate heap."""
@@ -310,6 +299,10 @@ class MiniRacer(object):
 
     def _free(self, res):
         self.ext.mr_free_value(self.ctx, res)
+
+    def __sizeof__(self):
+        """Return approximated V8 memory usage."""
+        return self.heap_stats().get("total_heap_size")
 
     def __del__(self):
         self.ext.mr_free_context(getattr(self, "ctx", None))
