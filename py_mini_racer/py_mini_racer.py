@@ -170,7 +170,7 @@ class MiniRacer(object):
     """
 
     json_impl = json
-    v8_flags = []
+    v8_flags = ["--single-threaded"]
     ext = None
 
     def __init__(self):

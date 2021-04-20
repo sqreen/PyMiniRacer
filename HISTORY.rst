@@ -3,6 +3,14 @@
 History
 -------
 
+0.6.0 (2020-04-20)
+'''''''''''''''''''
+* Update V8 to 8.9
+* Optimize function calls without arguments
+* Switch V8 to single threaded mode to avoid crashes after fork
+* Switch to strict mode by default
+* Revamp documentation
+
 0.5.0 (2020-02-25)
 '''''''''''''''''''
 * Update V8 to 8.8
