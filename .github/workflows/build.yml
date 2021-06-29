@@ -54,5 +54,4 @@ jobs:
          - name: Download V8 sources
            uses: docker://python:2
            with:
-               args:
-                   helpers/v8_build.py --no-build --no-sysroot
+               args: python helpers/v8_build.py --no-build --no-sysroot
