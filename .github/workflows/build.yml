@@ -56,16 +56,16 @@ jobs:
          - name: Clone repository
            uses: actions/checkout@v1
 
+         - name: Download V8 sources
+           uses: docker://python:2
+           with:
+               args: python helpers/v8_build.py --no-build --no-sysroot
+
          - name: Prepare Aline Linux build environment
            run: |
              sudo apk -U add samurai llvm lld linux-headers binutils-gold
              cp -f /usr/local/bin/gn py_mini_racer/extension/v8/buildtools/linux64/gn
              rm -f py_mini_racer/extension/depot_tools/ninja
-
-         - name: Download V8 sources
-           uses: docker://python:2
-           with:
-               args: python helpers/v8_build.py --no-build --no-sysroot
 
          - name: Build the extension
            run: |
