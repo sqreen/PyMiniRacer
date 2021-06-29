@@ -1,9 +1,10 @@
+name: Build
 on:
- - pull_request
+     - pull_request
 
 jobs:
     build:
-        name: Build for ${{ matrix.config.plat_name }}
+        name: ${{ matrix.config.plat_name }}
         strategy:
             matrix:
                 config:
@@ -13,6 +14,7 @@ jobs:
                    plat_name: macosx_10_10_x86_64
                  - os: windows-2019
                    plat_name: win_amd64
+            fail-fast: true
         runs-on: ${{ matrix.config.os }}
         timeout-minutes: 180
         steps:
@@ -38,3 +40,18 @@ jobs:
                python3 -m pip install setuptools wheel
                mkdir wheelhouse
                python3 helpers/build_package.py wheel wheelhouse
+
+    build-on-alpine:
+        name: alpine x86_64
+        container:
+            image: nicolassqreen/azure-pipelines-container-alpine-python:3.12
+        timeout-minutes: 180
+        steps:
+         - name: Clone repository
+           uses: actions/checkout@v1
+
+         - name: Download V8 sources
+           uses: docker://python:2
+           with:
+               args:
+                   helpers/v8_build.py --no-build --no-sysroot
