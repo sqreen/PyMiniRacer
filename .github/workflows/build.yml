@@ -94,4 +94,3 @@ jobs:
            run: |
              python3 -m pip install pytest wheelhouse/*.tar.gz
              pytest tests
-
