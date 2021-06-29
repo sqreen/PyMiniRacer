@@ -41,6 +41,11 @@ jobs:
                mkdir wheelhouse
                python3 helpers/build_package.py wheel wheelhouse
 
+         - name: Test
+           run: |
+             python3 -m pip install pytest
+             pytest tests
+
     build-on-alpine:
         name: alpine x86_64
         runs-on: ubuntu-latest
@@ -48,6 +53,12 @@ jobs:
             image: nicolassqreen/azure-pipelines-container-alpine-python:3.12
         timeout-minutes: 180
         steps:
+         - name: Prepare Aline Linux build environment
+           run: |
+             sudo apk -U add samurai llvm lld linux-headers binutils-gold
+             cp -f /usr/local/bin/gn py_mini_racer/extension/v8/buildtools/linux64/gn
+             rm -f py_mini_racer/extension/depot_tools/ninja
+
          - name: Clone repository
            uses: actions/checkout@v1
 
@@ -55,3 +66,19 @@ jobs:
            uses: docker://python:2
            with:
                args: python helpers/v8_build.py --no-build --no-sysroot
+
+         - name: Build the extension
+           run: |
+             python helpers/v8_build.py --no-update --no-sysroot --target py_mini_racer_shared_lib
+             cp py_mini_racer/extension/out/libmini_racer.so py_mini_racer/libmini_racer.muslc.so
+
+         - name: Build the Wheelhouse
+           run: |
+             sudo apk add py3-pip py3-wheel
+             mkdir wheelhouse
+             python3 setup.py sdist --dist-dir wheelhouse
+
+         - name: Test
+           run: |
+             python3 -m pip install pytest
+             pytest tests
