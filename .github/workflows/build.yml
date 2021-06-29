@@ -41,13 +41,19 @@ jobs:
                mkdir wheelhouse
                python3 helpers/build_package.py wheel wheelhouse
 
+         - name: Archive wheelhouse
+           uses: actions/upload-artifact@v2
+           with:
+             name: package-${{ matrix.config.plat_name }}
+             path: wheelhouse
+
          - name: Test
            run: |
-             python3 -m pip install pytest
+             python3 -m pip install pytest wheelhouse/*.whl
              pytest tests
 
     build-on-alpine:
-        name: alpine x86_64
+        name: alpine_x86_64
         runs-on: ubuntu-latest
         container:
             image: nicolassqreen/azure-pipelines-container-alpine-python:3.12
@@ -72,13 +78,20 @@ jobs:
              python helpers/v8_build.py --no-update --no-sysroot --target py_mini_racer_shared_lib
              cp py_mini_racer/extension/out/libmini_racer.so py_mini_racer/libmini_racer.muslc.so
 
-         - name: Build the Wheelhouse
+         - name: Build the wheelhouse
            run: |
              sudo apk add py3-pip py3-wheel
              mkdir wheelhouse
              python3 setup.py sdist --dist-dir wheelhouse
 
+         - name: Archive wheelhouse
+           uses: actions/upload-artifact@v2
+           with:
+             name: package-alpine_x86_64
+             path: wheelhouse
+
          - name: Test
            run: |
-             python3 -m pip install pytest
+             python3 -m pip install pytest wheelhouse/*.tar.gz
              pytest tests
+
