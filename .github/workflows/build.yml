@@ -1,5 +1,4 @@
 on:
- - push
  - pull_request
 
 jobs:
@@ -10,9 +9,16 @@ jobs:
                 config:
                  - os: ubuntu-16.04
                    plat_name: manylinux1_x86_64
+                 - os: macos-10.15
+                   plat_name: macosx_10_10_x86_64
+                 - os: windows-2019
+                   plat_name: win_amd64
         runs-on: ${{ matrix.config.os }}
         timeout-minutes: 180
         steps:
+         - name: Configure git
+           run: git config --global core.symlinks true
+
          - name: Clone repository
            uses: actions/checkout@v1
 
