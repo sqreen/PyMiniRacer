@@ -43,6 +43,7 @@ jobs:
 
     build-on-alpine:
         name: alpine x86_64
+        runs-on: ubuntu-latest
         container:
             image: nicolassqreen/azure-pipelines-container-alpine-python:3.12
         timeout-minutes: 180
