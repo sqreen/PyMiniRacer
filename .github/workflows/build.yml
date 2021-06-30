@@ -1,6 +1,13 @@
 name: Build
 on:
-     - pull_request
+    push:
+        branches: [master]
+    pull_request:
+        branches: [master]
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
 
 jobs:
     build:
@@ -29,6 +36,7 @@ jobs:
            with:
                python-version: 3.6.x
                architecture: x64
+
          - name: Install python 2.7
            uses: actions/setup-python@v1
            with:
@@ -40,6 +48,7 @@ jobs:
                python3 -m pip install setuptools wheel
                mkdir wheelhouse
                python3 helpers/build_package.py wheel wheelhouse
+           shell: bash
 
          - name: Archive wheelhouse
            uses: actions/upload-artifact@v2
@@ -51,6 +60,7 @@ jobs:
            run: |
              python3 -m pip install pytest wheelhouse/*.whl
              pytest tests
+           shell: bash
 
     build-on-alpine:
         name: alpine_x86_64
@@ -94,3 +104,18 @@ jobs:
            run: |
              python3 -m pip install pytest wheelhouse/*.tar.gz
              pytest tests
+
+    release:
+        runs-on: ubuntu-latest
+        needs: [build-on-alpine, build]
+        steps:
+         - name: Download packages
+           uses: actions/download-artifact@v2
+
+         - name: Publish distribution 📦 to Test PyPI
+           uses: pypa/gh-action-pypi-publish@v1.4.2
+           with:
+             user: __token__
+             password: ${{ secrets.TEST_PYPI_TOKEN }}
+             packages_dir: wheelhouse/
+             repository_url: https://test.pypi.org/legacy/
