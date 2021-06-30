@@ -1,8 +1,8 @@
 .. image:: https://img.shields.io/pypi/v/py_mini_racer.svg
         :target: https://pypi.python.org/pypi/py_mini_racer
 
-.. image:: https://dev.azure.com/sqreenci/PyMiniRacer/_apis/build/status/sqreen.PyMiniRacer?branchName=master
-        :target: https://dev.azure.com/sqreenci/PyMiniRacer/_build/latest?definitionId=10&branchName=master
+.. image:: https://github.com/sqreen/PyMiniRacer/actions/workflows/build.yml/badge.svg
+        :target: https://github.com/sqreen/PyMiniRacer/actions/workflows/build.yml
 
 .. image:: https://img.shields.io/badge/License-ISC-blue.svg
         :target: https://opensource.org/licenses/ISC
