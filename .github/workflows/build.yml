@@ -111,6 +111,15 @@ jobs:
         steps:
          - name: Download packages
            uses: actions/download-artifact@v2
+           with:
+               path: tmp
+
+         - name: Move packages to the wheelhouse
+           run: |
+             mkdir wheelhouse
+             find tmp -name '*.whl' -exec mv {} wheelhouse \;
+             find tmp -name '*.tar.gz' -exec mv {} wheelhouse \;
+           shell: bash
 
          - name: Publish distribution 📦 to Test PyPI
            uses: pypa/gh-action-pypi-publish@v1.4.2
