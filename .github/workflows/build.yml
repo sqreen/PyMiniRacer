@@ -56,6 +56,13 @@ jobs:
              name: package-${{ matrix.config.plat_name }}
              path: wheelhouse
 
+         - name: Check the wheel
+           if: matrix.config.plat_name == 'manylinux1_x86_64'
+           run: |
+             python3 -m pip install auditwheel twine readme_renderer[md]
+             auditwheel show wheelhouse/*.whl
+             twine check wheelhouse/*.whl
+
          - name: Test
            run: |
              python3 -m pip install pytest wheelhouse/*.whl
