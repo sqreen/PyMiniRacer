@@ -1,0 +1,137 @@
+name: Build
+on:
+    push:
+        branches: [master]
+    pull_request:
+        branches: [master]
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    build:
+        name: ${{ matrix.config.plat_name }}
+        strategy:
+            matrix:
+                config:
+                 - os: ubuntu-16.04
+                   plat_name: manylinux1_x86_64
+                 - os: macos-10.15
+                   plat_name: macosx_10_10_x86_64
+                 - os: windows-2019
+                   plat_name: win_amd64
+            fail-fast: true
+        runs-on: ${{ matrix.config.os }}
+        timeout-minutes: 180
+        steps:
+         - name: Configure git
+           run: git config --global core.symlinks true
+
+         - name: Clone repository
+           uses: actions/checkout@v1
+
+         - name: Install python 3.6
+           uses: actions/setup-python@v1
+           with:
+               python-version: 3.6.x
+               architecture: x64
+
+         - name: Install python 2.7
+           uses: actions/setup-python@v1
+           with:
+               python-version: 2.7.x
+               architecture: x64
+
+         - name: Build wheelhouse
+           run: |
+               python3 -m pip install setuptools wheel
+               mkdir wheelhouse
+               python3 helpers/build_package.py wheel wheelhouse
+           shell: bash
+
+         - name: Archive wheelhouse
+           uses: actions/upload-artifact@v2
+           with:
+             name: package-${{ matrix.config.plat_name }}
+             path: wheelhouse
+
+         - name: Check the wheel
+           if: matrix.config.plat_name == 'manylinux1_x86_64'
+           run: |
+             python3 -m pip install auditwheel twine readme_renderer[md]
+             auditwheel show wheelhouse/*.whl
+             twine check wheelhouse/*.whl
+
+         - name: Test
+           run: |
+             python3 -m pip install pytest wheelhouse/*.whl
+             pytest tests
+           shell: bash
+
+    build-on-alpine:
+        name: alpine_x86_64
+        runs-on: ubuntu-latest
+        container:
+            image: nicolassqreen/azure-pipelines-container-alpine-python:3.12
+        timeout-minutes: 180
+        steps:
+         - name: Clone repository
+           uses: actions/checkout@v1
+
+         - name: Download V8 sources
+           uses: docker://python:2
+           with:
+               args: python helpers/v8_build.py --no-build --no-sysroot
+
+         - name: Prepare Aline Linux build environment
+           run: |
+             sudo apk -U add samurai llvm lld linux-headers binutils-gold
+             cp -f /usr/local/bin/gn py_mini_racer/extension/v8/buildtools/linux64/gn
+             rm -f py_mini_racer/extension/depot_tools/ninja
+
+         - name: Build the extension
+           run: |
+             python helpers/v8_build.py --no-update --no-sysroot --target py_mini_racer_shared_lib
+             cp py_mini_racer/extension/out/libmini_racer.so py_mini_racer/libmini_racer.muslc.so
+
+         - name: Build the wheelhouse
+           run: |
+             sudo apk add py3-pip py3-wheel
+             mkdir wheelhouse
+             python3 setup.py sdist --dist-dir wheelhouse
+
+         - name: Archive wheelhouse
+           uses: actions/upload-artifact@v2
+           with:
+             name: package-alpine_x86_64
+             path: wheelhouse
+
+         - name: Test
+           run: |
+             python3 -m pip install pytest wheelhouse/*.tar.gz
+             pytest tests
+
+    release:
+        if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
+        runs-on: ubuntu-latest
+        needs: [build-on-alpine, build]
+        steps:
+         - name: Download packages
+           uses: actions/download-artifact@v2
+           with:
+               path: tmp
+
+         - name: Move packages to the wheelhouse
+           run: |
+             mkdir wheelhouse
+             find tmp -name '*.whl' -exec mv {} wheelhouse \;
+             find tmp -name '*.tar.gz' -exec mv {} wheelhouse \;
+           shell: bash
+
+         - name: Publish 📦 to PyPI
+           uses: pypa/gh-action-pypi-publish@v1.4.2
+           with:
+             user: __token__
+             password: ${{ secrets.PYPI_TOKEN }}
+             packages_dir: wheelhouse/
