@@ -1,34 +1,40 @@
-import unittest
+import pytest
 
-from py_mini_racer import py_mini_racer
+from py_mini_racer import JSEvalException, StrictMiniRacer
 
 
-class StrictTestCase(unittest.TestCase):
-    """Test StrictMiniRacer"""
+def test_basic_int():
+    mr = StrictMiniRacer()
+    assert mr.execute("42") == 42
 
-    def setUp(self):
-        self.mr = py_mini_racer.StrictMiniRacer()
 
-    def test_basic_int(self):
-        self.assertEqual(42, self.mr.execute("42"))
+def test_basic_string():
+    mr = StrictMiniRacer()
+    assert mr.execute('"42"') == "42"
 
-    def test_basic_string(self):
-        self.assertEqual("42", self.mr.execute('"42"'))
 
-    def test_basic_hash(self):
-        self.assertEqual({}, self.mr.execute('{}'))
+def test_basic_hash():
+    mr = StrictMiniRacer()
+    assert mr.execute("{}") == {}
 
-    def test_basic_array(self):
-        self.assertEqual([1, 2, 3], self.mr.execute('[1, 2, 3]'))
 
-    def test_call(self):
-        js_func = """var f = function(args) {
-            return args.length;
-        }"""
+def test_basic_array():
+    mr = StrictMiniRacer()
+    assert mr.execute("[1, 2, 3]") == [1, 2, 3]
 
-        self.assertIsNone(self.mr.eval(js_func))
-        self.assertEqual(self.mr.call('f', list(range(5))), 5)
 
-    def test_message(self):
-        with self.assertRaises(py_mini_racer.JSEvalException):
-            self.mr.eval("throw new EvalError('Hello', 'someFile.js', 10);")
+def test_call():
+    js_func = """var f = function(args) {
+        return args.length;
+    }"""
+
+    mr = StrictMiniRacer()
+
+    assert mr.eval(js_func) is None
+    assert mr.call("f", list(range(5))) == 5
+
+
+def test_message():
+    mr = StrictMiniRacer()
+    with pytest.raises(JSEvalException):
+        mr.eval("throw new EvalError('Hello', 'someFile.js', 10);")

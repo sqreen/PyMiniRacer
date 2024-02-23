@@ -1,0 +1,138 @@
+[![PyPI status indicator](https://img.shields.io/pypi/v/py_mini_racer.svg)](https://pypi.python.org/pypi/py_mini_racer)
+[![Github workflow status indicator](https://github.com/sqreen/PyMiniRacer/actions/workflows/build.yml/badge.svg)](https://github.com/sqreen/PyMiniRacer/actions/workflows/build.yml)
+[![ISC License](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
+
+Minimal, modern embedded V8 for Python.
+
+![MiniRacer logo: a V8 with a very snakey 8](py_mini_racer.png)
+
+## Features
+
+- Latest ECMAScript support
+- Web Assembly support
+- Unicode support
+- Thread safe
+- Re-usable contexts
+
+MiniRacer can be easily used by Django or Flask projects to minify assets, run babel or
+WASM modules.
+
+## Examples
+
+MiniRacer is straightforward to use:
+
+```sh
+    $ pip install py-mini-racer
+```
+
+and then:
+
+```python
+    $ python3
+    >>> from py_mini_racer import MiniRacer
+    >>> ctx = MiniRacer()
+    >>> ctx.eval("1+1")
+    2
+    >>> ctx.eval("var x = {company: 'Sqreen'}; x.company")
+    'Sqreen'
+    >>> print(ctx.eval("'❤'"))
+    ❤
+    >>> ctx.eval("var fun = () => ({ foo: 1 });")
+```
+
+Variables are kept inside of a context:
+
+```python
+    >>> ctx.eval("x.company")
+    'Sqreen'
+```
+
+While `eval` only supports returning primitive data types such as strings, `call`
+supports returning composite types such as objects:
+
+```python
+    >>> ctx.call("fun")
+    {'foo': 1}
+```
+
+Composite values are serialized using JSON. Use a custom JSON encoder when sending
+non-JSON encodable parameters:
+
+```python
+    import json
+
+    from datetime import datetime
+
+    class CustomEncoder(json.JSONEncoder):
+
+            def default(self, obj):
+                if isinstance(obj, datetime):
+                    return obj.isoformat()
+
+                return json.JSONEncoder.default(self, obj)
+```
+
+```python
+    >>> ctx.eval("var f = function(args) { return args; }")
+    >>> ctx.call("f", datetime.now(), encoder=CustomEncoder)
+    '2017-03-31T16:51:02.474118'
+```
+
+MiniRacer is ES6 capable:
+
+```python
+    >>> ctx.execute("[1,2,3].includes(5)")
+    False
+```
+
+V8 heap information can be retrieved:
+
+```python
+    >>> ctx.heap_stats()
+    {'total_physical_size': 1613896,
+     'used_heap_size': 1512520,
+     'total_heap_size': 3997696,
+     'total_heap_size_executable': 3145728,
+     'heap_size_limit': 1501560832}
+```
+
+A WASM example is available in the
+[`tests`](https://github.com/sqreen/PyMiniRacer/blob/master/tests/test_wasm.py).
+
+## Compatibility
+
+PyMiniRacer is compatible with Python 3.8 and is based on `ctypes`.
+
+PyMiniRacer is distributed using [wheels](https://pythonwheels.com/) on
+[PyPI](https://pypi.org/). The wheels are intended to provide compatibility with:
+
+| OS                              | x86_64 | aarch64 |
+| ------------------------------- | ------ | ------- |
+| macOS ≥ 10.9                    | ✓      | ✓       |
+| Windows ≥ 10                    | ✓      | ✖       |
+| Ubuntu ≥ 20.04                  | ✓      | ✓       |
+| Debian ≥ 11                     | ✓      | ✓       |
+| RHEL ≥ 8                        | ✓      | ✓       |
+| other Linuxes with glibc ≥ 2.31 | ✓      | ✓       |
+| Alpine ≥ 3.16                   | ✓      | ✓       |
+| other Linux with musl ≥ 1.2     | ✓      | ✓       |
+
+If you have a up-to-date pip and it doesn't use a wheel, you might have an environment
+for which no wheel is built. Please open an issue.
+
+## Developing and releasing PyMiniRacer
+
+See [the contribution guide](CONTRIBUTING.md).
+
+## Credits
+
+Built with love by [Sqreen](https://www.sqreen.com).
+
+PyMiniRacer launch was described in
+[`this blog post`](https://blog.sqreen.com/embedding-javascript-into-python/).
+
+PyMiniRacer is inspired by [mini_racer](https://github.com/SamSaffron/mini_racer), built
+for the Ruby world by Sam Saffron.
+
+[`Cookiecutter-pypackage`](https://github.com/audreyr/cookiecutter-pypackage) was used
+as this package skeleton.

@@ -1,0 +1,14 @@
+import("../../gni/v8.gni")
+
+v8_shared_library("mini_racer") {
+  output_name = "mini_racer"
+  sources = [
+    "mini_racer.cc",
+  ]
+  deps = [
+    "//build/config:shared_library_deps",
+    "//:v8",
+    "//:v8_libbase",
+    "//:v8_libplatform",
+  ]
+}

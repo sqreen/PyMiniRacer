@@ -1,47 +1,45 @@
-# -*- coding: utf-8 -*-
-import os
-import unittest
+"""Test executing a WASM module."""
+
+from os.path import abspath, dirname, getsize
+from os.path import join as pathjoin
 
 from py_mini_racer import MiniRacer
 
-test_dir = os.path.dirname(os.path.abspath(__file__))
+test_dir = dirname(abspath(__file__))
 
 
-class WASMTest(unittest.TestCase):
+def test_add():
+    fn = pathjoin(test_dir, "add.wasm")
+    mr = MiniRacer()
+
+    # 1. Allocate a buffer to hold the WASM module code
+    size = getsize(fn)
+    module_raw = mr.eval(
+        f"""
+    const moduleRaw = new SharedArrayBuffer({size});
+    moduleRaw
     """
-    Test executing a WASM module.
+    )
+
+    # 2. Read the WASM module code
+    with open(fn, "rb") as f:
+        assert f.readinto(module_raw) == size
+
+    # 3. Instantiate the WASM module
+    mr.eval(
+        """
+    var res = null;
+    WebAssembly.instantiate(new Uint8Array(moduleRaw)).then(result => {
+        res = result.instance;
+    }).catch(result => { res = result.message; });
     """
+    )
 
-    def setUp(self):
-        self.mr = MiniRacer()
+    # 4. Wait for WASM module instantiation
+    while not mr.eval("res"):
+        pass
 
-    def test_add(self):
-        fn = os.path.join(test_dir, "add.wasm")
+    assert mr.eval("typeof res !== 'string'")
 
-        # 1. Allocate a buffer to hold the WASM module code
-        size = os.path.getsize(fn)
-        moduleRaw = self.mr.eval("""
-        const moduleRaw = new SharedArrayBuffer({});
-        moduleRaw
-        """.format(size))
-
-        # 2. Read the WASM module code
-        with open(fn, "rb") as f:
-            self.assertEqual(f.readinto(moduleRaw), size)
-
-        # 3. Instantiate the WASM module
-        self.mr.eval("""
-        var res = null;
-        WebAssembly.instantiate(new Uint8Array(moduleRaw)).then(result => {
-            res = result.instance;
-        }).catch(result => { res = result.message; });
-        """)
-
-        # 4. Wait for WASM module instantiation
-        while not self.mr.eval("res"):
-            pass
-
-        self.assertTrue(self.mr.eval("typeof res !== 'string'"))
-
-        # 5. Execute a WASM function
-        self.assertEqual(self.mr.eval("res.exports.addTwo(1, 2)"), 3)
+    # 5. Execute a WASM function
+    assert mr.eval("res.exports.addTwo(1, 2)") == 3

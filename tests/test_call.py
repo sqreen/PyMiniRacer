@@ -1,51 +1,39 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 """ Basic JS call functions """
 
-import json
-import unittest
-from datetime import datetime
+from datetime import datetime, timezone
+from json import JSONEncoder
 
-from py_mini_racer import py_mini_racer
+from py_mini_racer import MiniRacer
 
 
-class TestEval(unittest.TestCase):
-    """ Test calling a function """
+def test_call_js():
+    js_func = """var f = function() {
+        return arguments.length;
+    }"""
 
-    def setUp(self):
+    mr = MiniRacer()
+    mr.eval(js_func)
 
-        self.mr = py_mini_racer.MiniRacer()
+    assert mr.call("f") == 0
+    assert mr.call("f", *list(range(5))) == 5
+    assert mr.call("f", *list(range(10))) == 10
+    assert mr.call("f", *list(range(20))) == 20
 
-    def test_call_js(self):
 
-        js_func = """var f = function() {
-            return arguments.length;
-        }"""
+def test_call_custom_encoder():
+    # Custom encoder for dates
+    class CustomEncoder(JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, datetime):
+                return obj.isoformat()
 
-        self.mr.eval(js_func)
+            return JSONEncoder.default(self, obj)
 
-        self.assertEqual(self.mr.call('f'), 0)
-        self.assertEqual(self.mr.call('f', *list(range(5))), 5)
-        self.assertEqual(self.mr.call('f', *list(range(10))), 10)
-        self.assertEqual(self.mr.call('f', *list(range(20))), 20)
+    now = datetime.now(tz=timezone.utc)
+    js_func = """var f = function(args) {
+        return args;
+    }"""
+    mr = MiniRacer()
+    mr.eval(js_func)
 
-    def test_call_custom_encoder(self):
-
-        # Custom encoder for dates
-        class CustomEncoder(json.JSONEncoder):
-
-            def default(self, obj):
-                if isinstance(obj, datetime):
-                    return obj.isoformat()
-
-                return json.JSONEncoder.default(self, obj)
-
-        now = datetime.now()
-        js_func = """var f = function(args) {
-            return args;
-        }"""
-        self.mr.eval(js_func)
-
-        self.assertEqual(self.mr.call('f', now, encoder=CustomEncoder),
-                         now.isoformat())
+    assert mr.call("f", now, encoder=CustomEncoder) == now.isoformat()

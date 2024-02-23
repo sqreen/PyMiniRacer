@@ -1,0 +1,13 @@
+--- build/config/compiler/BUILD.gn.orig	2024-03-04 23:25:24.939930259 -0500
++++ build/config/compiler/BUILD.gn	2024-03-04 23:25:54.208173956 -0500
+@@ -1191,8 +1191,8 @@
+     } else if (current_cpu == "arm64") {
+       if (is_clang && !is_android && !is_nacl && !is_fuchsia &&
+           !(is_chromeos_lacros && is_chromeos_device)) {
+-        cflags += [ "--target=aarch64-linux-gnu" ]
+-        ldflags += [ "--target=aarch64-linux-gnu" ]
++        # cflags += [ "--target=aarch64-linux-gnu" ]
++        # ldflags += [ "--target=aarch64-linux-gnu" ]
+       }
+     } else if (current_cpu == "mipsel" && !is_nacl) {
+       ldflags += [ "-Wl,--hash-style=sysv" ]
