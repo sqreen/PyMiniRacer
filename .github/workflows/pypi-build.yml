@@ -308,6 +308,9 @@ jobs:
         # Fetch all tags
         fetch-depth: 0
 
+    - name: Run sccache-cache
+      uses: mozilla-actions/sccache-action@v0.0.3
+
     - uses: actions/setup-python@v5
       with:
         # depot_tools still uses distutils which is gone in 3.12:
