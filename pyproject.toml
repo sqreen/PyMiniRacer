@@ -53,6 +53,11 @@ content-type = "text/markdown"
 path = "README.md"
 
 [[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+text = """
+## Release history
+"""
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
 path = "HISTORY.md"
 start-after = "# History"
 
