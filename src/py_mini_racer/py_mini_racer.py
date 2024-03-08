@@ -360,7 +360,8 @@ class MiniRacer:
         self._dll.mr_free_value(self.ctx, res)
 
     def __del__(self):
-        if self._dll:
+        dll = getattr(self, "_dll", None)
+        if dll:
             self._dll.mr_free_context(getattr(self, "ctx", None))
 
 
