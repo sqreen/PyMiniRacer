@@ -54,10 +54,11 @@ jobs:
           # build distro):
           - image: debian:bullseye
           - image: arm64v8/debian:bullseye
-          # And for Alpine we mostly measure compatibility in musl minor versions, and
-          # the oldest supported Alpine as of this writing (3.16) has the same minor
-          # version as 3.19, so use 3.19. (This helps bring a newer system clang, which
-          # works better with the V8 build.)
+          # Alpine 3.19 includes a clang new enough for V8 to build (with only minor
+          # patches!). Builds on 3.19 seem incompatible with <= 3.18 due to libstdc++
+          # symbols. (And we can't just run on an old Alpine and update clang from the
+          # llvm site, because unlike Debian, the llvm project doesn't maintain
+          # updated packages for old Alpine distros.)
           - image: alpine:3.19
           - image: arm64v8/alpine:3.19
 

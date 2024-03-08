@@ -114,7 +114,7 @@ PyMiniRacer is distributed using [wheels](https://pythonwheels.com/) on
 | Debian ≥ 11                     | ✓      | ✓       |
 | RHEL ≥ 8                        | ✓      | ✓       |
 | other Linuxes with glibc ≥ 2.31 | ✓      | ✓       |
-| Alpine ≥ 3.16                   | ✓      | ✓       |
+| Alpine ≥ 3.19                   | ✓      | ✓       |
 | other Linux with musl ≥ 1.2     | ✓      | ✓       |
 
 If you have a up-to-date pip and it doesn't use a wheel, you might have an environment

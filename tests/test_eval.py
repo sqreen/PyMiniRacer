@@ -82,15 +82,17 @@ def test_null_byte():
 
 
 def test_timeout():
-    timeout_ms = 100
+    timeout = 0.1
     start_time = time()
 
     mr = MiniRacer()
     with pytest.raises(JSTimeoutException):
-        mr.eval("while(1) { }", timeout=timeout_ms)
+        mr.eval("while(1) { }", timeout=int(timeout * 1000))
 
     duration = time() - start_time
-    assert timeout_ms <= duration * 1000 <= timeout_ms + 200
+    # Make sure it timed out on time, and allow a giant leeway (because aarch64
+    # emulation tests are surprisingly slow!)
+    assert timeout <= duration <= timeout + 5
 
 
 def test_max_memory_soft():
@@ -144,13 +146,17 @@ def test_async():
     const shared = new SharedArrayBuffer(8);
     const view = new Int32Array(shared);
 
-    const p = Atomics.waitAsync(view, 0, 0, 1); // 1 ms timeout
+    const p = Atomics.waitAsync(view, 0, 0, 1000); // 1 s timeout
     p.value.then(() => { done = true; });
     done
     """
     )
-    sleep(0.1)
     assert not mr.eval("done")
+    start = time()
+    # Give the 1-second wait 10 seconds to finish. (Emulated aarch64 tests are
+    # surprisingly slow!)
+    while time() - start < 10 and not mr.eval("done"):
+        sleep(0.1)
     assert mr.eval("done")
 
 
