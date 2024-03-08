@@ -336,17 +336,34 @@ jobs:
         hatch run testinstalled:install dist/*.whl
         hatch run testinstalled:run
 
-  publish:
-    name: Upload release to PyPI
+  release:
+    name: Create GitHub release
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
     needs:
     - linux-wheels
     - non-linux-wheels
     - sdist
     runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/download-artifact@v3
+      with:
+        path: dist
+
+    - name: Make release
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: dist/*
+
+  publish:
+    name: Upload release to PyPI
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+    needs:
+    - release
+    runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/<your-pypi-project-name>
+      url: https://pypi.org/p/py-mini-racer
     permissions:
       id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
     steps:
