@@ -46,6 +46,10 @@ class JSOOMException(JSEvalException):
     """JavaScript execution ran out of memory."""
 
 
+class JSTerminatedException(JSEvalException):
+    """JavaScript execution terminated."""
+
+
 class JSTimeoutException(JSEvalException):
     """JavaScript execution timed out."""
 
@@ -104,7 +108,6 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
         ctypes.c_char_p,
         ctypes.c_int,
         ctypes.c_ulong,
-        ctypes.c_size_t,
     ]
     handle.mr_eval_context.restype = ctypes.POINTER(MiniRacerValueStruct)
 
@@ -119,6 +122,8 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
 
     handle.mr_heap_snapshot.argtypes = [ctypes.c_void_p]
     handle.mr_heap_snapshot.restype = ctypes.POINTER(MiniRacerValueStruct)
+
+    handle.mr_set_hard_memory_limit.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
 
     handle.mr_set_soft_memory_limit.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
     handle.mr_set_soft_memory_limit.restype = None
@@ -270,12 +275,15 @@ class MiniRacer:
             code = code.encode("utf8")
 
         with self.lock:
+            self._dll.mr_set_hard_memory_limit(
+                self.ctx, ctypes.c_size_t(max_memory or 0)
+            )
+
             res = self._dll.mr_eval_context(
                 self.ctx,
                 code,
                 len(code),
                 ctypes.c_ulong(timeout or 0),
-                ctypes.c_size_t(max_memory or 0),
             )
         if not res:
             raise JSConversionException
@@ -418,6 +426,7 @@ class MiniRacerTypes:
     parse_exception = 201
     oom_exception = 202
     timeout_exception = 203
+    terminated_exception = 204
 
 
 class MiniRacerValueStruct(ctypes.Structure):
@@ -435,6 +444,27 @@ class ArrayBufferByte(ctypes.Structure):
         ("b", ctypes.c_ubyte),
     ]
     _pack_ = 1
+
+
+_ERRORS = {
+    MiniRacerTypes.parse_exception: (
+        JSParseException,
+        "Unknown JavaScript error during parse",
+    ),
+    MiniRacerTypes.execute_exception: (
+        JSEvalException,
+        "Uknown JavaScript error during execution",
+    ),
+    MiniRacerTypes.oom_exception: (JSOOMException, "JavaScript memory limit reached"),
+    MiniRacerTypes.timeout_exception: (
+        JSTimeoutException,
+        "JavaScript was terminated by timeout",
+    ),
+    MiniRacerTypes.terminated_exception: (
+        JSTerminatedException,
+        "JavaScript was terminated",
+    ),
+}
 
 
 class MiniRacerValue:
@@ -461,19 +491,18 @@ class MiniRacerValue:
         ptr = ctypes.c_char_p.from_buffer(self.ptr.contents)
         return ctypes.c_double.from_buffer(ptr).value
 
+    def _get_exception_msg(self):
+        msg = ctypes.c_char_p(self.value).value
+        return msg.decode("utf-8", errors="replace")
+
     def _raise_from_error(self):
-        if self.type == MiniRacerTypes.parse_exception:
-            msg = ctypes.c_char_p(self.value).value
-            raise JSParseException(msg)
-        if self.type == MiniRacerTypes.execute_exception:
-            msg = ctypes.c_char_p(self.value).value
-            raise JSEvalException(msg.decode("utf-8", errors="replace"))
-        if self.type == MiniRacerTypes.oom_exception:
-            msg = ctypes.c_char_p(self.value).value
-            raise JSOOMException(msg)
-        if self.type == MiniRacerTypes.timeout_exception:
-            msg = ctypes.c_char_p(self.value).value
-            raise JSTimeoutException(msg)
+        error_info = _ERRORS.get(self.type)
+        if not error_info:
+            return
+
+        klass, generic_msg = error_info
+
+        raise klass(self._get_exception_msg() or generic_msg)
 
     def to_python(self):
         self._raise_from_error()

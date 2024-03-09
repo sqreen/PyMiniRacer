@@ -28,5 +28,5 @@ repos:
      name: Check C++ format
      entry: clang-format
      language: system
-     files: py_mini_racer/extension/mini_racer_extension.cc
+     files: src/v8_py_frontend/mini_racer.cc
      args: ['-style=Chromium', '-i']

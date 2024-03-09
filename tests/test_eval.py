@@ -16,8 +16,15 @@ from py_mini_racer import (
 def test_invalid():
     mr = MiniRacer()
 
-    with pytest.raises(JSEvalException):
+    with pytest.raises(JSEvalException) as exc_info:
         mr.eval("invalid")
+
+    assert (
+        exc_info.value.args[0]
+        == """\
+ReferenceError: invalid is not defined
+    at <anonymous>:1:1"""
+    )
 
 
 def test_global():
@@ -51,12 +58,35 @@ def test_multiple_ctx():
 def test_exception_thrown():
     context = MiniRacer()
 
-    js_source = "var f = function() {throw 'error'};"
+    js_source = "var f = function() {throw new Error('blah')};"
 
     context.eval(js_source)
 
-    with pytest.raises(JSEvalException):
+    with pytest.raises(JSEvalException) as exc_info:
         context.eval("f()")
+
+    assert (
+        exc_info.value.args[0]
+        == """\
+Error: blah
+    at f (<anonymous>:1:27)
+    at <anonymous>:1:1"""
+    )
+
+
+def test_string_thrown():
+    context = MiniRacer()
+
+    js_source = "var f = function() {throw 'blah'};"
+
+    context.eval(js_source)
+
+    with pytest.raises(JSEvalException) as exc_info:
+        context.eval("f()")
+
+    # When you throw a plain string (not wrapping it in a `new Error(...)`), you get no
+    # backtrace:
+    assert exc_info.value.args[0] == "blah"
 
 
 def test_cannot_parse():
@@ -66,7 +96,7 @@ def test_cannot_parse():
     with pytest.raises(JSParseException) as exc_info:
         context.eval(js_source)
 
-    assert b"Unknown JavaScript error during parse" in exc_info.value.args[0]
+    assert exc_info.value.args[0] == "SyntaxError: Unexpected end of input"
 
 
 def test_null_byte():
@@ -85,7 +115,7 @@ def test_timeout():
     start_time = time()
 
     mr = MiniRacer()
-    with pytest.raises(JSTimeoutException):
+    with pytest.raises(JSTimeoutException) as exc_info:
         mr.eval("while(1) { }", timeout=int(timeout * 1000))
 
     duration = time() - start_time
@@ -93,11 +123,13 @@ def test_timeout():
     # emulation tests are surprisingly slow!)
     assert timeout <= duration <= timeout + 5
 
+    assert exc_info.value.args[0] == "JavaScript was terminated by timeout"
+
 
 def test_max_memory_soft():
     mr = MiniRacer()
     mr.set_soft_memory_limit(100000000)
-    with pytest.raises(JSOOMException):
+    with pytest.raises(JSOOMException) as exc_info:
         mr.eval(
             """let s = 1000;
             var a = new Array(s);
@@ -112,11 +144,12 @@ def test_max_memory_soft():
         )
 
     assert mr.was_soft_memory_limit_reached()
+    assert exc_info.value.args[0] == "JavaScript memory limit reached"
 
 
 def test_max_memory_hard():
     mr = MiniRacer()
-    with pytest.raises(JSOOMException):
+    with pytest.raises(JSOOMException) as exc_info:
         mr.eval(
             """let s = 1000;
             var a = new Array(s);
@@ -129,6 +162,8 @@ def test_max_memory_hard():
             }""",
             max_memory=200000000,
         )
+
+    assert exc_info.value.args[0] == "JavaScript memory limit reached"
 
 
 def test_symbol():
