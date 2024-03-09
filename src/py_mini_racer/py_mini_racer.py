@@ -11,7 +11,7 @@ from os.path import exists
 from os.path import join as pathjoin
 from sys import platform, version_info
 from threading import Lock
-from typing import ClassVar
+from typing import ClassVar, Iterable, Iterator
 
 
 class MiniRacerBaseException(Exception):  # noqa: N818
@@ -23,6 +23,15 @@ class LibNotFoundError(MiniRacerBaseException):
 
     def __init__(self, path):
         super().__init__(f"Native library or dependency not available at {path}")
+
+
+class LibAlreadyInitializedError(MiniRacerBaseException):
+    """MiniRacer-wrapped V8 build not found."""
+
+    def __init__(self):
+        super().__init__(
+            "MiniRacer was already initialized before the call to init_mini_racer"
+        )
 
 
 class JSParseException(MiniRacerBaseException):
@@ -82,7 +91,7 @@ def _get_lib_filename(name):
     return prefix + name + ext
 
 
-def _build_dll_handle(dll_path):
+def _build_dll_handle(dll_path) -> ctypes.CDLL:
     handle = ctypes.CDLL(dll_path)
 
     handle.mr_init_v8.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
@@ -129,7 +138,7 @@ _ICU_DATA_FILENAME = "icudtl.dat"
 # modules:
 _SNAPSHOT_FILENAME = "snapshot_blob.bin"
 
-_V8_FLAGS: list[str] = ["--single-threaded"]
+DEFAULT_V8_FLAGS = ("--single-threaded",)
 
 
 def _open_resource_file(filename, exit_stack):
@@ -151,7 +160,7 @@ def _check_path(path):
 
 
 @contextmanager
-def _open_dll():
+def _open_dll(flags: Iterable[str]) -> Iterator[ctypes.CDLL]:
     dll_filename = _get_lib_filename("mini_racer")
 
     with ExitStack() as exit_stack:
@@ -171,15 +180,15 @@ def _open_dll():
         _check_path(icu_data_path)
         _check_path(snapshot_path)
 
-        dll = _build_dll_handle(dll_path)
+        handle = _build_dll_handle(dll_path)
 
-        dll.mr_init_v8(
-            " ".join(_V8_FLAGS).encode("utf-8"),
+        handle.mr_init_v8(
+            " ".join(flags).encode("utf-8"),
             icu_data_path.encode("utf-8"),
             snapshot_path.encode("utf-8"),
         )
 
-        yield dll
+        yield handle
 
 
 _init_lock = Lock()
@@ -187,15 +196,27 @@ _dll_handle_context_manager = None
 _dll_handle = None
 
 
-def _get_dll_handle():
+def init_mini_racer(
+    *, flags: Iterable[str] = DEFAULT_V8_FLAGS, ignore_duplicate_init=False
+) -> ctypes.CDLL:
+    """Initialize py_mini_racer (and V8).
+
+    This function can optionally be used to set V8 flags. This function can be called
+    at most once, before any instances of MiniRacer are initialized. Instances of
+    MiniRacer will automatically call this function to initialize MiniRacer and V8.
+    """
+
+    global _dll_handle_context_manager  # noqa: PLW0603
     global _dll_handle  # noqa: PLW0603
 
     with _init_lock:
         if _dll_handle is None:
-            _dll_handle_context_manager = _open_dll()
+            _dll_handle_context_manager = _open_dll(flags)
             _dll_handle = _dll_handle_context_manager.__enter__()
             # Note: we never call _dll_handle_context_manager.__exit__() because it's
             # designed as a singleton. But we could if we wanted to!
+        elif not ignore_duplicate_init:
+            raise LibAlreadyInitializedError
 
         return _dll_handle
 
@@ -212,7 +233,7 @@ class MiniRacer:
     json_impl: ClassVar[object] = json
 
     def __init__(self):
-        self._dll = _get_dll_handle()
+        self._dll: ctypes.CDLL = init_mini_racer(ignore_duplicate_init=True)
         self.ctx = self._dll.mr_init_context()
         self.lock = Lock()
 
