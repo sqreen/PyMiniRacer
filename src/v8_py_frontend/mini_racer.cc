@@ -354,9 +354,6 @@ BinaryValuePtr MiniRacerContext::eval(const std::string& code,
                      : v8::platform::MessageLoopBehavior::kDoNotWait)) {
         break;
       }
-
-      // Run microtask items (like promise callbacks)
-      isolate->PerformMicrotaskCheckpoint();
     }
   }
 

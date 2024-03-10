@@ -172,6 +172,29 @@ def test_symbol():
     assert isinstance(res, JSSymbol)
 
 
+def test_microtask():
+    # PyMiniRacer uses V8 microtasks (things, like certain promise callbacks, which run
+    # immediately after an evaluation ends).
+    # By default, V8 runs any microtasks before it returns control to PyMiniRacer.
+    # Let's test that they actually work.
+    # PyMiniRacer does not expose the web standard `window.queueMicrotask` (because it
+    # does not expose a `window` to begin with). We can, however, trigger a microtask
+    # by triggering one as a side effect of a `then` on a resolved promise:
+    mr = MiniRacer()
+    assert not mr.eval(
+        """
+    let p = Promise.resolve();
+
+    var done = false;
+
+    p.then(() => {done = true});
+
+    done
+    """
+    )
+    assert mr.eval("done")
+
+
 def test_async():
     mr = MiniRacer()
     assert not mr.eval(
