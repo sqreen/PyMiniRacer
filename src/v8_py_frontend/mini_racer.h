@@ -1,4 +1,3 @@
-#include <libplatform/libplatform.h>
 #include <v8.h>
 
 #include <map>
