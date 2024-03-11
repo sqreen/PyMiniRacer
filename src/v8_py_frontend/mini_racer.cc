@@ -7,6 +7,10 @@
 
 namespace MiniRacer {
 
+namespace {
+std::unique_ptr<v8::Platform> current_platform = nullptr;
+}  // end anonymous namespace
+
 void Context::BinaryValueFree(BinaryValue* v) {
   if (!v) {
     return;
@@ -39,12 +43,10 @@ void Context::BinaryValueFree(BinaryValue* v) {
   delete v;
 }
 
-static std::unique_ptr<v8::Platform> current_platform = nullptr;
-
-static void static_gc_callback(v8::Isolate* isolate,
-                               v8::GCType type,
-                               v8::GCCallbackFlags flags,
-                               void* data) {
+void Context::static_gc_callback(v8::Isolate* isolate,
+                                 v8::GCType type,
+                                 v8::GCCallbackFlags flags,
+                                 void* data) {
   ((Context*)data)->gc_callback(isolate);
 }
 
@@ -77,12 +79,14 @@ void Context::set_soft_memory_limit(size_t limit) {
   soft_memory_limit_reached = false;
 }
 
-static bool maybe_fast_call(const std::string& code) {
+namespace {
+bool maybe_fast_call(const std::string& code) {
   // Does the code string end with '()'?
   // TODO check if the string is an identifier
   return (code.size() > 2 && code[code.size() - 2] == '(' &&
           code[code.size() - 1] == ')');
 }
+}  // end anonymous namespace
 
 BinaryValuePtr Context::summarizeTryCatch(v8::Local<v8::Context>& context,
                                           v8::TryCatch& trycatch,
@@ -114,6 +118,7 @@ BinaryValuePtr Context::summarizeTryCatch(v8::Local<v8::Context>& context,
   return makeBinaryValue("", resultType);
 }
 
+namespace {
 /** Spawns a separate thread which calls isolate->TerminateExecution() after a
  * timeout, if not first disengaged. */
 class BreakerThread {
@@ -156,6 +161,7 @@ class BreakerThread {
   std::thread thread_;
   std::timed_mutex mutex;
 };
+}  // end anonymous namespace
 
 BinaryValuePtr Context::eval(const std::string& code, unsigned long timeout) {
   v8::Locker lock(isolate);
@@ -467,6 +473,7 @@ BinaryValuePtr Context::heap_stats() {
   return convert_v8_to_binary(context, output);
 }
 
+namespace {
 // From v8/src/d8/d8-console.cc:
 class StringOutputStream : public v8::OutputStream {
  public:
@@ -482,6 +489,7 @@ class StringOutputStream : public v8::OutputStream {
  private:
   std::ostringstream os_;
 };
+}  // end anonymous namespace
 
 BinaryValuePtr Context::heap_snapshot() {
   v8::Locker lock(isolate);
@@ -493,4 +501,4 @@ BinaryValuePtr Context::heap_snapshot() {
   return makeBinaryValue(sos.result(), type_str_utf8);
 }
 
-}  // namespace MiniRacer
+}  // end namespace MiniRacer

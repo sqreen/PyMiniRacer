@@ -84,6 +84,10 @@ class Context {
 
   std::optional<std::string> valueToUtf8String(v8::Local<v8::Value> value);
 
+  static void static_gc_callback(v8::Isolate* isolate,
+                                 v8::GCType type,
+                                 v8::GCCallbackFlags flags,
+                                 void* data);
   void gc_callback(v8::Isolate* isolate);
   void set_hard_memory_limit(size_t limit);
   void set_soft_memory_limit(size_t limit);
