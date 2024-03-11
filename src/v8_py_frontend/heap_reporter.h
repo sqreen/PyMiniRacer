@@ -1,0 +1,25 @@
+#ifndef INCLUDE_MINI_RACER_HEAP_REPORTER_H
+#define INCLUDE_MINI_RACER_HEAP_REPORTER_H
+
+#include <v8.h>
+#include "binary_value.h"
+#include "isolate_memory_monitor.h"
+
+namespace MiniRacer {
+
+/** Report fun facts about an isolate heap */
+class HeapReporter {
+ public:
+  HeapReporter(v8::Isolate* isolate, BinaryValueFactory* bv_factory);
+
+  BinaryValue::Ptr HeapSnapshot();
+  BinaryValue::Ptr HeapStats();
+
+ private:
+  v8::Isolate* isolate_;
+  BinaryValueFactory* bv_factory_;
+};
+
+}  // end namespace MiniRacer
+
+#endif  // INCLUDE_MINI_RACER_HEAP_REPORTER_H
