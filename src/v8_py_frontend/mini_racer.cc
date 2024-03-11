@@ -14,7 +14,7 @@
 #define LIB_EXPORT __attribute__((visibility("default")))
 #endif
 
-using namespace v8;
+namespace MiniRacer {
 
 enum BinaryTypes {
   type_invalid = 0,
@@ -60,29 +60,29 @@ struct BinaryValue {
   }
 };
 
-class MiniRacerContext;
+class Context;
 
 class BinaryValueDeleter {
  public:
-  BinaryValueDeleter() : context(0) {}
-  BinaryValueDeleter(MiniRacerContext* context) : context(context) {}
+  BinaryValueDeleter() : mr_context(0) {}
+  BinaryValueDeleter(Context* mr_context) : mr_context(mr_context) {}
   void operator()(BinaryValue* bv) const;
 
  private:
-  MiniRacerContext* context;
+  Context* mr_context;
 };
 
 typedef std::unique_ptr<BinaryValue, BinaryValueDeleter> BinaryValuePtr;
 
-class MiniRacerContext {
+class Context {
  public:
-  MiniRacerContext();
-  ~MiniRacerContext();
+  Context();
+  ~Context();
 
-  Isolate* isolate;
-  Persistent<Context>* persistentContext;
+  v8::Isolate* isolate;
+  v8::Persistent<v8::Context>* persistentContext;
   v8::ArrayBuffer::Allocator* allocator;
-  std::map<void*, std::shared_ptr<BackingStore>> backing_stores;
+  std::map<void*, std::shared_ptr<v8::BackingStore>> backing_stores;
   size_t soft_memory_limit;
   bool soft_memory_limit_reached;
   size_t hard_memory_limit;
@@ -93,32 +93,32 @@ class MiniRacerContext {
 
   void BinaryValueFree(BinaryValue* v);
 
-  std::optional<std::string> valueToUtf8String(Local<Value> value);
+  std::optional<std::string> valueToUtf8String(v8::Local<v8::Value> value);
 
-  void gc_callback(Isolate* isolate);
+  void gc_callback(v8::Isolate* isolate);
   void set_hard_memory_limit(size_t limit);
   void set_soft_memory_limit(size_t limit);
-  BinaryValuePtr convert_v8_to_binary(Local<Context> context,
-                                      Local<Value> value);
+  BinaryValuePtr convert_v8_to_binary(v8::Local<v8::Context> context,
+                                      v8::Local<v8::Value> value);
   BinaryValuePtr heap_snapshot();
   BinaryValuePtr heap_stats();
   BinaryValuePtr eval(const std::string& code, unsigned long timeout);
-  BinaryValuePtr summarizeTryCatch(Local<Context>& context,
-                                   TryCatch& trycatch,
+  BinaryValuePtr summarizeTryCatch(v8::Local<v8::Context>& context,
+                                   v8::TryCatch& trycatch,
                                    BinaryTypes resultType);
 };
 
 inline void BinaryValueDeleter::operator()(BinaryValue* bv) const {
-  context->BinaryValueFree(bv);
+  mr_context->BinaryValueFree(bv);
 }
 
 template <typename... Args>
-inline BinaryValuePtr MiniRacerContext::makeBinaryValue(Args&&... args) {
+inline BinaryValuePtr Context::makeBinaryValue(Args&&... args) {
   return BinaryValuePtr(new BinaryValue(std::forward<Args>(args)...),
                         BinaryValueDeleter(this));
 }
 
-void MiniRacerContext::BinaryValueFree(BinaryValue* v) {
+void Context::BinaryValueFree(BinaryValue* v) {
   if (!v) {
     return;
   }
@@ -150,17 +150,17 @@ void MiniRacerContext::BinaryValueFree(BinaryValue* v) {
   delete v;
 }
 
-static std::unique_ptr<Platform> current_platform = nullptr;
+static std::unique_ptr<v8::Platform> current_platform = nullptr;
 
-static void static_gc_callback(Isolate* isolate,
-                               GCType type,
-                               GCCallbackFlags flags,
+static void static_gc_callback(v8::Isolate* isolate,
+                               v8::GCType type,
+                               v8::GCCallbackFlags flags,
                                void* data) {
-  ((MiniRacerContext*)data)->gc_callback(isolate);
+  ((Context*)data)->gc_callback(isolate);
 }
 
-void MiniRacerContext::gc_callback(Isolate* isolate) {
-  HeapStatistics stats;
+void Context::gc_callback(v8::Isolate* isolate) {
+  v8::HeapStatistics stats;
   isolate->GetHeapStatistics(&stats);
   size_t used = stats.used_heap_size();
 
@@ -174,7 +174,7 @@ void MiniRacerContext::gc_callback(Isolate* isolate) {
   }
 }
 
-void MiniRacerContext::set_hard_memory_limit(size_t limit) {
+void Context::set_hard_memory_limit(size_t limit) {
   hard_memory_limit = limit;
   hard_memory_limit_reached = false;
 
@@ -183,7 +183,7 @@ void MiniRacerContext::set_hard_memory_limit(size_t limit) {
   }
 }
 
-void MiniRacerContext::set_soft_memory_limit(size_t limit) {
+void Context::set_soft_memory_limit(size_t limit) {
   soft_memory_limit = limit;
   soft_memory_limit_reached = false;
 }
@@ -195,16 +195,16 @@ static bool maybe_fast_call(const std::string& code) {
           code[code.size() - 1] == ')');
 }
 
-BinaryValuePtr MiniRacerContext::summarizeTryCatch(Local<Context>& context,
-                                                   TryCatch& trycatch,
-                                                   BinaryTypes resultType) {
+BinaryValuePtr Context::summarizeTryCatch(v8::Local<v8::Context>& context,
+                                          v8::TryCatch& trycatch,
+                                          BinaryTypes resultType) {
   if (!trycatch.StackTrace(context).IsEmpty()) {
-    Local<Value> stacktrace;
+    v8::Local<v8::Value> stacktrace;
 
     if (trycatch.StackTrace(context).ToLocal(&stacktrace)) {
       std::optional<std::string> backtrace = valueToUtf8String(stacktrace);
       if (backtrace.has_value()) {
-        // Generally the backtrace from V8 starts with the exception message, so
+        // Generally the backtrace from v8 starts with the exception message, so
         // we can skip the exception message (below) when we have the backtrace.
         return makeBinaryValue(backtrace.value(), resultType);
       }
@@ -229,7 +229,7 @@ BinaryValuePtr MiniRacerContext::summarizeTryCatch(Local<Context>& context,
  * timeout, if not first disengaged. */
 class BreakerThread {
  public:
-  BreakerThread(Isolate* isolate, unsigned long timeout)
+  BreakerThread(v8::Isolate* isolate, unsigned long timeout)
       : isolate(isolate), timeout(timeout), timed_out_(false) {
     if (timeout > 0) {
       engaged = true;
@@ -260,7 +260,7 @@ class BreakerThread {
     }
   }
 
-  Isolate* isolate;
+  v8::Isolate* isolate;
   unsigned long timeout;
   bool engaged;
   bool timed_out_;
@@ -268,18 +268,17 @@ class BreakerThread {
   std::timed_mutex mutex;
 };
 
-BinaryValuePtr MiniRacerContext::eval(const std::string& code,
-                                      unsigned long timeout) {
-  Locker lock(isolate);
-  Isolate::Scope isolate_scope(isolate);
+BinaryValuePtr Context::eval(const std::string& code, unsigned long timeout) {
+  v8::Locker lock(isolate);
+  v8::Isolate::Scope isolate_scope(isolate);
 
-  TryCatch trycatch(isolate);
+  v8::TryCatch trycatch(isolate);
 
-  // Later in this function, we pump the V8 message loop.
+  // Later in this function, we pump the v8 message loop.
   // Per comment in v8/samples/shell.cc, it is important not to pump the message
   // loop when there are v8::Local handles on the stack, as this may trigger a
   // stackless GC when the new conservative stack scanning flag is enabled. So
-  // we don't use any Local handles here; only in sub-scopes of this method.
+  // we don't use any v8::Local handles here; only in sub-scopes of this method.
 
   // Spawn a thread to inforce the timeout limit:
   BreakerThread breaker_thread(isolate, timeout);
@@ -290,23 +289,25 @@ BinaryValuePtr MiniRacerContext::eval(const std::string& code,
 
   // Is it a single function call?
   if (maybe_fast_call(code)) {
-    HandleScope handle_scope(isolate);
-    Local<Context> context = persistentContext->Get(isolate);
-    Context::Scope context_scope(context);
-    Local<String> identifier;
-    Local<Value> func;
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = persistentContext->Get(isolate);
+    v8::Context::Scope context_scope(context);
+    v8::Local<v8::String> identifier;
+    v8::Local<v8::Value> func;
 
     // Let's check if the value is a callable identifier
-    parsed = String::NewFromUtf8(isolate, code.data(), NewStringType::kNormal,
-                                 static_cast<int>(code.size() - 2))
+    parsed = v8::String::NewFromUtf8(isolate, code.data(),
+                                     v8::NewStringType::kNormal,
+                                     static_cast<int>(code.size() - 2))
                  .ToLocal(&identifier) &&
              context->Global()->Get(context, identifier).ToLocal(&func) &&
              func->IsFunction();
 
     if (parsed) {
       // Call the identifier
-      MaybeLocal<Value> maybe_value = Local<Function>::Cast(func)->Call(
-          context, v8::Undefined(isolate), 0, {});
+      v8::MaybeLocal<v8::Value> maybe_value =
+          v8::Local<v8::Function>::Cast(func)->Call(
+              context, v8::Undefined(isolate), 0, {});
       if (!maybe_value.IsEmpty()) {
         executed = true;
         ret = convert_v8_to_binary(context, maybe_value.ToLocalChecked());
@@ -316,23 +317,24 @@ BinaryValuePtr MiniRacerContext::eval(const std::string& code,
 
   // Fallback on a slower full eval
   if (!executed) {
-    HandleScope handle_scope(isolate);
-    Local<Context> context = persistentContext->Get(isolate);
-    Context::Scope context_scope(context);
-    Local<String> asString;
-    Local<Script> script;
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = persistentContext->Get(isolate);
+    v8::Context::Scope context_scope(context);
+    v8::Local<v8::String> asString;
+    v8::Local<v8::Script> script;
 
-    parsed = String::NewFromUtf8(isolate, code.data(), NewStringType::kNormal,
-                                 static_cast<int>(code.size()))
+    parsed = v8::String::NewFromUtf8(isolate, code.data(),
+                                     v8::NewStringType::kNormal,
+                                     static_cast<int>(code.size()))
                  .ToLocal(&asString) &&
-             Script::Compile(context, asString).ToLocal(&script) &&
+             v8::Script::Compile(context, asString).ToLocal(&script) &&
              !script.IsEmpty();
 
     if (!parsed) {
       return summarizeTryCatch(context, trycatch, type_parse_exception);
     }
 
-    MaybeLocal<Value> maybe_value = script->Run(context);
+    v8::MaybeLocal<v8::Value> maybe_value = script->Run(context);
     if (!maybe_value.IsEmpty()) {
       executed = true;
       ret = convert_v8_to_binary(context, maybe_value.ToLocalChecked());
@@ -348,7 +350,7 @@ BinaryValuePtr MiniRacerContext::eval(const std::string& code,
                                                  // otherwise it waits forever.
 
       // Run message loop items (like timers)
-      if (!platform::PumpMessageLoop(
+      if (!v8::platform::PumpMessageLoop(
               current_platform.get(), isolate,
               (wait) ? v8::platform::MessageLoopBehavior::kWaitForWork
                      : v8::platform::MessageLoopBehavior::kDoNotWait)) {
@@ -361,9 +363,9 @@ BinaryValuePtr MiniRacerContext::eval(const std::string& code,
 
   if (!executed) {
     // Still didn't execute. Find an error:
-    HandleScope handle_scope(isolate);
-    Local<Context> context = persistentContext->Get(isolate);
-    Context::Scope context_scope(context);
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = persistentContext->Get(isolate);
+    v8::Context::Scope context_scope(context);
 
     BinaryTypes resultType;
 
@@ -383,9 +385,9 @@ BinaryValuePtr MiniRacerContext::eval(const std::string& code,
   return ret;
 }
 
-std::optional<std::string> MiniRacerContext::valueToUtf8String(
-    Local<Value> value) {
-  String::Utf8Value utf8(isolate, value);
+std::optional<std::string> Context::valueToUtf8String(
+    v8::Local<v8::Value> value) {
+  v8::String::Utf8Value utf8(isolate, value);
 
   if (utf8.length()) {
     return std::make_optional(std::string(*utf8, utf8.length()));
@@ -394,10 +396,10 @@ std::optional<std::string> MiniRacerContext::valueToUtf8String(
   return std::nullopt;
 }
 
-BinaryValuePtr MiniRacerContext::convert_v8_to_binary(Local<Context> context,
-                                                      Local<Value> value) {
-  Isolate::Scope isolate_scope(isolate);
-  HandleScope scope(isolate);
+BinaryValuePtr Context::convert_v8_to_binary(v8::Local<v8::Context> context,
+                                             v8::Local<v8::Value> value) {
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::HandleScope scope(isolate);
 
   BinaryValuePtr res = makeBinaryValue();
 
@@ -423,12 +425,12 @@ BinaryValuePtr MiniRacerContext::convert_v8_to_binary(Local<Context> context,
     res->type = type_symbol;
   } else if (value->IsDate()) {
     res->type = type_date;
-    Local<Date> date = Local<Date>::Cast(value);
+    v8::Local<v8::Date> date = v8::Local<v8::Date>::Cast(value);
 
     double timestamp = date->ValueOf();
     res->double_val = timestamp;
   } else if (value->IsString()) {
-    Local<String> rstr = value->ToString(context).ToLocalChecked();
+    v8::Local<v8::String> rstr = value->ToString(context).ToLocalChecked();
 
     res->type = type_str_utf8;
     res->len = size_t(rstr->Utf8Length(isolate));  // in bytes
@@ -437,21 +439,24 @@ BinaryValuePtr MiniRacerContext::convert_v8_to_binary(Local<Context> context,
     rstr->WriteUtf8(isolate, res->bytes);
   } else if (value->IsSharedArrayBuffer() || value->IsArrayBuffer() ||
              value->IsArrayBufferView()) {
-    std::shared_ptr<BackingStore> backing_store;
+    std::shared_ptr<v8::BackingStore> backing_store;
     size_t offset = 0;
     size_t size = 0;
 
     if (value->IsArrayBufferView()) {
-      Local<ArrayBufferView> view = Local<ArrayBufferView>::Cast(value);
+      v8::Local<v8::ArrayBufferView> view =
+          v8::Local<v8::ArrayBufferView>::Cast(value);
 
       backing_store = view->Buffer()->GetBackingStore();
       offset = view->ByteOffset();
       size = view->ByteLength();
     } else if (value->IsSharedArrayBuffer()) {
-      backing_store = Local<SharedArrayBuffer>::Cast(value)->GetBackingStore();
+      backing_store =
+          v8::Local<v8::SharedArrayBuffer>::Cast(value)->GetBackingStore();
       size = backing_store->ByteLength();
     } else {
-      backing_store = Local<ArrayBuffer>::Cast(value)->GetBackingStore();
+      backing_store =
+          v8::Local<v8::ArrayBuffer>::Cast(value)->GetBackingStore();
       size = backing_store->ByteLength();
     }
 
@@ -470,10 +475,10 @@ BinaryValuePtr MiniRacerContext::convert_v8_to_binary(Local<Context> context,
   return res;
 }
 
-MiniRacerContext::~MiniRacerContext() {
+Context::~Context() {
   if (persistentContext) {
-    Locker lock(isolate);
-    Isolate::Scope isolate_scope(isolate);
+    v8::Locker lock(isolate);
+    v8::Isolate::Scope isolate_scope(isolate);
 
     backing_stores.clear();
     persistentContext->Reset();
@@ -485,85 +490,88 @@ MiniRacerContext::~MiniRacerContext() {
   delete allocator;
 }
 
-void MiniRacer_init_v8(char const* v8_flags,
-                       char const* icu_path,
-                       char const* snapshot_path) {
-  V8::InitializeICU(icu_path);
-  V8::InitializeExternalStartupDataFromFile(snapshot_path);
+void init_v8(char const* v8_flags,
+             char const* icu_path,
+             char const* snapshot_path) {
+  v8::V8::InitializeICU(icu_path);
+  v8::V8::InitializeExternalStartupDataFromFile(snapshot_path);
 
   if (v8_flags != nullptr) {
-    V8::SetFlagsFromString(v8_flags);
+    v8::V8::SetFlagsFromString(v8_flags);
   }
   if (v8_flags != nullptr && strstr(v8_flags, "--single-threaded") != nullptr) {
-    current_platform = platform::NewSingleThreadedDefaultPlatform();
+    current_platform = v8::platform::NewSingleThreadedDefaultPlatform();
   } else {
-    current_platform = platform::NewDefaultPlatform();
+    current_platform = v8::platform::NewDefaultPlatform();
   }
-  V8::InitializePlatform(current_platform.get());
-  V8::Initialize();
+  v8::V8::InitializePlatform(current_platform.get());
+  v8::V8::Initialize();
 }
 
-MiniRacerContext::MiniRacerContext()
-    : allocator(ArrayBuffer::Allocator::NewDefaultAllocator()),
+Context::Context()
+    : allocator(v8::ArrayBuffer::Allocator::NewDefaultAllocator()),
       soft_memory_limit(0),
       soft_memory_limit_reached(false),
       hard_memory_limit(0),
       hard_memory_limit_reached(false) {
-  Isolate::CreateParams create_params;
+  v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator = allocator;
 
-  isolate = Isolate::New(create_params);
+  isolate = v8::Isolate::New(create_params);
 
-  Locker lock(isolate);
-  Isolate::Scope isolate_scope(isolate);
-  HandleScope handle_scope(isolate);
+  v8::Locker lock(isolate);
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::HandleScope handle_scope(isolate);
 
-  persistentContext = new Persistent<Context>(isolate, Context::New(isolate));
+  persistentContext =
+      new v8::Persistent<v8::Context>(isolate, v8::Context::New(isolate));
 }
 
-BinaryValuePtr MiniRacerContext::heap_stats() {
+BinaryValuePtr Context::heap_stats() {
   v8::HeapStatistics stats;
 
   if (!isolate) {
     return BinaryValuePtr();
   }
 
-  Locker lock(isolate);
-  Isolate::Scope isolate_scope(isolate);
-  HandleScope handle_scope(isolate);
+  v8::Locker lock(isolate);
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::HandleScope handle_scope(isolate);
 
-  TryCatch trycatch(isolate);
-  Local<Context> context = persistentContext->Get(isolate);
-  Context::Scope context_scope(context);
+  v8::TryCatch trycatch(isolate);
+  v8::Local<v8::Context> context = persistentContext->Get(isolate);
+  v8::Context::Scope context_scope(context);
 
   isolate->GetHeapStatistics(&stats);
 
-  Local<Object> stats_obj = Object::New(isolate);
+  v8::Local<v8::Object> stats_obj = v8::Object::New(isolate);
 
-  stats_obj
-      ->Set(context, String::NewFromUtf8Literal(isolate, "total_physical_size"),
-            Number::New(isolate, (double)stats.total_physical_size()))
-      .Check();
   stats_obj
       ->Set(context,
-            String::NewFromUtf8Literal(isolate, "total_heap_size_executable"),
-            Number::New(isolate, (double)stats.total_heap_size_executable()))
+            v8::String::NewFromUtf8Literal(isolate, "total_physical_size"),
+            v8::Number::New(isolate, (double)stats.total_physical_size()))
       .Check();
   stats_obj
-      ->Set(context, String::NewFromUtf8Literal(isolate, "total_heap_size"),
-            Number::New(isolate, (double)stats.total_heap_size()))
+      ->Set(
+          context,
+          v8::String::NewFromUtf8Literal(isolate, "total_heap_size_executable"),
+          v8::Number::New(isolate, (double)stats.total_heap_size_executable()))
       .Check();
   stats_obj
-      ->Set(context, String::NewFromUtf8Literal(isolate, "used_heap_size"),
-            Number::New(isolate, (double)stats.used_heap_size()))
+      ->Set(context, v8::String::NewFromUtf8Literal(isolate, "total_heap_size"),
+            v8::Number::New(isolate, (double)stats.total_heap_size()))
       .Check();
   stats_obj
-      ->Set(context, String::NewFromUtf8Literal(isolate, "heap_size_limit"),
-            Number::New(isolate, (double)stats.heap_size_limit()))
+      ->Set(context, v8::String::NewFromUtf8Literal(isolate, "used_heap_size"),
+            v8::Number::New(isolate, (double)stats.used_heap_size()))
+      .Check();
+  stats_obj
+      ->Set(context, v8::String::NewFromUtf8Literal(isolate, "heap_size_limit"),
+            v8::Number::New(isolate, (double)stats.heap_size_limit()))
       .Check();
 
-  Local<String> output;
-  if (!JSON::Stringify(context, stats_obj).ToLocal(&output) ||
+  v8::Local<v8::String> output;
+  if (!v8::JSON::Stringify(context, stats_obj).ToLocal(&output) ||
       output.IsEmpty()) {
     return BinaryValuePtr();
   }
@@ -586,66 +594,68 @@ class StringOutputStream : public v8::OutputStream {
   std::ostringstream os_;
 };
 
-BinaryValuePtr MiniRacerContext::heap_snapshot() {
-  Locker lock(isolate);
-  Isolate::Scope isolate_scope(isolate);
-  HandleScope handle_scope(isolate);
+BinaryValuePtr Context::heap_snapshot() {
+  v8::Locker lock(isolate);
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::HandleScope handle_scope(isolate);
   auto snap = isolate->GetHeapProfiler()->TakeHeapSnapshot();
   StringOutputStream sos;
   snap->Serialize(&sos);
   return makeBinaryValue(sos.result(), type_str_utf8);
 }
 
+}  // namespace MiniRacer
+
 extern "C" {
 
-LIB_EXPORT BinaryValue* mr_eval_context(MiniRacerContext* mini_racer_context,
-                                        char* str,
-                                        int len,
-                                        unsigned long timeout) {
-  return mini_racer_context->eval(std::string(str, len), timeout).release();
+LIB_EXPORT MiniRacer::BinaryValue* mr_eval_context(
+    MiniRacer::Context* mr_context,
+    char* str,
+    int len,
+    unsigned long timeout) {
+  return mr_context->eval(std::string(str, len), timeout).release();
 }
 
 LIB_EXPORT void mr_init_v8(const char* v8_flags,
                            const char* icu_path,
                            const char* snapshot_path) {
-  MiniRacer_init_v8(v8_flags, icu_path, snapshot_path);
+  MiniRacer::init_v8(v8_flags, icu_path, snapshot_path);
 }
 
-LIB_EXPORT MiniRacerContext* mr_init_context() {
-  return new MiniRacerContext();
+LIB_EXPORT MiniRacer::Context* mr_init_context() {
+  return new MiniRacer::Context();
 }
 
-LIB_EXPORT void mr_free_value(MiniRacerContext* mini_racer_context,
-                              BinaryValue* val) {
-  mini_racer_context->BinaryValueFree(val);
+LIB_EXPORT void mr_free_value(MiniRacer::Context* mr_context,
+                              MiniRacer::BinaryValue* val) {
+  mr_context->BinaryValueFree(val);
 }
 
-LIB_EXPORT void mr_free_context(MiniRacerContext* mini_racer_context) {
-  delete mini_racer_context;
+LIB_EXPORT void mr_free_context(MiniRacer::Context* mr_context) {
+  delete mr_context;
 }
 
-LIB_EXPORT BinaryValue* mr_heap_stats(MiniRacerContext* mini_racer_context) {
-  return mini_racer_context->heap_stats().release();
+LIB_EXPORT MiniRacer::BinaryValue* mr_heap_stats(
+    MiniRacer::Context* mr_context) {
+  return mr_context->heap_stats().release();
 }
 
-LIB_EXPORT void mr_set_hard_memory_limit(MiniRacerContext* mini_racer_context,
+LIB_EXPORT void mr_set_hard_memory_limit(MiniRacer::Context* mr_context,
                                          size_t limit) {
-  mini_racer_context->set_hard_memory_limit(limit);
+  mr_context->set_hard_memory_limit(limit);
 }
 
-LIB_EXPORT void mr_set_soft_memory_limit(MiniRacerContext* mini_racer_context,
+LIB_EXPORT void mr_set_soft_memory_limit(MiniRacer::Context* mr_context,
                                          size_t limit) {
-  mini_racer_context->set_soft_memory_limit(limit);
+  mr_context->set_soft_memory_limit(limit);
 }
 
-LIB_EXPORT bool mr_soft_memory_limit_reached(
-    MiniRacerContext* mini_racer_context) {
-  return mini_racer_context->soft_memory_limit_reached;
+LIB_EXPORT bool mr_soft_memory_limit_reached(MiniRacer::Context* mr_context) {
+  return mr_context->soft_memory_limit_reached;
 }
 
-LIB_EXPORT void mr_low_memory_notification(
-    MiniRacerContext* mini_racer_context) {
-  mini_racer_context->isolate->LowMemoryNotification();
+LIB_EXPORT void mr_low_memory_notification(MiniRacer::Context* mr_context) {
+  mr_context->isolate->LowMemoryNotification();
 }
 
 LIB_EXPORT char const* mr_v8_version() {
@@ -653,7 +663,8 @@ LIB_EXPORT char const* mr_v8_version() {
 }
 
 // FOR DEBUGGING ONLY
-LIB_EXPORT BinaryValue* mr_heap_snapshot(MiniRacerContext* mini_racer_context) {
-  return mini_racer_context->heap_snapshot().release();
+LIB_EXPORT MiniRacer::BinaryValue* mr_heap_snapshot(
+    MiniRacer::Context* mr_context) {
+  return mr_context->heap_snapshot().release();
 }
-}
+}  // end extern "C"
