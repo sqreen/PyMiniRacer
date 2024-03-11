@@ -14,7 +14,7 @@ LIB_EXPORT MiniRacer::BinaryValue* mr_eval_context(
     char* str,
     int len,
     unsigned long timeout) {
-  return mr_context->eval(std::string(str, len), timeout).release();
+  return mr_context->Eval(std::string(str, len), timeout).release();
 }
 
 LIB_EXPORT void mr_init_v8(const char* v8_flags,
@@ -38,25 +38,25 @@ LIB_EXPORT void mr_free_context(MiniRacer::Context* mr_context) {
 
 LIB_EXPORT MiniRacer::BinaryValue* mr_heap_stats(
     MiniRacer::Context* mr_context) {
-  return mr_context->heap_stats().release();
+  return mr_context->HeapStats().release();
 }
 
 LIB_EXPORT void mr_set_hard_memory_limit(MiniRacer::Context* mr_context,
                                          size_t limit) {
-  mr_context->set_hard_memory_limit(limit);
+  mr_context->SetHardMemoryLimit(limit);
 }
 
 LIB_EXPORT void mr_set_soft_memory_limit(MiniRacer::Context* mr_context,
                                          size_t limit) {
-  mr_context->set_soft_memory_limit(limit);
+  mr_context->SetSoftMemoryLimit(limit);
 }
 
 LIB_EXPORT bool mr_soft_memory_limit_reached(MiniRacer::Context* mr_context) {
-  return mr_context->soft_memory_limit_reached;
+  return mr_context->IsSoftMemoryLimitReached();
 }
 
 LIB_EXPORT void mr_low_memory_notification(MiniRacer::Context* mr_context) {
-  mr_context->isolate->LowMemoryNotification();
+  mr_context->ApplyLowMemoryNotification();
 }
 
 LIB_EXPORT char const* mr_v8_version() {
@@ -66,6 +66,6 @@ LIB_EXPORT char const* mr_v8_version() {
 // FOR DEBUGGING ONLY
 LIB_EXPORT MiniRacer::BinaryValue* mr_heap_snapshot(
     MiniRacer::Context* mr_context) {
-  return mr_context->heap_snapshot().release();
+  return mr_context->HeapSnapshot().release();
 }
 }  // end extern "C"

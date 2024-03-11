@@ -37,46 +37,43 @@ void Context::BinaryValueFree(BinaryValue* v) {
       break;
     case type_shared_array_buffer:
     case type_array_buffer:
-      backing_stores.erase(v);
+      backing_stores_.erase(v);
       break;
   }
   delete v;
 }
 
-void Context::static_gc_callback(v8::Isolate* isolate,
-                                 v8::GCType type,
-                                 v8::GCCallbackFlags flags,
-                                 void* data) {
-  ((Context*)data)->gc_callback(isolate);
+void Context::StaticGCCallback(v8::Isolate* isolate,
+                               v8::GCType type,
+                               v8::GCCallbackFlags flags,
+                               void* data) {
+  static_cast<Context*>(data)->GCCallback(isolate);
 }
 
-void Context::gc_callback(v8::Isolate* isolate) {
+void Context::GCCallback(v8::Isolate* isolate) {
   v8::HeapStatistics stats;
   isolate->GetHeapStatistics(&stats);
   size_t used = stats.used_heap_size();
 
-  soft_memory_limit_reached = (used > soft_memory_limit);
-  isolate->MemoryPressureNotification((soft_memory_limit_reached)
+  soft_memory_limit_reached_ =
+      (soft_memory_limit_ > 0) && (used > soft_memory_limit_);
+  isolate->MemoryPressureNotification((soft_memory_limit_reached_)
                                           ? v8::MemoryPressureLevel::kModerate
                                           : v8::MemoryPressureLevel::kNone);
-  if (used > hard_memory_limit) {
-    hard_memory_limit_reached = true;
+  if ((hard_memory_limit_ > 0) && used > hard_memory_limit_) {
+    hard_memory_limit_reached_ = true;
     isolate->TerminateExecution();
   }
 }
 
-void Context::set_hard_memory_limit(size_t limit) {
-  hard_memory_limit = limit;
-  hard_memory_limit_reached = false;
-
-  if (limit > 0) {
-    isolate->AddGCEpilogueCallback(static_gc_callback, this);
-  }
+void Context::SetHardMemoryLimit(size_t limit) {
+  hard_memory_limit_ = limit;
+  hard_memory_limit_reached_ = false;
 }
 
-void Context::set_soft_memory_limit(size_t limit) {
-  soft_memory_limit = limit;
-  soft_memory_limit_reached = false;
+void Context::SetSoftMemoryLimit(size_t limit) {
+  soft_memory_limit_ = limit;
+  soft_memory_limit_reached_ = false;
 }
 
 namespace {
@@ -88,18 +85,18 @@ bool maybe_fast_call(const std::string& code) {
 }
 }  // end anonymous namespace
 
-BinaryValuePtr Context::summarizeTryCatch(v8::Local<v8::Context>& context,
-                                          v8::TryCatch& trycatch,
+BinaryValuePtr Context::SummarizeTryCatch(v8::Local<v8::Context>& context,
+                                          const v8::TryCatch& trycatch,
                                           BinaryTypes resultType) {
   if (!trycatch.StackTrace(context).IsEmpty()) {
     v8::Local<v8::Value> stacktrace;
 
     if (trycatch.StackTrace(context).ToLocal(&stacktrace)) {
-      std::optional<std::string> backtrace = valueToUtf8String(stacktrace);
+      std::optional<std::string> backtrace = ValueToUtf8String(stacktrace);
       if (backtrace.has_value()) {
         // Generally the backtrace from v8 starts with the exception message, so
         // we can skip the exception message (below) when we have the backtrace.
-        return makeBinaryValue(backtrace.value(), resultType);
+        return MakeBinaryValue(backtrace.value(), resultType);
       }
     }
   }
@@ -107,24 +104,24 @@ BinaryValuePtr Context::summarizeTryCatch(v8::Local<v8::Context>& context,
   // Fall back to the backtrace-less exception message:
   if (!trycatch.Exception()->IsNull()) {
     std::optional<std::string> message =
-        valueToUtf8String(trycatch.Exception());
+        ValueToUtf8String(trycatch.Exception());
     if (message.has_value()) {
-      return makeBinaryValue(message.value(), resultType);
+      return MakeBinaryValue(message.value(), resultType);
     }
   }
 
   // Send no message at all; the recipient can fill in generic messages based on
   // the type code.
-  return makeBinaryValue("", resultType);
+  return MakeBinaryValue("", resultType);
 }
 
 namespace {
-/** Spawns a separate thread which calls isolate->TerminateExecution() after a
- * timeout, if not first disengaged. */
+/** Spawns a separate thread which calls v8::Isolate::TerminateExecution() after
+ * a timeout, if not first disengaged. */
 class BreakerThread {
  public:
   BreakerThread(v8::Isolate* isolate, unsigned long timeout)
-      : isolate(isolate), timeout(timeout), timed_out_(false) {
+      : isolate_(isolate), timeout(timeout), timed_out_(false) {
     if (timeout > 0) {
       engaged = true;
       mutex.lock();
@@ -150,11 +147,11 @@ class BreakerThread {
   void threadMain() {
     if (!mutex.try_lock_for(std::chrono::milliseconds(timeout))) {
       timed_out_ = true;
-      isolate->TerminateExecution();
+      isolate_->TerminateExecution();
     }
   }
 
-  v8::Isolate* isolate;
+  v8::Isolate* isolate_;
   unsigned long timeout;
   bool engaged;
   bool timed_out_;
@@ -163,11 +160,11 @@ class BreakerThread {
 };
 }  // end anonymous namespace
 
-BinaryValuePtr Context::eval(const std::string& code, unsigned long timeout) {
-  v8::Locker lock(isolate);
-  v8::Isolate::Scope isolate_scope(isolate);
+BinaryValuePtr Context::Eval(const std::string& code, unsigned long timeout) {
+  v8::Locker lock(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
 
-  v8::TryCatch trycatch(isolate);
+  v8::TryCatch trycatch(isolate_);
 
   // Later in this function, we pump the v8 message loop.
   // Per comment in v8/samples/shell.cc, it is important not to pump the message
@@ -176,7 +173,7 @@ BinaryValuePtr Context::eval(const std::string& code, unsigned long timeout) {
   // we don't use any v8::Local handles here; only in sub-scopes of this method.
 
   // Spawn a thread to inforce the timeout limit:
-  BreakerThread breaker_thread(isolate, timeout);
+  BreakerThread breaker_thread(isolate_, timeout);
 
   bool parsed = false;
   bool executed = false;
@@ -184,14 +181,14 @@ BinaryValuePtr Context::eval(const std::string& code, unsigned long timeout) {
 
   // Is it a single function call?
   if (maybe_fast_call(code)) {
-    v8::HandleScope handle_scope(isolate);
-    v8::Local<v8::Context> context = persistentContext->Get(isolate);
+    v8::HandleScope handle_scope(isolate_);
+    v8::Local<v8::Context> context = context_->Get(isolate_);
     v8::Context::Scope context_scope(context);
     v8::Local<v8::String> identifier;
     v8::Local<v8::Value> func;
 
     // Let's check if the value is a callable identifier
-    parsed = v8::String::NewFromUtf8(isolate, code.data(),
+    parsed = v8::String::NewFromUtf8(isolate_, code.data(),
                                      v8::NewStringType::kNormal,
                                      static_cast<int>(code.size() - 2))
                  .ToLocal(&identifier) &&
@@ -202,23 +199,23 @@ BinaryValuePtr Context::eval(const std::string& code, unsigned long timeout) {
       // Call the identifier
       v8::MaybeLocal<v8::Value> maybe_value =
           v8::Local<v8::Function>::Cast(func)->Call(
-              context, v8::Undefined(isolate), 0, {});
+              context, v8::Undefined(isolate_), 0, {});
       if (!maybe_value.IsEmpty()) {
         executed = true;
-        ret = convert_v8_to_binary(context, maybe_value.ToLocalChecked());
+        ret = ConvertV8ToBinary(context, maybe_value.ToLocalChecked());
       }
     }
   }
 
-  // Fallback on a slower full eval
+  // Fallback on a slower full Eval
   if (!executed) {
-    v8::HandleScope handle_scope(isolate);
-    v8::Local<v8::Context> context = persistentContext->Get(isolate);
+    v8::HandleScope handle_scope(isolate_);
+    v8::Local<v8::Context> context = context_->Get(isolate_);
     v8::Context::Scope context_scope(context);
     v8::Local<v8::String> asString;
     v8::Local<v8::Script> script;
 
-    parsed = v8::String::NewFromUtf8(isolate, code.data(),
+    parsed = v8::String::NewFromUtf8(isolate_, code.data(),
                                      v8::NewStringType::kNormal,
                                      static_cast<int>(code.size()))
                  .ToLocal(&asString) &&
@@ -226,27 +223,27 @@ BinaryValuePtr Context::eval(const std::string& code, unsigned long timeout) {
              !script.IsEmpty();
 
     if (!parsed) {
-      return summarizeTryCatch(context, trycatch, type_parse_exception);
+      return SummarizeTryCatch(context, trycatch, type_parse_exception);
     }
 
     v8::MaybeLocal<v8::Value> maybe_value = script->Run(context);
     if (!maybe_value.IsEmpty()) {
       executed = true;
-      ret = convert_v8_to_binary(context, maybe_value.ToLocalChecked());
+      ret = ConvertV8ToBinary(context, maybe_value.ToLocalChecked());
     }
   }
 
   if (executed) {
     // Execute all pending tasks
 
-    while (!breaker_thread.timed_out() && !hard_memory_limit_reached) {
+    while (!breaker_thread.timed_out() && !hard_memory_limit_reached_) {
       bool wait =
-          isolate->HasPendingBackgroundTasks();  // Only wait when needed
-                                                 // otherwise it waits forever.
+          isolate_->HasPendingBackgroundTasks();  // Only wait when needed
+                                                  // otherwise it waits forever.
 
       // Run message loop items (like timers)
       if (!v8::platform::PumpMessageLoop(
-              current_platform.get(), isolate,
+              current_platform.get(), isolate_,
               (wait) ? v8::platform::MessageLoopBehavior::kWaitForWork
                      : v8::platform::MessageLoopBehavior::kDoNotWait)) {
         break;
@@ -258,13 +255,13 @@ BinaryValuePtr Context::eval(const std::string& code, unsigned long timeout) {
 
   if (!executed) {
     // Still didn't execute. Find an error:
-    v8::HandleScope handle_scope(isolate);
-    v8::Local<v8::Context> context = persistentContext->Get(isolate);
+    v8::HandleScope handle_scope(isolate_);
+    v8::Local<v8::Context> context = context_->Get(isolate_);
     v8::Context::Scope context_scope(context);
 
     BinaryTypes resultType;
 
-    if (hard_memory_limit_reached) {
+    if (hard_memory_limit_reached_) {
       resultType = type_oom_exception;
     } else if (breaker_thread.timed_out()) {
       resultType = type_timeout_exception;
@@ -274,15 +271,15 @@ BinaryValuePtr Context::eval(const std::string& code, unsigned long timeout) {
       resultType = type_execute_exception;
     }
 
-    return summarizeTryCatch(context, trycatch, resultType);
+    return SummarizeTryCatch(context, trycatch, resultType);
   }
 
   return ret;
 }
 
-std::optional<std::string> Context::valueToUtf8String(
+std::optional<std::string> Context::ValueToUtf8String(
     v8::Local<v8::Value> value) {
-  v8::String::Utf8Value utf8(isolate, value);
+  v8::String::Utf8Value utf8(isolate_, value);
 
   if (utf8.length()) {
     return std::make_optional(std::string(*utf8, utf8.length()));
@@ -291,12 +288,12 @@ std::optional<std::string> Context::valueToUtf8String(
   return std::nullopt;
 }
 
-BinaryValuePtr Context::convert_v8_to_binary(v8::Local<v8::Context> context,
-                                             v8::Local<v8::Value> value) {
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::HandleScope scope(isolate);
+BinaryValuePtr Context::ConvertV8ToBinary(v8::Local<v8::Context> context,
+                                          v8::Local<v8::Value> value) {
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope scope(isolate_);
 
-  BinaryValuePtr res = makeBinaryValue();
+  BinaryValuePtr res = MakeBinaryValue();
 
   if (value->IsNull() || value->IsUndefined()) {
     res->type = type_null;
@@ -328,10 +325,10 @@ BinaryValuePtr Context::convert_v8_to_binary(v8::Local<v8::Context> context,
     v8::Local<v8::String> rstr = value->ToString(context).ToLocalChecked();
 
     res->type = type_str_utf8;
-    res->len = size_t(rstr->Utf8Length(isolate));  // in bytes
+    res->len = size_t(rstr->Utf8Length(isolate_));  // in bytes
     size_t capacity = res->len + 1;
     res->bytes = new char[capacity];
-    rstr->WriteUtf8(isolate, res->bytes);
+    rstr->WriteUtf8(isolate_, res->bytes);
   } else if (value->IsSharedArrayBuffer() || value->IsArrayBuffer() ||
              value->IsArrayBufferView()) {
     std::shared_ptr<v8::BackingStore> backing_store;
@@ -355,7 +352,7 @@ BinaryValuePtr Context::convert_v8_to_binary(v8::Local<v8::Context> context,
       size = backing_store->ByteLength();
     }
 
-    backing_stores[res.get()] = backing_store;
+    backing_stores_[res.get()] = backing_store;
     res->type = value->IsSharedArrayBuffer() ? type_shared_array_buffer
                                              : type_array_buffer;
     res->ptr_val = static_cast<char*>(backing_store->Data()) + offset;
@@ -371,18 +368,16 @@ BinaryValuePtr Context::convert_v8_to_binary(v8::Local<v8::Context> context,
 }
 
 Context::~Context() {
-  if (persistentContext) {
-    v8::Locker lock(isolate);
-    v8::Isolate::Scope isolate_scope(isolate);
+  if (context_) {
+    v8::Locker lock(isolate_);
+    v8::Isolate::Scope isolate_scope(isolate_);
 
-    backing_stores.clear();
-    persistentContext->Reset();
-    delete persistentContext;
+    backing_stores_.clear();
+    context_->Reset();
+    delete context_;
   }
 
-  isolate->Dispose();
-
-  delete allocator;
+  isolate_->Dispose();
 }
 
 void init_v8(char const* v8_flags,
@@ -404,65 +399,70 @@ void init_v8(char const* v8_flags,
 }
 
 Context::Context()
-    : allocator(v8::ArrayBuffer::Allocator::NewDefaultAllocator()),
-      soft_memory_limit(0),
-      soft_memory_limit_reached(false),
-      hard_memory_limit(0),
-      hard_memory_limit_reached(false) {
+    : allocator_(v8::ArrayBuffer::Allocator::NewDefaultAllocator()),
+      soft_memory_limit_(0),
+      soft_memory_limit_reached_(false),
+      hard_memory_limit_(0),
+      hard_memory_limit_reached_(false) {
   v8::Isolate::CreateParams create_params;
-  create_params.array_buffer_allocator = allocator;
+  create_params.array_buffer_allocator = allocator_.get();
 
-  isolate = v8::Isolate::New(create_params);
+  isolate_ = v8::Isolate::New(create_params);
 
-  v8::Locker lock(isolate);
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::HandleScope handle_scope(isolate);
+  v8::Locker lock(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
 
-  persistentContext =
-      new v8::Persistent<v8::Context>(isolate, v8::Context::New(isolate));
+  context_ =
+      new v8::Persistent<v8::Context>(isolate_, v8::Context::New(isolate_));
+
+  isolate_->AddGCEpilogueCallback(StaticGCCallback, this);
 }
 
-BinaryValuePtr Context::heap_stats() {
+BinaryValuePtr Context::HeapStats() {
   v8::HeapStatistics stats;
 
-  if (!isolate) {
+  if (!isolate_) {
     return BinaryValuePtr();
   }
 
-  v8::Locker lock(isolate);
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::HandleScope handle_scope(isolate);
+  v8::Locker lock(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
 
-  v8::TryCatch trycatch(isolate);
-  v8::Local<v8::Context> context = persistentContext->Get(isolate);
+  v8::TryCatch trycatch(isolate_);
+  v8::Local<v8::Context> context = context_->Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  isolate->GetHeapStatistics(&stats);
+  isolate_->GetHeapStatistics(&stats);
 
-  v8::Local<v8::Object> stats_obj = v8::Object::New(isolate);
+  v8::Local<v8::Object> stats_obj = v8::Object::New(isolate_);
 
   stats_obj
       ->Set(context,
-            v8::String::NewFromUtf8Literal(isolate, "total_physical_size"),
-            v8::Number::New(isolate, (double)stats.total_physical_size()))
+            v8::String::NewFromUtf8Literal(isolate_, "total_physical_size"),
+            v8::Number::New(isolate_, (double)stats.total_physical_size()))
       .Check();
   stats_obj
       ->Set(
           context,
-          v8::String::NewFromUtf8Literal(isolate, "total_heap_size_executable"),
-          v8::Number::New(isolate, (double)stats.total_heap_size_executable()))
+          v8::String::NewFromUtf8Literal(isolate_,
+                                         "total_heap_size_executable"),
+          v8::Number::New(isolate_, (double)stats.total_heap_size_executable()))
       .Check();
   stats_obj
-      ->Set(context, v8::String::NewFromUtf8Literal(isolate, "total_heap_size"),
-            v8::Number::New(isolate, (double)stats.total_heap_size()))
+      ->Set(context,
+            v8::String::NewFromUtf8Literal(isolate_, "total_heap_size"),
+            v8::Number::New(isolate_, (double)stats.total_heap_size()))
       .Check();
   stats_obj
-      ->Set(context, v8::String::NewFromUtf8Literal(isolate, "used_heap_size"),
-            v8::Number::New(isolate, (double)stats.used_heap_size()))
+      ->Set(context, v8::String::NewFromUtf8Literal(isolate_, "used_heap_size"),
+            v8::Number::New(isolate_, (double)stats.used_heap_size()))
       .Check();
   stats_obj
-      ->Set(context, v8::String::NewFromUtf8Literal(isolate, "heap_size_limit"),
-            v8::Number::New(isolate, (double)stats.heap_size_limit()))
+      ->Set(context,
+            v8::String::NewFromUtf8Literal(isolate_, "heap_size_limit"),
+            v8::Number::New(isolate_, (double)stats.heap_size_limit()))
       .Check();
 
   v8::Local<v8::String> output;
@@ -470,7 +470,7 @@ BinaryValuePtr Context::heap_stats() {
       output.IsEmpty()) {
     return BinaryValuePtr();
   }
-  return convert_v8_to_binary(context, output);
+  return ConvertV8ToBinary(context, output);
 }
 
 namespace {
@@ -491,14 +491,14 @@ class StringOutputStream : public v8::OutputStream {
 };
 }  // end anonymous namespace
 
-BinaryValuePtr Context::heap_snapshot() {
-  v8::Locker lock(isolate);
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::HandleScope handle_scope(isolate);
-  auto snap = isolate->GetHeapProfiler()->TakeHeapSnapshot();
+BinaryValuePtr Context::HeapSnapshot() {
+  v8::Locker lock(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
+  auto snap = isolate_->GetHeapProfiler()->TakeHeapSnapshot();
   StringOutputStream sos;
   snap->Serialize(&sos);
-  return makeBinaryValue(sos.result(), type_str_utf8);
+  return MakeBinaryValue(sos.result(), type_str_utf8);
 }
 
 }  // end namespace MiniRacer

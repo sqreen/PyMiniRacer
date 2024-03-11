@@ -53,12 +53,12 @@ class Context;
 
 class BinaryValueDeleter {
  public:
-  BinaryValueDeleter() : mr_context(0) {}
-  BinaryValueDeleter(Context* mr_context) : mr_context(mr_context) {}
+  BinaryValueDeleter() : mr_context_(0) {}
+  BinaryValueDeleter(Context* mr_context) : mr_context_(mr_context) {}
   void operator()(BinaryValue* bv) const;
 
  private:
-  Context* mr_context;
+  Context* mr_context_;
 };
 
 typedef std::unique_ptr<BinaryValue, BinaryValueDeleter> BinaryValuePtr;
@@ -68,45 +68,51 @@ class Context {
   Context();
   ~Context();
 
-  v8::Isolate* isolate;
-  v8::Persistent<v8::Context>* persistentContext;
-  v8::ArrayBuffer::Allocator* allocator;
-  std::map<void*, std::shared_ptr<v8::BackingStore>> backing_stores;
-  size_t soft_memory_limit;
-  bool soft_memory_limit_reached;
-  size_t hard_memory_limit;
-  bool hard_memory_limit_reached;
+  void SetHardMemoryLimit(size_t limit);
+  void SetSoftMemoryLimit(size_t limit);
 
-  template <typename... Args>
-  BinaryValuePtr makeBinaryValue(Args&&... args);
+  bool IsSoftMemoryLimitReached() { return soft_memory_limit_reached_; }
+  bool IsHardMemoryLimitReached() { return hard_memory_limit_reached_; }
+  void ApplyLowMemoryNotification() { isolate_->LowMemoryNotification(); }
 
   void BinaryValueFree(BinaryValue* v);
+  BinaryValuePtr HeapSnapshot();
+  BinaryValuePtr HeapStats();
+  BinaryValuePtr Eval(const std::string& code, unsigned long timeout);
 
-  std::optional<std::string> valueToUtf8String(v8::Local<v8::Value> value);
+ private:
+  template <typename... Args>
+  BinaryValuePtr MakeBinaryValue(Args&&... args);
 
-  static void static_gc_callback(v8::Isolate* isolate,
-                                 v8::GCType type,
-                                 v8::GCCallbackFlags flags,
-                                 void* data);
-  void gc_callback(v8::Isolate* isolate);
-  void set_hard_memory_limit(size_t limit);
-  void set_soft_memory_limit(size_t limit);
-  BinaryValuePtr convert_v8_to_binary(v8::Local<v8::Context> context,
-                                      v8::Local<v8::Value> value);
-  BinaryValuePtr heap_snapshot();
-  BinaryValuePtr heap_stats();
-  BinaryValuePtr eval(const std::string& code, unsigned long timeout);
-  BinaryValuePtr summarizeTryCatch(v8::Local<v8::Context>& context,
-                                   v8::TryCatch& trycatch,
+  std::optional<std::string> ValueToUtf8String(v8::Local<v8::Value> value);
+
+  static void StaticGCCallback(v8::Isolate* isolate,
+                               v8::GCType type,
+                               v8::GCCallbackFlags flags,
+                               void* data);
+  void GCCallback(v8::Isolate* isolate);
+  BinaryValuePtr ConvertV8ToBinary(v8::Local<v8::Context> context,
+                                   v8::Local<v8::Value> value);
+  BinaryValuePtr SummarizeTryCatch(v8::Local<v8::Context>& context,
+                                   const v8::TryCatch& trycatch,
                                    BinaryTypes resultType);
+
+  std::unique_ptr<v8::ArrayBuffer::Allocator> allocator_;
+  v8::Isolate* isolate_;
+  v8::Persistent<v8::Context>* context_;
+  std::unordered_map<void*, std::shared_ptr<v8::BackingStore>> backing_stores_;
+  size_t soft_memory_limit_;
+  bool soft_memory_limit_reached_;
+  size_t hard_memory_limit_;
+  bool hard_memory_limit_reached_;
 };
 
 inline void BinaryValueDeleter::operator()(BinaryValue* bv) const {
-  mr_context->BinaryValueFree(bv);
+  mr_context_->BinaryValueFree(bv);
 }
 
 template <typename... Args>
-inline BinaryValuePtr Context::makeBinaryValue(Args&&... args) {
+inline BinaryValuePtr Context::MakeBinaryValue(Args&&... args) {
   return BinaryValuePtr(new BinaryValue(std::forward<Args>(args)...),
                         BinaryValueDeleter(this));
 }
