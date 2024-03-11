@@ -4,6 +4,11 @@ v8_shared_library("mini_racer") {
   output_name = "mini_racer"
   sources = [
     "exports.cc",
+    "binary_value.h",
+    "binary_value.cc",
+    "breaker_thread.h",
+    "breaker_thread.cc",
+    "mini_racer.h",
     "mini_racer.cc",
   ]
   deps = [

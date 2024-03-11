@@ -29,7 +29,7 @@ LIB_EXPORT MiniRacer::Context* mr_init_context() {
 
 LIB_EXPORT void mr_free_value(MiniRacer::Context* mr_context,
                               MiniRacer::BinaryValue* val) {
-  mr_context->BinaryValueFree(val);
+  mr_context->FreeBinaryValue(val);
 }
 
 LIB_EXPORT void mr_free_context(MiniRacer::Context* mr_context) {

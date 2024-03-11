@@ -9,38 +9,6 @@ namespace {
 std::unique_ptr<v8::Platform> current_platform = nullptr;
 }  // end anonymous namespace
 
-void Context::BinaryValueFree(BinaryValue* v) {
-  if (!v) {
-    return;
-  }
-  switch (v->type) {
-    case type_execute_exception:
-    case type_parse_exception:
-    case type_oom_exception:
-    case type_timeout_exception:
-    case type_terminated_exception:
-    case type_str_utf8:
-      delete[] v->bytes;
-      break;
-    case type_bool:
-    case type_double:
-    case type_date:
-    case type_null:
-    case type_integer:
-    case type_function:  // no value implemented
-    case type_symbol:
-    case type_object:
-    case type_invalid:
-      // the other types are scalar values
-      break;
-    case type_shared_array_buffer:
-    case type_array_buffer:
-      backing_stores_.erase(v);
-      break;
-  }
-  delete v;
-}
-
 void Context::StaticGCCallback(v8::Isolate* isolate,
                                v8::GCType type,
                                v8::GCCallbackFlags flags,
@@ -83,9 +51,9 @@ bool maybe_fast_call(const std::string& code) {
 }
 }  // end anonymous namespace
 
-BinaryValuePtr Context::SummarizeTryCatch(v8::Local<v8::Context>& context,
-                                          const v8::TryCatch& trycatch,
-                                          BinaryTypes resultType) {
+BinaryValue::Ptr Context::SummarizeTryCatch(v8::Local<v8::Context>& context,
+                                            const v8::TryCatch& trycatch,
+                                            BinaryTypes resultType) {
   if (!trycatch.StackTrace(context).IsEmpty()) {
     v8::Local<v8::Value> stacktrace;
 
@@ -94,7 +62,7 @@ BinaryValuePtr Context::SummarizeTryCatch(v8::Local<v8::Context>& context,
       if (backtrace.has_value()) {
         // Generally the backtrace from v8 starts with the exception message, so
         // we can skip the exception message (below) when we have the backtrace.
-        return MakeBinaryValue(backtrace.value(), resultType);
+        return bv_factory_.New(backtrace.value(), resultType);
       }
     }
   }
@@ -104,16 +72,16 @@ BinaryValuePtr Context::SummarizeTryCatch(v8::Local<v8::Context>& context,
     std::optional<std::string> message =
         ValueToUtf8String(trycatch.Exception());
     if (message.has_value()) {
-      return MakeBinaryValue(message.value(), resultType);
+      return bv_factory_.New(message.value(), resultType);
     }
   }
 
   // Send no message at all; the recipient can fill in generic messages based on
   // the type code.
-  return MakeBinaryValue("", resultType);
+  return bv_factory_.New("", resultType);
 }
 
-BinaryValuePtr Context::Eval(const std::string& code, unsigned long timeout) {
+BinaryValue::Ptr Context::Eval(const std::string& code, unsigned long timeout) {
   v8::Locker lock(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
 
@@ -130,7 +98,7 @@ BinaryValuePtr Context::Eval(const std::string& code, unsigned long timeout) {
 
   bool parsed = false;
   bool executed = false;
-  BinaryValuePtr ret;
+  BinaryValue::Ptr ret;
 
   // Is it a single function call?
   if (maybe_fast_call(code)) {
@@ -155,7 +123,7 @@ BinaryValuePtr Context::Eval(const std::string& code, unsigned long timeout) {
               context, v8::Undefined(isolate_), 0, {});
       if (!maybe_value.IsEmpty()) {
         executed = true;
-        ret = ConvertV8ToBinary(context, maybe_value.ToLocalChecked());
+        ret = bv_factory_.ConvertFromV8(context, maybe_value.ToLocalChecked());
       }
     }
   }
@@ -182,7 +150,7 @@ BinaryValuePtr Context::Eval(const std::string& code, unsigned long timeout) {
     v8::MaybeLocal<v8::Value> maybe_value = script->Run(context);
     if (!maybe_value.IsEmpty()) {
       executed = true;
-      ret = ConvertV8ToBinary(context, maybe_value.ToLocalChecked());
+      ret = bv_factory_.ConvertFromV8(context, maybe_value.ToLocalChecked());
     }
   }
 
@@ -241,91 +209,12 @@ std::optional<std::string> Context::ValueToUtf8String(
   return std::nullopt;
 }
 
-BinaryValuePtr Context::ConvertV8ToBinary(v8::Local<v8::Context> context,
-                                          v8::Local<v8::Value> value) {
-  v8::Isolate::Scope isolate_scope(isolate_);
-  v8::HandleScope scope(isolate_);
-
-  BinaryValuePtr res = MakeBinaryValue();
-
-  if (value->IsNull() || value->IsUndefined()) {
-    res->type = type_null;
-  } else if (value->IsInt32()) {
-    res->type = type_integer;
-    auto val = value->Uint32Value(context).ToChecked();
-    res->int_val = val;
-  }
-  // ECMA-262, 4.3.20
-  // http://www.ecma-international.org/ecma-262/5.1/#sec-4.3.19
-  else if (value->IsNumber()) {
-    res->type = type_double;
-    double val = value->NumberValue(context).ToChecked();
-    res->double_val = val;
-  } else if (value->IsBoolean()) {
-    res->type = type_bool;
-    res->int_val = (value->IsTrue() ? 1 : 0);
-  } else if (value->IsFunction()) {
-    res->type = type_function;
-  } else if (value->IsSymbol()) {
-    res->type = type_symbol;
-  } else if (value->IsDate()) {
-    res->type = type_date;
-    v8::Local<v8::Date> date = v8::Local<v8::Date>::Cast(value);
-
-    double timestamp = date->ValueOf();
-    res->double_val = timestamp;
-  } else if (value->IsString()) {
-    v8::Local<v8::String> rstr = value->ToString(context).ToLocalChecked();
-
-    res->type = type_str_utf8;
-    res->len = size_t(rstr->Utf8Length(isolate_));  // in bytes
-    size_t capacity = res->len + 1;
-    res->bytes = new char[capacity];
-    rstr->WriteUtf8(isolate_, res->bytes);
-  } else if (value->IsSharedArrayBuffer() || value->IsArrayBuffer() ||
-             value->IsArrayBufferView()) {
-    std::shared_ptr<v8::BackingStore> backing_store;
-    size_t offset = 0;
-    size_t size = 0;
-
-    if (value->IsArrayBufferView()) {
-      v8::Local<v8::ArrayBufferView> view =
-          v8::Local<v8::ArrayBufferView>::Cast(value);
-
-      backing_store = view->Buffer()->GetBackingStore();
-      offset = view->ByteOffset();
-      size = view->ByteLength();
-    } else if (value->IsSharedArrayBuffer()) {
-      backing_store =
-          v8::Local<v8::SharedArrayBuffer>::Cast(value)->GetBackingStore();
-      size = backing_store->ByteLength();
-    } else {
-      backing_store =
-          v8::Local<v8::ArrayBuffer>::Cast(value)->GetBackingStore();
-      size = backing_store->ByteLength();
-    }
-
-    backing_stores_[res.get()] = backing_store;
-    res->type = value->IsSharedArrayBuffer() ? type_shared_array_buffer
-                                             : type_array_buffer;
-    res->ptr_val = static_cast<char*>(backing_store->Data()) + offset;
-    res->len = size;
-
-  } else if (value->IsObject()) {
-    res->type = type_object;
-    res->int_val = value->ToObject(context).ToLocalChecked()->GetIdentityHash();
-  } else {
-    return BinaryValuePtr();
-  }
-  return res;
-}
-
 Context::~Context() {
   if (context_) {
     v8::Locker lock(isolate_);
     v8::Isolate::Scope isolate_scope(isolate_);
 
-    backing_stores_.clear();
+    bv_factory_.Clear();
     context_->Reset();
     delete context_;
   }
@@ -372,11 +261,11 @@ Context::Context()
   isolate_->AddGCEpilogueCallback(StaticGCCallback, this);
 }
 
-BinaryValuePtr Context::HeapStats() {
+BinaryValue::Ptr Context::HeapStats() {
   v8::HeapStatistics stats;
 
   if (!isolate_) {
-    return BinaryValuePtr();
+    return BinaryValue::Ptr();
   }
 
   v8::Locker lock(isolate_);
@@ -421,9 +310,9 @@ BinaryValuePtr Context::HeapStats() {
   v8::Local<v8::String> output;
   if (!v8::JSON::Stringify(context, stats_obj).ToLocal(&output) ||
       output.IsEmpty()) {
-    return BinaryValuePtr();
+    return BinaryValue::Ptr();
   }
-  return ConvertV8ToBinary(context, output);
+  return bv_factory_.ConvertFromV8(context, output);
 }
 
 namespace {
@@ -444,14 +333,14 @@ class StringOutputStream : public v8::OutputStream {
 };
 }  // end anonymous namespace
 
-BinaryValuePtr Context::HeapSnapshot() {
+BinaryValue::Ptr Context::HeapSnapshot() {
   v8::Locker lock(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
   v8::HandleScope handle_scope(isolate_);
   auto snap = isolate_->GetHeapProfiler()->TakeHeapSnapshot();
   StringOutputStream sos;
   snap->Serialize(&sos);
-  return MakeBinaryValue(sos.result(), type_str_utf8);
+  return bv_factory_.New(sos.result(), type_str_utf8);
 }
 
 }  // end namespace MiniRacer
