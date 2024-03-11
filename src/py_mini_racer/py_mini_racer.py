@@ -11,7 +11,7 @@ from os.path import exists
 from os.path import join as pathjoin
 from sys import platform, version_info
 from threading import Lock
-from typing import ClassVar, Iterable, Iterator
+from typing import Any, ClassVar, Iterable, Iterator
 
 
 class MiniRacerBaseException(Exception):  # noqa: N818
@@ -93,6 +93,23 @@ def _get_lib_filename(name):
         prefix, ext = "lib", ".so"
 
     return prefix + name + ext
+
+
+class MiniRacerValueStruct(ctypes.Structure):
+    _fields_: ClassVar[tuple[str, object]] = [
+        ("value", ctypes.c_void_p),  # value is 8 bytes, works only for 64bit systems
+        ("type", ctypes.c_int),
+        ("len", ctypes.c_size_t),
+    ]
+
+
+class ArrayBufferByte(ctypes.Structure):
+    # Cannot use c_ubyte directly because it uses <B
+    # as an internal type but we need B for memoryview.
+    _fields_: ClassVar[tuple[str, object]] = [
+        ("b", ctypes.c_ubyte),
+    ]
+    _pack_ = 1
 
 
 def _build_dll_handle(dll_path) -> ctypes.CDLL:
@@ -243,13 +260,13 @@ class MiniRacer:
         self.lock = Lock()
 
     @property
-    def v8_version(self):
+    def v8_version(self) -> str:
         """Return the V8 version string."""
         return str(self._dll.mr_v8_version())
 
     def eval(  # noqa: A003
         self, code: str, timeout: int | None = None, max_memory: int | None = None
-    ):
+    ) -> Any:
         """Evaluate JavaScript code in the V8 isolate.
 
         Side effects from the JavaScript evaluation is persisted inside a context
@@ -275,9 +292,8 @@ class MiniRacer:
             code = code.encode("utf8")
 
         with self.lock:
-            self._dll.mr_set_hard_memory_limit(
-                self.ctx, ctypes.c_size_t(max_memory or 0)
-            )
+            if max_memory is not None:
+                self.set_hard_memory_limit(max_memory)
 
             res = self._dll.mr_eval_context(
                 self.ctx,
@@ -292,7 +308,7 @@ class MiniRacer:
 
     def execute(
         self, expr: str, timeout: int | None = None, max_memory: int | None = None
-    ):
+    ) -> dict:
         """Helper to evaluate a JavaScript expression and return composite types.
 
         Returned value is serialized to JSON inside the V8 isolate and deserialized
@@ -317,7 +333,7 @@ class MiniRacer:
         encoder: JSONEncoder | None = None,
         timeout: int | None = None,
         max_memory: int | None = None,
-    ):
+    ) -> dict:
         """Helper to call a JavaScript function and return compositve types.
 
         The `expr` argument refers to a JavaScript function in the current V8
@@ -340,8 +356,16 @@ class MiniRacer:
         js = f"{expr}.apply(this, {json_args})"
         return self.execute(js, timeout=timeout, max_memory=max_memory)
 
-    def set_soft_memory_limit(self, limit):
-        # type: (int) -> None
+    def set_hard_memory_limit(self, limit: int) -> None:
+        """Set a hard memory limit on this V8 isolate.
+
+        JavaScript execution will be terminated when this limit is reached.
+
+        :param int limit: memory limit in bytes or 0 to reset the limit
+        """
+        self._dll.mr_set_hard_memory_limit(self.ctx, limit)
+
+    def set_soft_memory_limit(self, limit: int) -> None:
         """Set a soft memory limit on this V8 isolate.
 
         The Garbage Collection will use a more aggressive strategy when
@@ -351,16 +375,15 @@ class MiniRacer:
         """
         self._dll.mr_set_soft_memory_limit(self.ctx, limit)
 
-    def was_soft_memory_limit_reached(self):
-        # type: () -> bool
+    def was_soft_memory_limit_reached(self) -> bool:
         """Return true if the soft memory limit was reached on the V8 isolate."""
         return self._dll.mr_soft_memory_limit_reached(self.ctx)
 
-    def low_memory_notification(self):
+    def low_memory_notification(self) -> None:
         """Ask the V8 isolate to collect memory more aggressively."""
         self._dll.mr_low_memory_notification(self.ctx)
 
-    def heap_stats(self):
+    def heap_stats(self) -> dict:
         """Return the V8 isolate heap statistics."""
 
         with self.lock:
@@ -377,7 +400,7 @@ class MiniRacer:
 
         return self.json_impl.loads(MiniRacerValue(self, res).to_python())
 
-    def heap_snapshot(self):
+    def heap_snapshot(self) -> dict:
         """Return a snapshot of the V8 isolate heap."""
 
         with self.lock:
@@ -385,7 +408,7 @@ class MiniRacer:
 
         return MiniRacerValue(self, res).to_python()
 
-    def _free(self, res):
+    def _free(self, res: MiniRacerValue) -> None:
         self._dll.mr_free_value(self.ctx, res)
 
     def __del__(self):
@@ -429,23 +452,6 @@ class MiniRacerTypes:
     terminated_exception = 204
 
 
-class MiniRacerValueStruct(ctypes.Structure):
-    _fields_: ClassVar[tuple[str, object]] = [
-        ("value", ctypes.c_void_p),  # value is 8 bytes, works only for 64bit systems
-        ("type", ctypes.c_int),
-        ("len", ctypes.c_size_t),
-    ]
-
-
-class ArrayBufferByte(ctypes.Structure):
-    # Cannot use c_ubyte directly because it uses <B
-    # as an internal type but we need B for memoryview.
-    _fields_: ClassVar[tuple[str, object]] = [
-        ("b", ctypes.c_ubyte),
-    ]
-    _pack_ = 1
-
-
 _ERRORS = {
     MiniRacerTypes.parse_exception: (
         JSParseException,
@@ -476,22 +482,22 @@ class MiniRacerValue:
         return str(self.to_python())
 
     @property
-    def type(self):  # noqa: A003
+    def type(self) -> int:  # noqa: A003
         return self.ptr.contents.type
 
     @property
-    def value(self):
+    def value(self) -> Any:
         return self.ptr.contents.value
 
     @property
-    def len(self):  # noqa: A003
+    def len(self) -> int:  # noqa: A003
         return self.ptr.contents.len
 
-    def _double_value(self):
+    def _double_value(self) -> float:
         ptr = ctypes.c_char_p.from_buffer(self.ptr.contents)
         return ctypes.c_double.from_buffer(ptr).value
 
-    def _get_exception_msg(self):
+    def _get_exception_msg(self) -> str:
         msg = ctypes.c_char_p(self.value).value
         return msg.decode("utf-8", errors="replace")
 
@@ -504,7 +510,7 @@ class MiniRacerValue:
 
         raise klass(self._get_exception_msg() or generic_msg)
 
-    def to_python(self):
+    def to_python(self) -> Any:
         self._raise_from_error()
         result = None
         typ = self.type
