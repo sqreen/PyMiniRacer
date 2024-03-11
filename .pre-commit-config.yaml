@@ -28,5 +28,5 @@ repos:
      name: Check C++ format
      entry: clang-format
      language: system
-     files: src/v8_py_frontend/mini_racer.cc
+     files: src/v8_py_frontend/.*\.(cc|h)
      args: ['-style=Chromium', '-i']

@@ -3,6 +3,7 @@ import("../../gni/v8.gni")
 v8_shared_library("mini_racer") {
   output_name = "mini_racer"
   sources = [
+    "exports.cc",
     "mini_racer.cc",
   ]
   deps = [
