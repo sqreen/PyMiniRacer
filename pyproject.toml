@@ -33,6 +33,11 @@ Homepage = "https://github.com/bpcreech/PyMiniRacer"
 [tool.hatch.version]
 path = "src/py_mini_racer/__about__.py"
 
+[tool.hatch.build.targets.wheel]
+# The PyPI package is mini_racer (forked from py_mini_racer) but we keep the original
+# Python module name since this is intended to be a permanent, drop-in replacement:
+packages = ["src/py_mini_racer"]
+
 [tool.hatch.build.targets.wheel.hooks.custom]
 path = "./hatch_build.py"
 
