@@ -1,5 +1,18 @@
 # History
 
+## 0.8.0 (2024-03-16)
+
+- General overhaul of C++ implementation to better adhere to modern best practice. This
+    should have no visible impact except for the following notes...
+- Exposed the hard memory limit as a context-specific (as opposed to `eval`-specific)
+    limit, since that's how it worked all along anyway. The `max_memory` `eval` argument
+    still works for backwards compatibility purposes.
+- Correct message type of some exceptions to `str` instead of `bytes` (they should all
+    be `str` now).
+- Added better messages for JS parse errors.
+- Added backtraces for more JS errors.
+- Added some really basic Python typing.
+
 ## 0.7.0 (2024-03-06)
 
 - Update V8 to 12.2
