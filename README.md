@@ -136,7 +136,8 @@ for the Ruby world by Sam Saffron.
 
 In 2024, PyMiniRacer was revived, and adopted by [Ben Creech](https://bpcreech.com).
 Upon discussion with the original Sqreen authors, we decided to re-launch PyMiniRacer as
-a fork under <https://github.com/bpcreech/mini_racer>.
+a fork under <https://github.com/bpcreech/PyMiniRacer> and
+<https://pypi.org/project/mini-racer/>.
 
 [`Cookiecutter-pypackage`](https://github.com/audreyr/cookiecutter-pypackage) was used
 as this package skeleton.
