@@ -7,12 +7,13 @@ requires = [
 ]
 
 [project]
-name = "py-mini-racer"
+name = "mini-racer"
 dynamic = ["version", "readme"]
 description = "Minimal, modern embedded V8 for Python."
 license = "ISC"
 requires-python = ">= 3.8"
 authors = [
+    { name = "bpcreech", email = "mini-racer@bpcreech.com" },
     { name = "Sqreen", email = "support@sqreen.com" },
 ]
 keywords = [
@@ -27,7 +28,7 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/sqreen/PyMiniRacer"
+Homepage = "https://github.com/bpcreech/PyMiniRacer"
 
 [tool.hatch.version]
 path = "src/py_mini_racer/__about__.py"
@@ -63,7 +64,7 @@ start-after = "# History"
 
 [[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
 pattern = "\\(py_mini_racer.png\\)"
-replacement = '(https://github.com/sqreen/PyMiniRacer/raw/main/py_mini_racer.png)'
+replacement = '(https://github.com/bpcreech/PyMiniRacer/raw/main/py_mini_racer.png)'
 
 [tool.hatch.envs.default]
 dependencies = [

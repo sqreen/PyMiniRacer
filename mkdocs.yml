@@ -1,5 +1,5 @@
 site_name: PyMiniRacer
-site_url: https://sqreen.github.io/PyMiniRacer
+site_url: https://bpcreech.com/PyMiniRacer
 theme:
   name: material
   custom_dir: data

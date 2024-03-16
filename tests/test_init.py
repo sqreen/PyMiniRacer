@@ -1,5 +1,4 @@
 import pytest
-
 from py_mini_racer import LibAlreadyInitializedError, init_mini_racer
 
 

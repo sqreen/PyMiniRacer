@@ -126,7 +126,7 @@ plus our Python `ctypes`-friendly frontend.
 
 Because V8 takes so long to build (about 2-3 hours at present on the free GitHub Actions
 runners, and >12 hours when emulating `aarch64` on them), we want to build wheels for
-PyPI. We don't want folks to have to build V8 when they `pip install py-mini-racer`!.
+PyPI. We don't want folks to have to build V8 when they `pip install mini-racer`!.
 
 We build wheels for many operating systems and architectures based on popular demand via
 GitHib issues. Currently the list is

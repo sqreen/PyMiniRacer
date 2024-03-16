@@ -5,7 +5,6 @@ from json import dumps
 from time import time
 
 import pytest
-
 from py_mini_racer import JSEvalException, JSFunction, JSObject, MiniRacer
 
 

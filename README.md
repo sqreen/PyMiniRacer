@@ -1,5 +1,5 @@
-[![PyPI status indicator](https://img.shields.io/pypi/v/py_mini_racer.svg)](https://pypi.python.org/pypi/py_mini_racer)
-[![Github workflow status indicator](https://github.com/sqreen/PyMiniRacer/actions/workflows/build.yml/badge.svg)](https://github.com/sqreen/PyMiniRacer/actions/workflows/build.yml)
+[![PyPI status indicator](https://img.shields.io/pypi/v/mini_racer.svg)](https://pypi.python.org/pypi/mini_racer)
+[![Github workflow status indicator](https://github.com/bpcreech/PyMiniRacer/actions/workflows/build.yml/badge.svg)](https://github.com/bpcreech/PyMiniRacer/actions/workflows/build.yml)
 [![ISC License](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 
 Minimal, modern embedded V8 for Python.
@@ -22,7 +22,7 @@ WASM modules.
 MiniRacer is straightforward to use:
 
 ```sh
-    $ pip install py-mini-racer
+    $ pip install mini-racer
 ```
 
 and then:
@@ -97,7 +97,7 @@ V8 heap information can be retrieved:
 ```
 
 A WASM example is available in the
-[`tests`](https://github.com/sqreen/PyMiniRacer/blob/master/tests/test_wasm.py).
+[`tests`](https://github.com/bpcreech/PyMiniRacer/blob/master/tests/test_wasm.py).
 
 ## Compatibility
 
@@ -129,10 +129,14 @@ See [the contribution guide](CONTRIBUTING.md).
 Built with love by [Sqreen](https://www.sqreen.com).
 
 PyMiniRacer launch was described in
-[`this blog post`](https://blog.sqreen.com/embedding-javascript-into-python/).
+[`this blog post`](https://web.archive.org/web/20230526172627/https://blog.sqreen.com/embedding-javascript-into-python/).
 
 PyMiniRacer is inspired by [mini_racer](https://github.com/SamSaffron/mini_racer), built
 for the Ruby world by Sam Saffron.
+
+In 2024, PyMiniRacer was revived, and adopted by [Ben Creech](https://bpcreech.com).
+Upon discussion with the original Sqreen authors, we decided to re-launch PyMiniRacer as
+a fork under <https://github.com/bpcreech/mini_racer>.
 
 [`Cookiecutter-pypackage`](https://github.com/audreyr/cookiecutter-pypackage) was used
 as this package skeleton.

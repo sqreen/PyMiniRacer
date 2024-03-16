@@ -3,7 +3,6 @@
 from time import sleep, time
 
 import pytest
-
 from py_mini_racer import (
     JSEvalException,
     JSOOMException,

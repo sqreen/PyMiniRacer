@@ -9,7 +9,7 @@ You can contribute in many ways:
 
 ### Report Bugs
 
-Report bugs at <https://github.com/sqreen/PyMiniRacer/issues>.
+Report bugs at <https://github.com/bpcreech/PyMiniRacer/issues>.
 
 If you are reporting a bug, please include:
 
@@ -36,7 +36,7 @@ such.
 ## Submit Feedback
 
 The best way to send feedback is to file an issue at
-<https://github.com/sqreen/PyMiniRacer/issues>.
+<https://github.com/bpcreech/PyMiniRacer/issues>.
 
 If you are proposing a feature:
 
