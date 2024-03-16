@@ -145,6 +145,9 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
     handle.mr_set_soft_memory_limit.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
     handle.mr_set_soft_memory_limit.restype = None
 
+    handle.mr_hard_memory_limit_reached.argtypes = [ctypes.c_void_p]
+    handle.mr_hard_memory_limit_reached.restype = ctypes.c_bool
+
     handle.mr_soft_memory_limit_reached.argtypes = [ctypes.c_void_p]
     handle.mr_soft_memory_limit_reached.restype = ctypes.c_bool
 
@@ -374,6 +377,10 @@ class MiniRacer:
         :param int limit: memory limit in bytes or 0 to reset the limit
         """
         self._dll.mr_set_soft_memory_limit(self.ctx, limit)
+
+    def was_hard_memory_limit_reached(self) -> bool:
+        """Return true if the hard memory limit was reached on the V8 isolate."""
+        return self._dll.mr_hard_memory_limit_reached(self.ctx)
 
     def was_soft_memory_limit_reached(self) -> bool:
         """Return true if the soft memory limit was reached on the V8 isolate."""

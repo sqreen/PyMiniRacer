@@ -144,6 +144,7 @@ def test_max_memory_soft():
         )
 
     assert mr.was_soft_memory_limit_reached()
+    assert mr.was_hard_memory_limit_reached()
     assert exc_info.value.args[0] == "JavaScript memory limit reached"
 
 

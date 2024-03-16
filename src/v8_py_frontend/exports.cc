@@ -51,6 +51,10 @@ LIB_EXPORT void mr_set_soft_memory_limit(MiniRacer::Context* mr_context,
   mr_context->SetSoftMemoryLimit(limit);
 }
 
+LIB_EXPORT bool mr_hard_memory_limit_reached(MiniRacer::Context* mr_context) {
+  return mr_context->IsHardMemoryLimitReached();
+}
+
 LIB_EXPORT bool mr_soft_memory_limit_reached(MiniRacer::Context* mr_context) {
   return mr_context->IsSoftMemoryLimitReached();
 }
