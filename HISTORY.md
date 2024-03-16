@@ -1,6 +1,6 @@
 # History
 
-## 0.8.0 (2024-03-16)
+## 0.8.0 (pending! 2024-03-??)
 
 - General overhaul of C++ implementation to better adhere to modern best practice. This
     should have no visible impact except for the following notes...
