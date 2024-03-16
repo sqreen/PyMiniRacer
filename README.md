@@ -85,6 +85,14 @@ MiniRacer is ES6 capable:
     False
 ```
 
+MiniRacer supports [the ECMA `Intl` API](https://tc39.es/ecma402/):
+
+```python
+    # Indonesian dates!
+    >>> ctx.eval('Intl.DateTimeFormat(["ban", "id"]).format(new Date())')
+    '16/3/2024'
+```
+
 V8 heap information can be retrieved:
 
 ```python

@@ -190,6 +190,10 @@ is, we could have the following separate components:
     3.9 and 3.10 would be identical), but it wouldn't matter because it would be cheap
     and automatic.
 
+This is similar to how the Ruby [`mini_racer`](https://github.com/rubyjs/mini_racer) and
+[`libv8-node`](https://github.com/rubyjs/libv8-node) projects, which inspired
+PyMiniRacer, work together today.
+
 To sum up, to use `cibuildwheel`, we would still need our own *separate*
 multi-architecture build workflow for V8, *ahead of* the `cibuildwheel` step. So
 `cibuildwheel` could potentially simplify the actual wheel distribution for us, but it
