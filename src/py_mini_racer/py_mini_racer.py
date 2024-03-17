@@ -98,9 +98,10 @@ def _get_lib_filename(name):
 class MiniRacerValueStruct(ctypes.Structure):
     _fields_: ClassVar[tuple[str, object]] = [
         ("value", ctypes.c_void_p),  # value is 8 bytes, works only for 64bit systems
-        ("type", ctypes.c_int),
         ("len", ctypes.c_size_t),
+        ("type", ctypes.c_int32),
     ]
+    _pack_ = 1
 
 
 class ArrayBufferByte(ctypes.Structure):

@@ -8,6 +8,7 @@ v8_shared_library("mini_racer") {
     "binary_value.cc",
     "breaker_thread.h",
     "breaker_thread.cc",
+    "gsl_stub.h",
     "mini_racer.h",
     "mini_racer.cc",
   ]

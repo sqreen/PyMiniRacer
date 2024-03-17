@@ -2,18 +2,20 @@
 
 namespace MiniRacer {
 
-void BinaryValueFactory::Free(BinaryValue* v) {
-  if (!v) {
+// NOLINTBEGIN(cppcoreguidelines-pro-type-union-access)
+
+void BinaryValueFactory::Free(gsl::owner<BinaryValue*> val) {
+  if (val == nullptr) {
     return;
   }
-  switch (v->type) {
+  switch (val->type) {
     case type_execute_exception:
     case type_parse_exception:
     case type_oom_exception:
     case type_timeout_exception:
     case type_terminated_exception:
     case type_str_utf8:
-      delete[] v->bytes;
+      delete[] val->bytes;
       break;
     case type_bool:
     case type_double:
@@ -28,15 +30,15 @@ void BinaryValueFactory::Free(BinaryValue* v) {
       break;
     case type_shared_array_buffer:
     case type_array_buffer:
-      backing_stores_.erase(v);
+      backing_stores_.erase(val);
       break;
   }
-  delete v;
+  delete val;
 }
 
-BinaryValue::Ptr BinaryValueFactory::ConvertFromV8(
-    v8::Local<v8::Context> context,
-    v8::Local<v8::Value> value) {
+auto BinaryValueFactory::ConvertFromV8(v8::Local<v8::Context> context,
+                                       v8::Local<v8::Value> value)
+    -> BinaryValue::Ptr {
   BinaryValue::Ptr res = New();
 
   if (value->IsNull() || value->IsUndefined()) {
@@ -69,7 +71,8 @@ BinaryValue::Ptr BinaryValueFactory::ConvertFromV8(
     v8::Local<v8::String> rstr = value->ToString(context).ToLocalChecked();
 
     res->type = type_str_utf8;
-    res->len = size_t(rstr->Utf8Length(context->GetIsolate()));  // in bytes
+    res->len = static_cast<size_t>(
+        rstr->Utf8Length(context->GetIsolate()));  // in bytes
     size_t capacity = res->len + 1;
     res->bytes = new char[capacity];
     rstr->WriteUtf8(context->GetIsolate(), res->bytes);
@@ -99,6 +102,8 @@ BinaryValue::Ptr BinaryValueFactory::ConvertFromV8(
     backing_stores_[res.get()] = backing_store;
     res->type = value->IsSharedArrayBuffer() ? type_shared_array_buffer
                                              : type_array_buffer;
+    // Let's not bring in gsl/span just for this line:
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
     res->ptr_val = static_cast<char*>(backing_store->Data()) + offset;
     res->len = size;
 
@@ -106,9 +111,11 @@ BinaryValue::Ptr BinaryValueFactory::ConvertFromV8(
     res->type = type_object;
     res->int_val = value->ToObject(context).ToLocalChecked()->GetIdentityHash();
   } else {
-    return BinaryValue::Ptr();
+    return {};
   }
   return res;
 }
+
+// NOLINTEND(cppcoreguidelines-pro-type-union-access)
 
 }  // namespace MiniRacer

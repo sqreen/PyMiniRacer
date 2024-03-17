@@ -6,12 +6,17 @@
 namespace MiniRacer {
 
 namespace {
+// V8 inherently needs a singleton, so disable associated linter errors:
+// NOLINTBEGIN(cppcoreguidelines-avoid-non-const-global-variables)
+// NOLINTBEGIN(fuchsia-statically-constructed-objects)
 std::unique_ptr<v8::Platform> current_platform = nullptr;
+// NOLINTEND(fuchsia-statically-constructed-objects)
+// NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)
 }  // end anonymous namespace
 
 void Context::StaticGCCallback(v8::Isolate* isolate,
-                               v8::GCType type,
-                               v8::GCCallbackFlags flags,
+                               v8::GCType /*type*/,
+                               v8::GCCallbackFlags /*flags*/,
                                void* data) {
   static_cast<Context*>(data)->GCCallback(isolate);
 }
@@ -43,17 +48,16 @@ void Context::SetSoftMemoryLimit(size_t limit) {
 }
 
 namespace {
-bool maybe_fast_call(const std::string& code) {
+auto maybe_fast_call(const std::string& code) -> bool {
   // Does the code string end with '()'?
-  // TODO check if the string is an identifier
   return (code.size() > 2 && code[code.size() - 2] == '(' &&
           code[code.size() - 1] == ')');
 }
 }  // end anonymous namespace
 
-BinaryValue::Ptr Context::SummarizeTryCatch(v8::Local<v8::Context>& context,
-                                            const v8::TryCatch& trycatch,
-                                            BinaryTypes resultType) {
+auto Context::SummarizeTryCatch(v8::Local<v8::Context>& context,
+                                const v8::TryCatch& trycatch,
+                                BinaryTypes resultType) -> BinaryValue::Ptr {
   if (!trycatch.StackTrace(context).IsEmpty()) {
     v8::Local<v8::Value> stacktrace;
 
@@ -81,7 +85,10 @@ BinaryValue::Ptr Context::SummarizeTryCatch(v8::Local<v8::Context>& context,
   return bv_factory_.New("", resultType);
 }
 
-BinaryValue::Ptr Context::Eval(const std::string& code, unsigned long timeout) {
+// TODO(bpcreech): Make this function simpler.
+// NOLINTBEGIN(readability-function-cognitive-complexity)
+auto Context::Eval(const std::string& code, uint64_t timeout)
+    -> BinaryValue::Ptr {
   v8::Locker lock(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
 
@@ -180,7 +187,7 @@ BinaryValue::Ptr Context::Eval(const std::string& code, unsigned long timeout) {
     v8::Local<v8::Context> context = context_->Get(isolate_);
     v8::Context::Scope context_scope(context);
 
-    BinaryTypes resultType;
+    BinaryTypes resultType = type_execute_exception;
 
     if (hard_memory_limit_reached_) {
       resultType = type_oom_exception;
@@ -188,8 +195,6 @@ BinaryValue::Ptr Context::Eval(const std::string& code, unsigned long timeout) {
       resultType = type_timeout_exception;
     } else if (trycatch.HasTerminated()) {
       resultType = type_terminated_exception;
-    } else {
-      resultType = type_execute_exception;
     }
 
     return SummarizeTryCatch(context, trycatch, resultType);
@@ -197,12 +202,13 @@ BinaryValue::Ptr Context::Eval(const std::string& code, unsigned long timeout) {
 
   return ret;
 }
+// NOLINTEND(readability-function-cognitive-complexity)
 
-std::optional<std::string> Context::ValueToUtf8String(
-    v8::Local<v8::Value> value) {
+auto Context::ValueToUtf8String(v8::Local<v8::Value> value)
+    -> std::optional<std::string> {
   v8::String::Utf8Value utf8(isolate_, value);
 
-  if (utf8.length()) {
+  if (utf8.length() != 0) {
     return std::make_optional(std::string(*utf8, utf8.length()));
   }
 
@@ -216,17 +222,17 @@ Context::~Context() {
 
     bv_factory_.Clear();
     context_->Reset();
-    delete context_;
+    context_.reset();
   }
 
   isolate_->Dispose();
 }
 
 void init_v8(char const* v8_flags,
-             char const* icu_path,
-             char const* snapshot_path) {
-  v8::V8::InitializeICU(icu_path);
-  v8::V8::InitializeExternalStartupDataFromFile(snapshot_path);
+             const std::filesystem::path& icu_path,
+             const std::filesystem::path& snapshot_path) {
+  v8::V8::InitializeICU(icu_path.c_str());
+  v8::V8::InitializeExternalStartupDataFromFile(snapshot_path.c_str());
 
   if (v8_flags != nullptr) {
     v8::V8::SetFlagsFromString(v8_flags);
@@ -255,17 +261,20 @@ Context::Context()
   v8::Isolate::Scope isolate_scope(isolate_);
   v8::HandleScope handle_scope(isolate_);
 
-  context_ =
-      new v8::Persistent<v8::Context>(isolate_, v8::Context::New(isolate_));
+  // Can't init this as a member initializer without a refactor because it
+  // depends on isolate_:
+  // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
+  context_ = std::make_unique<v8::Persistent<v8::Context>>(
+      isolate_, v8::Context::New(isolate_));
 
   isolate_->AddGCEpilogueCallback(StaticGCCallback, this);
 }
 
-BinaryValue::Ptr Context::HeapStats() {
+auto Context::HeapStats() -> BinaryValue::Ptr {
   v8::HeapStatistics stats;
 
-  if (!isolate_) {
-    return BinaryValue::Ptr();
+  if (isolate_ == nullptr) {
+    return {};
   }
 
   v8::Locker lock(isolate_);
@@ -283,34 +292,38 @@ BinaryValue::Ptr Context::HeapStats() {
   stats_obj
       ->Set(context,
             v8::String::NewFromUtf8Literal(isolate_, "total_physical_size"),
-            v8::Number::New(isolate_, (double)stats.total_physical_size()))
+            v8::Number::New(isolate_,
+                            static_cast<double>(stats.total_physical_size())))
       .Check();
   stats_obj
-      ->Set(
-          context,
-          v8::String::NewFromUtf8Literal(isolate_,
-                                         "total_heap_size_executable"),
-          v8::Number::New(isolate_, (double)stats.total_heap_size_executable()))
+      ->Set(context,
+            v8::String::NewFromUtf8Literal(isolate_,
+                                           "total_heap_size_executable"),
+            v8::Number::New(isolate_, static_cast<double>(
+                                          stats.total_heap_size_executable())))
       .Check();
   stats_obj
       ->Set(context,
             v8::String::NewFromUtf8Literal(isolate_, "total_heap_size"),
-            v8::Number::New(isolate_, (double)stats.total_heap_size()))
+            v8::Number::New(isolate_,
+                            static_cast<double>(stats.total_heap_size())))
       .Check();
   stats_obj
       ->Set(context, v8::String::NewFromUtf8Literal(isolate_, "used_heap_size"),
-            v8::Number::New(isolate_, (double)stats.used_heap_size()))
+            v8::Number::New(isolate_,
+                            static_cast<double>(stats.used_heap_size())))
       .Check();
   stats_obj
       ->Set(context,
             v8::String::NewFromUtf8Literal(isolate_, "heap_size_limit"),
-            v8::Number::New(isolate_, (double)stats.heap_size_limit()))
+            v8::Number::New(isolate_,
+                            static_cast<double>(stats.heap_size_limit())))
       .Check();
 
   v8::Local<v8::String> output;
   if (!v8::JSON::Stringify(context, stats_obj).ToLocal(&output) ||
       output.IsEmpty()) {
-    return BinaryValue::Ptr();
+    return {};
   }
   return bv_factory_.ConvertFromV8(context, output);
 }
@@ -319,25 +332,25 @@ namespace {
 // From v8/src/d8/d8-console.cc:
 class StringOutputStream : public v8::OutputStream {
  public:
-  WriteResult WriteAsciiChunk(char* data, int size) override {
+  auto WriteAsciiChunk(char* data, int size) -> WriteResult override {
     os_.write(data, size);
     return kContinue;
   }
 
   void EndOfStream() override {}
 
-  std::string result() { return os_.str(); }
+  auto result() -> std::string { return os_.str(); }
 
  private:
   std::ostringstream os_;
 };
 }  // end anonymous namespace
 
-BinaryValue::Ptr Context::HeapSnapshot() {
+auto Context::HeapSnapshot() -> BinaryValue::Ptr {
   v8::Locker lock(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
   v8::HandleScope handle_scope(isolate_);
-  auto snap = isolate_->GetHeapProfiler()->TakeHeapSnapshot();
+  const auto* snap = isolate_->GetHeapProfiler()->TakeHeapSnapshot();
   StringOutputStream sos;
   snap->Serialize(&sos);
   return bv_factory_.New(sos.result(), type_str_utf8);

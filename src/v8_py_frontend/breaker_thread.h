@@ -9,8 +9,8 @@ namespace MiniRacer {
  * a timeout, if not first disengaged. */
 class BreakerThread {
  public:
-  BreakerThread(v8::Isolate* isolate, unsigned long timeout)
-      : isolate_(isolate), timeout(timeout), timed_out_(false) {
+  BreakerThread(v8::Isolate* isolate, uint64_t timeout)
+      : isolate_(isolate), timeout(timeout) {
     if (timeout > 0) {
       engaged = true;
       mutex.lock();
@@ -21,8 +21,12 @@ class BreakerThread {
   }
 
   ~BreakerThread() { disengage(); }
+  BreakerThread(const BreakerThread&) = delete;
+  auto operator=(const BreakerThread&) -> BreakerThread& = delete;
+  BreakerThread(BreakerThread&&) = delete;
+  auto operator=(BreakerThread&& other) -> BreakerThread& = delete;
 
-  bool timed_out() { return timed_out_; }
+  [[nodiscard]] auto timed_out() const -> bool { return timed_out_; }
 
   void disengage() {
     if (engaged) {
@@ -41,9 +45,9 @@ class BreakerThread {
   }
 
   v8::Isolate* isolate_;
-  unsigned long timeout;
+  uint64_t timeout;
   bool engaged;
-  bool timed_out_;
+  bool timed_out_{false};
   std::thread thread_;
   std::timed_mutex mutex;
 };
