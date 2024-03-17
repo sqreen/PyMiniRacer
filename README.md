@@ -109,7 +109,7 @@ A WASM example is available in the
 
 ## Compatibility
 
-PyMiniRacer is compatible with Python 3.8 and is based on `ctypes`.
+PyMiniRacer is compatible with Python 3.8-3.12 and is based on `ctypes`.
 
 PyMiniRacer is distributed using [wheels](https://pythonwheels.com/) on
 [PyPI](https://pypi.org/). The wheels are intended to provide compatibility with:
@@ -146,6 +146,3 @@ In 2024, PyMiniRacer was revived, and adopted by [Ben Creech](https://bpcreech.c
 Upon discussion with the original Sqreen authors, we decided to re-launch PyMiniRacer as
 a fork under <https://github.com/bpcreech/PyMiniRacer> and
 <https://pypi.org/project/mini-racer/>.
-
-[`Cookiecutter-pypackage`](https://github.com/audreyr/cookiecutter-pypackage) was used
-as this package skeleton.
