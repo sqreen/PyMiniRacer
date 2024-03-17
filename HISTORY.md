@@ -15,7 +15,7 @@
 - Use [fast startup snapshots](https://v8.dev/blog/custom-startup-snapshots)
 - Switch from setuptools to Hatch
 - Switch from tox to Hatch
-- Switch from use of flake8 and isort to Hatch's wrapper of Ruff
+- Switch from flake8 and isort to Hatch's wrapper of Ruff
 - Switch from Sphinx to mkdocs (and hatch-mkdocs)
 - Switch from unittest to pytest
 - Add ARCHITECTURE.md and lots of code comments
