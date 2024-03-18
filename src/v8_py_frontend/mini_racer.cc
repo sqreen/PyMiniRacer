@@ -231,8 +231,8 @@ Context::~Context() {
 void init_v8(char const* v8_flags,
              const std::filesystem::path& icu_path,
              const std::filesystem::path& snapshot_path) {
-  v8::V8::InitializeICU(icu_path.c_str());
-  v8::V8::InitializeExternalStartupDataFromFile(snapshot_path.c_str());
+  v8::V8::InitializeICU(icu_path.string().c_str());
+  v8::V8::InitializeExternalStartupDataFromFile(snapshot_path.string().c_str());
 
   if (v8_flags != nullptr) {
     v8::V8::SetFlagsFromString(v8_flags);
