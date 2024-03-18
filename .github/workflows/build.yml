@@ -215,7 +215,7 @@ jobs:
 
     - uses: actions/upload-artifact@v3
       with:
-        name: wheel
+        name: wheels
         path: ./wheels/*
         if-no-files-found: error
 
@@ -321,7 +321,7 @@ jobs:
 
     - uses: actions/upload-artifact@v3
       with:
-        name: wheel
+        name: wheels
         path: dist/*
         if-no-files-found: error
 
@@ -343,13 +343,11 @@ jobs:
 
     steps:
     - uses: actions/download-artifact@v3
-      with:
-        path: dist
 
     - name: Make release
       uses: ncipollo/release-action@v1
       with:
-        artifacts: dist/*
+        artifacts: "wheels/*,sdist/*"
 
   publish:
     name: Upload release to PyPI
@@ -364,8 +362,9 @@ jobs:
       id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
     steps:
     - uses: actions/download-artifact@v3
-      with:
-        path: dist
+
+    - name: Make dist directory
+      run: mkdir dist && cp wheels/* sdist/* dist/
 
     - name: Publish package distributions to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
