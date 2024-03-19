@@ -1,28 +1,56 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
 repos:
-- repo: https://github.com/PyCQA/flake8
-  rev: 3.7.9
-  hooks:
-   - id: flake8
-- repo: https://github.com/timothycrosley/isort
-  rev: 5.6.4
-  hooks:
-   - id: isort
-- repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v2.4.0
-  hooks:
-   - id: trailing-whitespace
-     exclude: \.patch$
-   - id: end-of-file-fixer
-     exclude: \.patch$
-   - id: check-yaml
-   - id: check-added-large-files
 - repo: local
   hooks:
-   - id: clang-format
-     name: Check C++ format
-     entry: clang-format
-     language: system
-     files: py_mini_racer/extension/mini_racer_extension.cc
-     args: ['-style=Chromium', '-i']
+  - id: hatch-fmt
+    name: Hatch format and lint
+    entry: hatch fmt  # runs Ruff, which includes both linting and formatting.
+    language: system
+    types: [python]
+    pass_filenames: false
+  - id: hatch-docs-format
+    name: Hatch format docs
+    entry: hatch run docs:fmt  # runs mdformat
+    language: system
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.5.0
+  hooks:
+   - id: trailing-whitespace
+     exclude: \.(patch|md)$
+   - id: end-of-file-fixer
+     exclude: \.(patch|md)$
+   - id: check-yaml
+   - id: check-added-large-files
+- repo: https://github.com/pocc/pre-commit-hooks
+  rev: v1.3.5
+  hooks:
+    - id: clang-format
+      args:
+        - --style=Chromium
+        - -i
+    - id: clang-tidy
+      args:
+        # Things we're disabling:
+        # lvmlibc-* is intended for the llvm project itself
+        # llvm-header-guard is likewise hard-coded for the llvm project itself
+        # llvm-include-order fights clang-format --style=Chromium
+        # fuchsia-default-arguments-calls seems counter to code maintainability
+        # fuchsia-trailing-return is counter to another cpp modernization rule
+        # fuchsia-overloaded-operator is incompatible with... making functors?
+        # altera-* is designed for FPGAs and gives weird performance advice.
+        - >-
+          -checks=*,
+          -llvmlibc-*,
+          -llvm-header-guard,
+          -llvm-include-order,
+          -fuchsia-default-arguments-calls,
+          -fuchsia-trailing-return,
+          -fuchsia-overloaded-operator,
+          -altera-*
+        - -warnings-as-errors=*
+        # Interpret .h as C++:
+        - -extra-arg-before=-xc++
+        - -extra-arg=-std=c++20
+        - -extra-arg=-isystem
+        - -extra-arg=v8_workspace/v8/include

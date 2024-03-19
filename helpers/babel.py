@@ -1,5 +1,5 @@
-#!/usr/bin/env python
 """ Transform the input stream using babel.transform """
+
 import os
 import sys
 
@@ -7,12 +7,14 @@ from py_mini_racer import py_mini_racer
 
 
 def babel_transform(es_string):
-    """ Transform the provided string using babel.transform """
+    """Transform the provided string using babel.transform"""
 
-    path_to_babel = os.path.join(os.path.dirname(__file__), '..', 'tests',
-                                 'fixtures', 'babel.js')
+    path_to_babel = os.path.join(
+        os.path.dirname(__file__), "..", "tests", "fixtures", "babel.js"
+    )
 
-    babel_source = open(path_to_babel, "r").read()
+    with open(path_to_babel) as f:
+        babel_source = f.read()
 
     # Initializes PyMiniRacer
     ctx = py_mini_racer.MiniRacer()
@@ -22,12 +24,10 @@ def babel_transform(es_string):
 
     # Transform stuff :)
     val = "babel.transform(`%s`)['code']" % es_string
-    res = ctx.eval(val)
-    return res
+    return ctx.eval(val)
 
 
-if __name__ == '__main__':
-
+if __name__ == "__main__":
     if len(sys.argv) != 1:
         name = sys.argv[0]
         sys.stderr.write("Usage: cat es6file.js | %s\n" % name)
@@ -38,4 +38,4 @@ if __name__ == '__main__':
 
     res = babel_transform(es6_data)
 
-    print(res)
+    sys.stdout.write(res)

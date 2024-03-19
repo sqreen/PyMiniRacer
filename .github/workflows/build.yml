@@ -1,137 +1,370 @@
-name: Build
-on:
-    push:
-        branches: [master]
-    pull_request:
-        branches: [master]
+name: pypi-build
+
+on: push
 
 concurrency:
-    group: ${{ github.workflow }}-${{ github.ref }}
-    cancel-in-progress: true
+  group: build-${{ github.head_ref }}
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-    build:
-        name: ${{ matrix.config.plat_name }}
-        strategy:
-            matrix:
-                config:
-                 - os: ubuntu-16.04
-                   plat_name: manylinux1_x86_64
-                 - os: macos-10.15
-                   plat_name: macosx_10_10_x86_64
-                 - os: windows-2019
-                   plat_name: win_amd64
-            fail-fast: true
-        runs-on: ${{ matrix.config.os }}
-        timeout-minutes: 180
-        steps:
-         - name: Configure git
-           run: git config --global core.symlinks true
+  sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
 
-         - name: Clone repository
-           uses: actions/checkout@v1
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        # Fetch all tags
+        fetch-depth: 0
 
-         - name: Install python 3.6
-           uses: actions/setup-python@v1
-           with:
-               python-version: 3.6.x
-               architecture: x64
+    - name: Install deps
+      run: python -m pip install --upgrade build
 
-         - name: Install python 2.7
-           uses: actions/setup-python@v1
-           with:
-               python-version: 2.7.x
-               architecture: x64
+    - name: Build
+      run: python -m build --sdist
 
-         - name: Build wheelhouse
-           run: |
-               python3 -m pip install setuptools wheel
-               mkdir wheelhouse
-               python3 helpers/build_package.py wheel wheelhouse
-           shell: bash
+    - uses: actions/upload-artifact@v3
+      with:
+        name: sdist
+        path: dist/*
+        if-no-files-found: error
 
-         - name: Archive wheelhouse
-           uses: actions/upload-artifact@v2
-           with:
-             name: package-${{ matrix.config.plat_name }}
-             path: wheelhouse
+  # We build for Linux using uraimo/run-on-arch-action@v2, which runs a container under
+  # the runner in order to reach different platforms (notably Alpine with its musl) and
+  # architectures (notably aarch64) via emulation. uraimo/run-on-arch-action@v2 doesn't
+  # support Mac or Windows, so we run a separate job for those.
+  linux-wheels:
+    name: Build wheel for ${{ matrix.config.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          # To maximize compatibility of generated wheels, we should theoreticaly build
+          # on the *oldest* supported distros.
+          # But V8 ships its own bullseye sysroot and links against that, so we may as
+          # well run on bullseye (even though buster would provide an older supported
+          # build distro):
+          - image: debian:bullseye
+          - image: arm64v8/debian:bullseye
+          # Alpine 3.19 includes a clang new enough for V8 to build (with only minor
+          # patches!). Builds on 3.19 seem incompatible with <= 3.18 due to libstdc++
+          # symbols. (And we can't just run on an old Alpine and update clang from the
+          # llvm site, because unlike Debian, the llvm project doesn't maintain
+          # updated packages for old Alpine distros.)
+          - image: alpine:3.19
+          - image: arm64v8/alpine:3.19
 
-         - name: Check the wheel
-           if: matrix.config.plat_name == 'manylinux1_x86_64'
-           run: |
-             python3 -m pip install auditwheel twine readme_renderer[md]
-             auditwheel show wheelhouse/*.whl
-             twine check wheelhouse/*.whl
+    steps:
+    - name: Configure git
+      run: git config --global core.symlinks true
 
-         - name: Test
-           run: |
-             python3 -m pip install pytest wheelhouse/*.whl
-             pytest tests
-           shell: bash
+    - uses: actions/checkout@v3
+      with:
+        # Fetch all tags
+        fetch-depth: 0
 
-    build-on-alpine:
-        name: alpine_x86_64
-        runs-on: ubuntu-latest
-        container:
-            image: nicolassqreen/azure-pipelines-container-alpine-python:3.12
-        timeout-minutes: 180
-        steps:
-         - name: Clone repository
-           uses: actions/checkout@v1
+    - name: Run sccache-cache
+      uses: mozilla-actions/sccache-action@v0.0.3
 
-         - name: Download V8 sources
-           uses: docker://python:2
-           with:
-               args: python helpers/v8_build.py --no-build --no-sysroot
+    - uses: uraimo/run-on-arch-action@v2
+      name: Build wheel
+      with:
+        arch: none
+        distro: none
+        base_image: ${{ matrix.config.image }}
 
-         - name: Prepare Aline Linux build environment
-           run: |
-             sudo apk -U add samurai llvm lld linux-headers binutils-gold
-             cp -f /usr/local/bin/gn py_mini_racer/extension/v8/buildtools/linux64/gn
-             rm -f py_mini_racer/extension/depot_tools/ninja
+        setup: |
+          mkdir -p "${PWD}/wheels"
 
-         - name: Build the extension
-           run: |
-             python helpers/v8_build.py --no-update --no-sysroot --target py_mini_racer_shared_lib
-             cp py_mini_racer/extension/out/libmini_racer.so py_mini_racer/libmini_racer.muslc.so
+        dockerRunArgs: |
+          --volume "${PWD}/wheels:/wheels"
 
-         - name: Build the wheelhouse
-           run: |
-             sudo apk add py3-pip py3-wheel
-             mkdir wheelhouse
-             python3 setup.py sdist --dist-dir wheelhouse
+        shell: /bin/sh
 
-         - name: Archive wheelhouse
-           uses: actions/upload-artifact@v2
-           with:
-             name: package-alpine_x86_64
-             path: wheelhouse
+        install: |
+          case "${{ matrix.config.image }}" in
+            *debian*)
+              # Let's download some system packages!
+              # Note that the precise list of packages we need is intertwined not just
+              # with V8, but with helpers/build_v8.py, which makes various decisions
+              # about using system versus V8-provided tools and dependencies.
+              PACKAGES=""
+              # First, some basic wheel-building dependencies:
+              PACKAGES="${PACKAGES} python3"
+              PACKAGES="${PACKAGES} pip"
+              PACKAGES="${PACKAGES} python3-venv"
+              # helpers/v8_build.py uses git to download depot_tools, and
+              # depot_tools/gclient uses it to grab V8:
+              PACKAGES="${PACKAGES} git"
+              # depot_tools/cipd uses curl to download various things including its own
+              # managed python:
+              PACKAGES="${PACKAGES} curl"
+              # the V8 build generation system (GN) uses pkg-config:
+              PACKAGES="${PACKAGES} pkg-config"
+              # the clang build script still uses the system lld:
+              PACKAGES="${PACKAGES} lld"
+              # we use grep below
+              PACKAGES="${PACKAGES} grep"
+              apt-get update -q -y
+              apt-get install -q -y ${PACKAGES}
 
-         - name: Test
-           run: |
-             python3 -m pip install pytest wheelhouse/*.tar.gz
-             pytest tests
+              # the V8 build runs on clang by default. On mainstream platforms, V8
+              # bundles a working clang, but not on arm64. So we need to bring our own
+              # clang and llvm and lld.
+              # bullseye ships an ancient llvm, clang, and lld. Add the latest stable:
+              LLVM_VERSION=18
+              curl https://apt.llvm.org/llvm-snapshot.gpg.key > /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+              echo "deb http://apt.llvm.org/bullseye/ llvm-toolchain-bullseye-${LLVM_VERSION} main" \
+                > /etc/apt/sources.list.d/llvm.list
+              apt-get update -q -y
+              PACKAGES="clang-${LLVM_VERSION} llvm-${LLVM_VERSION} lld-${LLVM_VERSION}"
+              apt-get install -q -y ${PACKAGES}
+              # set up non-versioned symlinks to the latest stable clang:
+              for pkg in ${PACKAGES}; do
+                for f in $(dpkg -L "${pkg}" | grep "/usr/bin/.*-${LLVM_VERSION}"); do
+                  no18="${f%-${LLVM_VERSION}}"
+                  rm -f "${no18}"
+                  ln -s "${f}" "${no18}"
+                done
+              done
+              ;;
+            *alpine*)
+              # Let's download some system packages!
+              # Note that the precise list of packages we need is intertwined not just
+              # with V8, but with helpers/build_v8.py, which makes various decisions
+              # about using system versus V8-provided tools and dependencies.
+              PACKAGES=""
+              # First, some basic wheel-building dependencies:
+              PACKAGES="${PACKAGES} python3"
+              PACKAGES="${PACKAGES} py3-pip"
+              PACKAGES="${PACKAGES} py3-virtualenv"
+              # helpers/v8_build.py uses git to download depot_tools, and
+              # depot_tools/gclient uses it to grab V8:
+              PACKAGES="${PACKAGES} git"
+              # depot_tools/cipd uses curl to download various things including its own
+              # managed python:
+              PACKAGES="${PACKAGES} curl"
+              # depot_tools/vpython3 runs on bash:
+              PACKAGES="${PACKAGES} bash"
+              # pip needs the following to build some dependencies on the fly on
+              # aarch64:
+              PACKAGES="${PACKAGES} gcc"
+              PACKAGES="${PACKAGES} python3-dev"
+              PACKAGES="${PACKAGES} musl-dev"
+              PACKAGES="${PACKAGES} libffi-dev"
+              # the V8 build system uses gn to generate build files and on Alpine the
+              # one it bundles uses glibc (not musl) and thus does not work:
+              PACKAGES="${PACKAGES} gn"
+              # We need patch to apply patches to V8:
+              PACKAGES="${PACKAGES} patch"
+              # the V8 build runs on clang by default. On mainstream platforms, V8
+              # bundles a working clang, but not on Alpine. So get our own clang, llvm,
+              # and lld:
+              PACKAGES="${PACKAGES} clang"
+              PACKAGES="${PACKAGES} llvm"
+              PACKAGES="${PACKAGES} lld"
+              # the V8 build system includes a sysroot (/usr/include, /usr/lib, etc) on
+              # many platforms, but not Alpine. Thus we have to provide extra build-time
+              # deps:
+              PACKAGES="${PACKAGES} glib-dev"
+              # the V8 build system has its own libstdc++, but it doesn't seem to work
+              # on Alpine, so we get and use the system one:
+              PACKAGES="${PACKAGES} libc++-dev"
+              apk update
+              apk add ${PACKAGES}
+              ;;
+          esac
 
-    release:
-        if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
-        runs-on: ubuntu-latest
-        needs: [build-on-alpine, build]
-        steps:
-         - name: Download packages
-           uses: actions/download-artifact@v2
-           with:
-               path: tmp
+          # Set up sccache.
+          # We can't directly use the binary fetched by Mozilla's GitHub SCCache
+          # Action, because we're doing a cross-arch build (the job is on x86_64 but
+          # the container may be on aarch64). So we reproduce the logic from the
+          # action:
+          # https://github.com/Mozilla-Actions/sccache-action/blob/main/src/setup.ts
+          SCCACHE_VERSION="v0.7.7"
+          SCCACHE_ARCH="$(uname -m)"
+          SCCACHE_BASE_URL="https://github.com/mozilla/sccache/releases/download"
+          # Note that the sccache binary is statically linked and thus we can use the
+          # musl binary on Debian (this is indeed what Mozilla's Github Action does):
+          SCCACHE_PLATFORM="unknown-linux-musl"
+          SCCACHE_URL="${SCCACHE_BASE_URL}/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}-${SCCACHE_PLATFORM}.tar.gz"
 
-         - name: Move packages to the wheelhouse
-           run: |
-             mkdir wheelhouse
-             find tmp -name '*.whl' -exec mv {} wheelhouse \;
-             find tmp -name '*.tar.gz' -exec mv {} wheelhouse \;
-           shell: bash
+          mkdir /sccache
+          cd /sccache
+          curl --location "${SCCACHE_URL}" > sccache.tar.gz
+          tar --strip-components 1 -xvzf sccache.tar.gz
 
-         - name: Publish 📦 to PyPI
-           uses: pypa/gh-action-pypi-publish@v1.4.2
-           with:
-             user: __token__
-             password: ${{ secrets.PYPI_TOKEN }}
-             packages_dir: wheelhouse/
+        run: |
+          set -e
+
+          export SCCACHE_GHA_ENABLED="true"
+          export SCCACHE_PATH=/sccache/sccache
+          export ACTIONS_CACHE_URL="${{ env.ACTIONS_CACHE_URL }}"
+          export ACTIONS_RUNTIME_TOKEN="${{ env.ACTIONS_RUNTIME_TOKEN }}"
+
+          python3 -m venv /venv
+          . /venv/bin/activate
+          python3 -m pip install --upgrade build
+          python3 -m build --wheel
+          cp dist/*.whl /wheels/
+          chmod a+rwx /wheels/*.whl
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: wheels
+        path: ./wheels/*
+        if-no-files-found: error
+
+    - name: Run sccache stat for check
+      shell: bash
+      run: ${SCCACHE_PATH} --show-stats
+
+    - uses: uraimo/run-on-arch-action@v2
+      name: Test wheel
+      with:
+        arch: none
+        distro: none
+        base_image: ${{ matrix.config.image }}
+
+        setup: |
+          mkdir -p "${PWD}/wheels"
+
+        dockerRunArgs: |
+          --volume "${PWD}/wheels:/wheels"
+
+        shell: /bin/sh
+
+        install: |
+          case "${{ matrix.config.image }}" in
+            *debian*)
+              PACKAGES=""
+              PACKAGES="${PACKAGES} python3"
+              PACKAGES="${PACKAGES} pip"
+              PACKAGES="${PACKAGES} python3-venv"
+              apt-get update -q -y
+              apt-get install -q -y ${PACKAGES}
+              ;;
+            *alpine*)
+              PACKAGES=""
+              PACKAGES="${PACKAGES} python3"
+              PACKAGES="${PACKAGES} py3-pip"
+              PACKAGES="${PACKAGES} py3-virtualenv"
+              # Needed by libmini_racer.so:
+              PACKAGES="${PACKAGES} libatomic"
+              apk update
+              apk add ${PACKAGES}
+              ;;
+          esac
+
+        run: |
+          set -e
+
+          python3 -m venv /venv
+          . /venv/bin/activate
+          case "${{ matrix.config.image }}" in
+            *debian*)
+              python3 -m pip install --upgrade hatch hatch-fancy-pypi-readme hatch-mkdocs
+              hatch run testinstalled:install /wheels/*.whl
+              hatch run testinstalled:run
+              ;;
+            *alpine*)
+              # Due to https://github.com/indygreg/python-build-standalone/issues/86
+              # Hatch's matrix testing doesn't work on Alpine. Just run pytest directly
+              # on the system Python version:
+              python3 -m pip install --upgrade pytest
+              python3 -m pip install /wheels/*.whl
+              pytest tests
+              ;;
+          esac
+
+  # We build for Mac and Windows directly on the supported GitHub-hosted runners.
+  non-linux-wheels:
+    name: Build wheel for ${{ matrix.config.os }}
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          # Note that to maximize compatibility of generated wheels, we build on the
+          # *oldest* supported GitHub-hosted runners, per
+          # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners/about-github-hosted-runners
+          - os: windows-2019  # x86_64
+          - os: macos-11  # this is the earliest x86_64 runner
+          - os: macos-14  # this is the earliest arm64 runner
+
+    steps:
+    - name: Configure git
+      run: git config --global core.symlinks true
+
+    - uses: actions/checkout@v3
+      with:
+        # Fetch all tags
+        fetch-depth: 0
+
+    - name: Run sccache-cache
+      uses: mozilla-actions/sccache-action@v0.0.3
+
+    - uses: actions/setup-python@v5
+      with:
+        # depot_tools still uses distutils which is gone in 3.12:
+        python-version: '3.11'
+
+    - name: Build wheel
+      run: |
+        set -e
+        python3 -m pip install --upgrade build
+        python3 -m build --wheel
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: wheels
+        path: dist/*
+        if-no-files-found: error
+
+    - name: Test wheel
+      run: |
+        set -e
+        python3 -m pip install --upgrade hatch hatch-fancy-pypi-readme hatch-mkdocs
+        hatch run testinstalled:install dist/*.whl
+        hatch run testinstalled:run
+
+  release:
+    name: Create GitHub release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+    needs:
+    - linux-wheels
+    - non-linux-wheels
+    - sdist
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/download-artifact@v3
+
+    - name: Make release
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: "wheels/*,sdist/*"
+
+  publish:
+    name: Upload release to PyPI
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+    needs:
+    - release
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/mini-racer
+    permissions:
+      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
+    steps:
+    - uses: actions/download-artifact@v3
+
+    - name: Make dist directory
+      run: mkdir dist && cp wheels/* sdist/* dist/
+
+    - name: Publish package distributions to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1

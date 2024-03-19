@@ -1,0 +1,36 @@
+site_name: PyMiniRacer
+site_url: https://bpcreech.com/PyMiniRacer
+theme:
+  name: material
+  custom_dir: data
+  logo: py_mini_racer.png
+  favicon: favicon.ico
+  palette:
+    primary: green
+nav:
+  - Home: index.md
+  - API Reference: api.md
+  - Contributing: contributing.md
+  - Architecture: architecture.md
+  - Credits: authors.md
+  - History: history.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]  # search packages in the src folder
+
+markdown_extensions:
+  - admonition
+  - sane_lists
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
