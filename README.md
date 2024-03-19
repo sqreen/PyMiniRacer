@@ -17,6 +17,19 @@ Minimal, modern embedded V8 for Python.
 MiniRacer can be easily used by Django or Flask projects to minify assets, run babel or
 WASM modules.
 
+## New home! (As of March 2024)
+
+PyMiniRacer was created by [Sqreen](https://github.com/sqreen), and originally lived at
+<https://github.com/sqreen/PyMiniRacer> with the PyPI package
+[`py-mini-racer`](https://pypi.org/project/py-mini-racer/).
+
+As of March 2024, after a few years without updates, [I](https://bpcreech.com) have
+reached out to the original Sqreen team. We agreed that I should fork PyMiniRacer,
+giving it a new home at <https://github.com/bpcreech/PyMiniRacer> with a new PyPI
+package [`mini-racer`](https://pypi.org/project/mini-racer/) (*note: no `py-`*). It now
+has [a new version](https://bpcreech.com/PyMiniRacer/history/#070-2024-03-06) for the
+first time since 2021!
+
 ## Examples
 
 MiniRacer is straightforward to use:
