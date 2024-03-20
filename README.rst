@@ -1,3 +1,5 @@
+**This package is now deprecated. Go to https://github.com/bpcreech/PyMiniRacer for an up-to-date version.**
+
 .. image:: https://img.shields.io/pypi/v/py_mini_racer.svg
         :target: https://pypi.python.org/pypi/py_mini_racer
 
@@ -8,9 +10,6 @@
         :target: https://opensource.org/licenses/ISC
 
 Minimal, modern embedded V8 for Python.
-
-.. image:: data/py_mini_racer.png
-        :align: center
 
 Features
 --------
