@@ -1,4 +1,4 @@
-**The package built from this repository is outdated. Use https://github.com/bpcreech/PyMiniRacer instead.**
+**This package is now deprecated. Go to https://github.com/bpcreech/PyMiniRacer for an up-to-date version.**
 
 .. image:: https://img.shields.io/pypi/v/py_mini_racer.svg
         :target: https://pypi.python.org/pypi/py_mini_racer
