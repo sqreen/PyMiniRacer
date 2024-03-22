@@ -13,6 +13,7 @@
 - Refactoring the C++ implementation into multiple components to make startup and
     teardown logic more robust.
 - Added tests for the existing fast-function-call path.
+- Also, simplified Python conversion of C++ evaluation results.
 
 ## 0.8.0 (2024-03-18)
 
