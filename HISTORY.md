@@ -1,5 +1,19 @@
 # History
 
+## 0.8.1 (2024-03-??)
+
+- A series of C++ changes which should not impact the behavior of PyMiniRacer:
+- Refactoring how we use V8 by inverting the control flow. Before we had function
+    evaluations which ran and drained the message loop. Now we have an always-running
+    message loop into which we inject function evaluations. This seems to be the
+    preferred way to use V8. This is not expected to cause any behavior changes (but, in
+    tests, makes
+    [microtask competion](https://developer.mozilla.org/en-US/docs/Web/API/HTML_DOM_API/Microtask_guide)
+    more consistent).
+- Refactoring the C++ implementation into multiple components to make startup and
+    teardown logic more robust.
+- Added tests for the existing fast-function-call path.
+
 ## 0.8.0 (2024-03-18)
 
 - General overhaul of C++ implementation to better adhere to modern best practice. This

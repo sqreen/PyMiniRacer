@@ -121,13 +121,13 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
     handle.mr_init_context.argtypes = []
     handle.mr_init_context.restype = ctypes.c_void_p
 
-    handle.mr_eval_context.argtypes = [
+    handle.mr_eval.argtypes = [
         ctypes.c_void_p,
         ctypes.c_char_p,
-        ctypes.c_int,
-        ctypes.c_ulong,
+        ctypes.c_uint64,
+        ctypes.c_uint64,
     ]
-    handle.mr_eval_context.restype = ctypes.POINTER(MiniRacerValueStruct)
+    handle.mr_eval.restype = ctypes.POINTER(MiniRacerValueStruct)
 
     handle.mr_free_value.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
 
@@ -153,6 +153,11 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
     handle.mr_soft_memory_limit_reached.restype = ctypes.c_bool
 
     handle.mr_v8_version.restype = ctypes.c_char_p
+
+    handle.mr_full_eval_call_count.argtypes = [ctypes.c_void_p]
+    handle.mr_full_eval_call_count.restype = ctypes.c_uint64
+    handle.mr_function_eval_call_count.argtypes = [ctypes.c_void_p]
+    handle.mr_function_eval_call_count.restype = ctypes.c_uint64
 
     return handle
 
@@ -299,7 +304,7 @@ class MiniRacer:
             if max_memory is not None:
                 self.set_hard_memory_limit(max_memory)
 
-            res = self._dll.mr_eval_context(
+            res = self._dll.mr_eval(
                 self.ctx,
                 code,
                 len(code),
@@ -415,6 +420,18 @@ class MiniRacer:
             res = self._dll.mr_heap_snapshot(self.ctx)
 
         return MiniRacerValue(self, res).to_python()
+
+    def _function_eval_call_count(self) -> int:
+        """Return the number of shortcut function-like evaluations done in this context.
+
+        This is exposed for testing only."""
+        return self._dll.mr_function_eval_call_count(self.ctx)
+
+    def _full_eval_call_count(self) -> int:
+        """Return the number of full script evaluations done in this context.
+
+        This is exposed for testing only."""
+        return self._dll.mr_full_eval_call_count(self.ctx)
 
     def _free(self, res: MiniRacerValue) -> None:
         self._dll.mr_free_value(self.ctx, res)

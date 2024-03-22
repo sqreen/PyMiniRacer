@@ -12,8 +12,8 @@ IsolateMemoryMonitor::IsolateMemoryMonitor(v8::Isolate* isolate)
 }
 
 void IsolateMemoryMonitor::StaticGCCallback(v8::Isolate* isolate,
-                                            v8::GCType type,
-                                            v8::GCCallbackFlags flags,
+                                            v8::GCType /*type*/,
+                                            v8::GCCallbackFlags /*flags*/,
                                             void* data) {
   static_cast<IsolateMemoryMonitor*>(data)->GCCallback(isolate);
 }

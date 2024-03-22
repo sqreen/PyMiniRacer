@@ -12,8 +12,8 @@ class HeapReporter {
  public:
   HeapReporter(v8::Isolate* isolate, BinaryValueFactory* bv_factory);
 
-  BinaryValue::Ptr HeapSnapshot();
-  BinaryValue::Ptr HeapStats();
+  auto HeapSnapshot() -> BinaryValue::Ptr;
+  auto HeapStats() -> BinaryValue::Ptr;
 
  private:
   v8::Isolate* isolate_;

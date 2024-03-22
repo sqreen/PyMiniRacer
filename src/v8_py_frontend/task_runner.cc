@@ -1,17 +1,18 @@
-#include "isolate_pump.h"
+#include "task_runner.h"
 #include <libplatform/libplatform.h>
 
 namespace MiniRacer {
 
-IsolatePump::IsolatePump(v8::Platform* platform, v8::Isolate* isolate)
+TaskRunner::TaskRunner(v8::Platform* platform, v8::Isolate* isolate)
     : platform_(platform), isolate_(isolate) {
-  message_pump_ = std::thread(&IsolatePump::PumpMessages, this);
+  thread_ = std::thread(&TaskRunner::PumpMessages, this);
 }
 
 /** Just a silly way to run code on the foreground task runner thread. */
 class AdHocTask : public v8::Task {
  public:
-  AdHocTask(std::function<void()> runnable) : runnable_(runnable) {}
+  explicit AdHocTask(std::function<void()> runnable)
+      : runnable_(std::move(runnable)) {}
 
   void Run() override { runnable_(); }
 
@@ -19,12 +20,12 @@ class AdHocTask : public v8::Task {
   std::function<void()> runnable_;
 };
 
-void IsolatePump::RunInForegroundRunner(std::function<void()> func) {
-  std::unique_ptr<v8::Task> task(new AdHocTask(func));
+void TaskRunner::Run(std::function<void()> func) {
+  std::unique_ptr<v8::Task> task(new AdHocTask(std::move(func)));
   platform_->GetForegroundTaskRunner(isolate_)->PostTask(std::move(task));
 }
 
-void IsolatePump::PumpMessages() {
+void TaskRunner::PumpMessages() {
   v8::SealHandleScope shs(isolate_);
   while (!shutdown_) {
     // Run message loop items (like timers)
@@ -40,19 +41,19 @@ void IsolatePump::PumpMessages() {
   }
 }
 
-IsolatePump::~IsolatePump() {
+TaskRunner::~TaskRunner() {
   shutdown_ = true;
 
   // From v8/src/d8/d8.cc Worker::Terminate():
   // Throw a no-op task on the queue just to kick the message loop into noticing
   // we're in shutdown mode:
-  RunInForegroundRunner([]() {});
+  Run([]() {});
 
   // From v8/src/d8/d8.cc Worker::Terminate():
   // Terminate any ongoing execution (in case some JS is running forever):
   isolate_->TerminateExecution();
 
-  message_pump_.join();
+  thread_.join();
 }
 
 }  // end namespace MiniRacer

@@ -1,39 +1,22 @@
 #include "code_evaluator.h"
-#include "breaker_thread.h"
+
+#include <memory>
 
 namespace MiniRacer {
 
 CodeEvaluator::CodeEvaluator(v8::Isolate* isolate,
+                             v8::Persistent<v8::Context>* context,
                              BinaryValueFactory* bv_factory,
                              IsolateMemoryMonitor* memory_monitor)
     : isolate_(isolate),
+      context_(context),
       bv_factory_(bv_factory),
-      memory_monitor_(memory_monitor) {
-  v8::Locker lock(isolate_);
-  v8::Isolate::Scope isolate_scope(isolate_);
-  v8::HandleScope handle_scope(isolate_);
+      memory_monitor_(memory_monitor) {}
 
-  context_.reset(
-      new v8::Persistent<v8::Context>(isolate_, v8::Context::New(isolate_)));
-}
-
-CodeEvaluator::~CodeEvaluator() {
-  context_->Reset();
-}
-
-namespace {
-bool maybe_fast_call(const std::string& code) {
-  // Does the code string end with '()'?
-  // TODO check if the string is an identifier
-  return (code.size() > 2 && code[code.size() - 2] == '(' &&
-          code[code.size() - 1] == ')');
-}
-}  // end anonymous namespace
-
-BinaryValue::Ptr CodeEvaluator::SummarizeTryCatch(
-    v8::Local<v8::Context>& context,
-    const v8::TryCatch& trycatch,
-    BinaryTypes resultType) {
+auto CodeEvaluator::SummarizeTryCatch(v8::Local<v8::Context>& context,
+                                      const v8::TryCatch& trycatch,
+                                      BinaryTypes resultType)
+    -> BinaryValue::Ptr {
   if (!trycatch.StackTrace(context).IsEmpty()) {
     v8::Local<v8::Value> stacktrace;
 
@@ -61,58 +44,89 @@ BinaryValue::Ptr CodeEvaluator::SummarizeTryCatch(
   return bv_factory_->New("", resultType);
 }
 
-BinaryValue::Ptr CodeEvaluator::Eval(const std::string& code,
-                                     unsigned long timeout) {
-  v8::Locker lock(isolate_);
-  v8::Isolate::Scope isolate__scope(isolate_);
-  v8::HandleScope handle_scope(isolate_);
-  v8::Local<v8::Context> context = context_->Get(isolate_);
-  v8::Context::Scope context_scope(context);
+auto CodeEvaluator::SummarizeTryCatchAfterExecution(
+    v8::Local<v8::Context>& context,
+    const v8::TryCatch& trycatch,
+    const BreakerThread& breaker_thread) -> BinaryValue::Ptr {
+  BinaryTypes resultType = type_execute_exception;
 
-  v8::TryCatch trycatch(isolate_);
-
-  // Spawn a thread to inforce the timeout limit:
-  BreakerThread breaker_thread(isolate_, timeout);
-
-  bool parsed = false;
-
-  // Is it a single function call?
-  if (maybe_fast_call(code)) {
-    v8::Local<v8::String> identifier;
-    v8::Local<v8::Value> func;
-
-    // Let's check if the value is a callable identifier
-    parsed = v8::String::NewFromUtf8(isolate_, code.data(),
-                                     v8::NewStringType::kNormal,
-                                     static_cast<int>(code.size() - 2))
-                 .ToLocal(&identifier) &&
-             context->Global()->Get(context, identifier).ToLocal(&func) &&
-             func->IsFunction();
-
-    if (parsed) {
-      // Call the identifier
-      v8::MaybeLocal<v8::Value> maybe_value =
-          v8::Local<v8::Function>::Cast(func)->Call(
-              context, v8::Undefined(isolate_), 0, {});
-      if (!maybe_value.IsEmpty()) {
-        return bv_factory_->ConvertFromV8(context,
-                                          maybe_value.ToLocalChecked());
-      }
-    }
+  if (memory_monitor_->IsHardMemoryLimitReached()) {
+    resultType = type_oom_exception;
+  } else if (breaker_thread.timed_out()) {
+    resultType = type_timeout_exception;
+  } else if (trycatch.HasTerminated()) {
+    resultType = type_terminated_exception;
   }
 
-  // Fallback on a slower full Eval
-  v8::Local<v8::String> asString;
-  v8::Local<v8::Script> script;
+  return SummarizeTryCatch(context, trycatch, resultType);
+}
 
-  parsed =
+auto CodeEvaluator::GetFunction(const std::string& code,
+                                v8::Local<v8::Context>& context,
+                                v8::Local<v8::Function>* func) -> bool {
+  // Is it a single function call?
+  // Does the code string end with '()'?
+  if (code.size() < 3 || code[code.size() - 2] != '(' ||
+      code[code.size() - 1] != ')') {
+    return false;
+  }
+
+  // Check if the value before the () is a callable identifier:
+  v8::MaybeLocal<v8::String> maybe_identifier =
       v8::String::NewFromUtf8(isolate_, code.data(), v8::NewStringType::kNormal,
-                              static_cast<int>(code.size()))
-          .ToLocal(&asString) &&
-      v8::Script::Compile(context, asString).ToLocal(&script) &&
-      !script.IsEmpty();
+                              static_cast<int>(code.size() - 2));
+  v8::Local<v8::String> identifier;
+  if (!maybe_identifier.ToLocal(&identifier)) {
+    return false;
+  }
 
-  if (!parsed) {
+  v8::Local<v8::Value> func_val;
+  if (!context->Global()->Get(context, identifier).ToLocal(&func_val)) {
+    return false;
+  }
+
+  if (!func_val->IsFunction()) {
+    return false;
+  }
+
+  *func = func_val.As<v8::Function>();
+  return true;
+}
+
+auto CodeEvaluator::EvalFunction(const v8::Local<v8::Function>& func,
+                                 v8::Local<v8::Context>& context,
+                                 const BreakerThread& breaker_thread)
+    -> BinaryValue::Ptr {
+  v8::TryCatch trycatch(isolate_);
+
+  v8::MaybeLocal<v8::Value> maybe_value =
+      func->Call(context, v8::Undefined(isolate_), 0, {});
+  if (!maybe_value.IsEmpty()) {
+    return bv_factory_->ConvertFromV8(context, maybe_value.ToLocalChecked());
+  }
+
+  return SummarizeTryCatchAfterExecution(context, trycatch, breaker_thread);
+}
+
+auto CodeEvaluator::EvalAsScript(const std::string& code,
+                                 v8::Local<v8::Context>& context,
+                                 const BreakerThread& breaker_thread)
+    -> BinaryValue::Ptr {
+  v8::TryCatch trycatch(isolate_);
+
+  v8::MaybeLocal<v8::String> maybe_string =
+      v8::String::NewFromUtf8(isolate_, code.data(), v8::NewStringType::kNormal,
+                              static_cast<int>(code.size()));
+
+  if (maybe_string.IsEmpty()) {
+    // Implies we couldn't convert from utf-8 bytes, which would be odd.
+    return bv_factory_->New("invalid code string", type_parse_exception);
+  }
+
+  v8::Local<v8::Script> script;
+  if (!v8::Script::Compile(context, maybe_string.ToLocalChecked())
+           .ToLocal(&script) ||
+      script.IsEmpty()) {
     return SummarizeTryCatch(context, trycatch, type_parse_exception);
   }
 
@@ -121,27 +135,40 @@ BinaryValue::Ptr CodeEvaluator::Eval(const std::string& code,
     return bv_factory_->ConvertFromV8(context, maybe_value.ToLocalChecked());
   }
 
-  // Still didn't execute. Find an error:
-  BinaryTypes resultType;
-
-  if (memory_monitor_->IsHardMemoryLimitReached()) {
-    resultType = type_oom_exception;
-  } else if (breaker_thread.timed_out()) {
-    resultType = type_timeout_exception;
-  } else if (trycatch.HasTerminated()) {
-    resultType = type_terminated_exception;
-  } else {
-    resultType = type_execute_exception;
-  }
-
-  return SummarizeTryCatch(context, trycatch, resultType);
+  // Didn't execute. Find an error:
+  return SummarizeTryCatchAfterExecution(context, trycatch, breaker_thread);
 }
 
-std::optional<std::string> CodeEvaluator::ValueToUtf8String(
-    v8::Local<v8::Value> value) {
+auto CodeEvaluator::Eval(const std::string& code, uint64_t timeout)
+    -> BinaryValue::Ptr {
+  v8::Locker lock(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
+  v8::Local<v8::Context> context = context_->Get(isolate_);
+  v8::Context::Scope context_scope(context);
+
+  // Spawn a thread to enforce the timeout limit:
+  BreakerThread breaker_thread(isolate_, timeout);
+
+  // Try and evaluate as a simple function call.
+  // This gets us about a speedup of about 1.17 (i.e., 17% faster) on a baseline
+  // of no-op function calls.
+  v8::Local<v8::Function> func;
+  if (GetFunction(code, context, &func)) {
+    function_eval_call_count_++;
+    return EvalFunction(func, context, breaker_thread);
+  }
+
+  // Fall back on a slower full eval:
+  full_eval_call_count_++;
+  return EvalAsScript(code, context, breaker_thread);
+}
+
+auto CodeEvaluator::ValueToUtf8String(v8::Local<v8::Value> value)
+    -> std::optional<std::string> {
   v8::String::Utf8Value utf8(isolate_, value);
 
-  if (utf8.length()) {
+  if (utf8.length() != 0) {
     return std::make_optional(std::string(*utf8, utf8.length()));
   }
 

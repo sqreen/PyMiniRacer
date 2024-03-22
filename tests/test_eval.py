@@ -27,6 +27,20 @@ ReferenceError: invalid is not defined
     )
 
 
+def test_eval():
+    mr = MiniRacer()
+    assert mr.eval("42") == 42
+
+
+def test_blank():
+    mr = MiniRacer()
+    assert mr.eval("") is None
+    assert mr.eval(" ") is None
+    assert mr.eval("\t") is None
+
+    assert mr._full_eval_call_count() == 3  # noqa: SLF001
+
+
 def test_global():
     mr = MiniRacer()
     mr.eval("var xabc = 22;")
@@ -62,8 +76,10 @@ def test_exception_thrown():
 
     context.eval(js_source)
 
+    # Add extra junk (+'') to avoid our fast function call path which produces a
+    # slightly different traceback:
     with pytest.raises(JSEvalException) as exc_info:
-        context.eval("f()")
+        context.eval("f()+''")
 
     assert (
         exc_info.value.args[0]
@@ -220,9 +236,19 @@ def test_async():
 
 def test_fast_call():
     mr = MiniRacer()
-    mr.eval("const test = function () { return 42; }")
-    # this syntax is optimized and takes another execution path in the extension
+    mr.eval("var test = function () { return 42; }")
+
+    # This syntax is optimized and takes another execution path in the extension
+    # Note: the fast call optimization only works with functions defined using
+    # "var", of "function test() { ... }", which place the definition on the global
+    # "this". It doesn't work with functions defined as "let" or "const" because
+    # they place the function onto block scope, where our optimization cannot find
+    # them.
     assert mr.eval("test()") == 42
+
     # It looks like a fast call but it is not (it ends with '()' but no identifier)
-    # should not fail and do a classical eval.
+    # should not fail and do a classical evaluation.
     assert mr.eval("1+test()") == 43
+
+    assert mr._function_eval_call_count() == 1  # noqa: SLF001
+    assert mr._full_eval_call_count() == 2  # noqa: SLF001

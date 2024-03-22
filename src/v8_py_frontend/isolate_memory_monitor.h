@@ -7,12 +7,18 @@ namespace MiniRacer {
 
 class IsolateMemoryMonitor {
  public:
-  IsolateMemoryMonitor(v8::Isolate* isolate);
+  explicit IsolateMemoryMonitor(v8::Isolate* isolate);
   ~IsolateMemoryMonitor();
 
-  bool IsSoftMemoryLimitReached() { return soft_memory_limit_reached_; }
-  bool IsHardMemoryLimitReached() { return hard_memory_limit_reached_; }
-  void ApplyLowMemoryNotification() { isolate_->LowMemoryNotification(); }
+  IsolateMemoryMonitor(const IsolateMemoryMonitor&) = delete;
+  auto operator=(const IsolateMemoryMonitor&) -> IsolateMemoryMonitor& = delete;
+  IsolateMemoryMonitor(IsolateMemoryMonitor&&) = delete;
+  auto operator=(IsolateMemoryMonitor&& other)
+      -> IsolateMemoryMonitor& = delete;
+
+  [[nodiscard]] auto IsSoftMemoryLimitReached() const -> bool;
+  [[nodiscard]] auto IsHardMemoryLimitReached() const -> bool;
+  void ApplyLowMemoryNotification();
 
   void SetHardMemoryLimit(size_t limit);
   void SetSoftMemoryLimit(size_t limit);
@@ -30,6 +36,16 @@ class IsolateMemoryMonitor {
   size_t hard_memory_limit_;
   bool hard_memory_limit_reached_;
 };
+
+inline auto IsolateMemoryMonitor::IsSoftMemoryLimitReached() const -> bool {
+  return soft_memory_limit_reached_;
+}
+inline auto IsolateMemoryMonitor::IsHardMemoryLimitReached() const -> bool {
+  return hard_memory_limit_reached_;
+}
+inline void IsolateMemoryMonitor::ApplyLowMemoryNotification() {
+  isolate_->LowMemoryNotification();
+}
 
 }  // end namespace MiniRacer
 

@@ -32,32 +32,35 @@ void init_v8(char const* v8_flags,
 }
 
 Context::Context()
-    : isolate_holder_(),
-      isolate_memory_monitor_(isolate_holder_.Get()),
+    : isolate_memory_monitor_(isolate_holder_.Get()),
+      context_holder_(isolate_holder_.Get()),
       code_evaluator_(isolate_holder_.Get(),
+                      context_holder_.Get(),
                       &bv_factory_,
                       &isolate_memory_monitor_),
       heap_reporter_(isolate_holder_.Get(), &bv_factory_),
-      isolate_pump_(current_platform.get(), isolate_holder_.Get()) {}
+      task_runner_(current_platform.get(), isolate_holder_.Get()) {}
 
-BinaryValue::Ptr Context::RunTask(std::function<BinaryValue::Ptr()> func) {
+auto Context::RunTask(std::function<BinaryValue::Ptr()> func)
+    -> BinaryValue::Ptr {
   std::promise<BinaryValue::Ptr> promise;
   std::future<BinaryValue::Ptr> future = promise.get_future();
 
-  isolate_pump_.RunInForegroundRunner([&]() { promise.set_value(func()); });
+  task_runner_.Run([&]() { promise.set_value(func()); });
 
   return future.get();
 }
 
-BinaryValue::Ptr Context::Eval(const std::string& code, unsigned long timeout) {
+auto Context::Eval(const std::string& code, uint64_t timeout)
+    -> BinaryValue::Ptr {
   return RunTask([&]() { return code_evaluator_.Eval(code, timeout); });
 }
 
-BinaryValue::Ptr Context::HeapSnapshot() {
+auto Context::HeapSnapshot() -> BinaryValue::Ptr {
   return RunTask([&]() { return heap_reporter_.HeapSnapshot(); });
 }
 
-BinaryValue::Ptr Context::HeapStats() {
+auto Context::HeapStats() -> BinaryValue::Ptr {
   return RunTask([&]() { return heap_reporter_.HeapStats(); });
 }
 

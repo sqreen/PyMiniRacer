@@ -10,10 +10,10 @@
 
 extern "C" {
 
-LIB_EXPORT auto mr_eval_context(MiniRacer::Context* mr_context,
-                                char* str,
-                                int len,
-                                uint64_t timeout) -> MiniRacer::BinaryValue* {
+LIB_EXPORT auto mr_eval(MiniRacer::Context* mr_context,
+                        char* str,
+                        uint64_t len,
+                        uint64_t timeout) -> MiniRacer::BinaryValue* {
   return mr_context->Eval(std::string(str, len), timeout).release();
 }
 
@@ -74,4 +74,15 @@ LIB_EXPORT auto mr_heap_snapshot(MiniRacer::Context* mr_context)
     -> MiniRacer::BinaryValue* {
   return mr_context->HeapSnapshot().release();
 }
+
+LIB_EXPORT auto mr_full_eval_call_count(MiniRacer::Context* mr_context)
+    -> uint64_t {
+  return mr_context->FullEvalCallCount();
+}
+
+LIB_EXPORT auto mr_function_eval_call_count(MiniRacer::Context* mr_context)
+    -> uint64_t {
+  return mr_context->FunctionEvalCallCount();
+}
+
 }  // end extern "C"
