@@ -329,7 +329,7 @@ class MiniRacer:
                 self.ctx,
                 code,
                 len(code),
-                ctypes.c_ulong(timeout or 0),
+                ctypes.c_uint64(timeout or 0),
             )
         if not res:
             raise JSConversionException
