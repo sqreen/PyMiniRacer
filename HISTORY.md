@@ -1,6 +1,6 @@
 # History
 
-## 0.8.1 (2024-03-??)
+## 0.8.1 (2024-03-23)
 
 - A series of C++ changes which should not impact the behavior of PyMiniRacer:
 - Refactoring how we use V8 by inverting the control flow. Before we had function
