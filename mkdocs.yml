@@ -22,6 +22,9 @@ plugins:
         python:
           paths: [src]  # search packages in the src folder
 
+hooks:
+  - mkdocs_hooks.py
+
 markdown_extensions:
   - admonition
   - sane_lists
