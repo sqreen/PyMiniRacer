@@ -21,8 +21,8 @@ class AdHocTask : public v8::Task {
 };
 
 void TaskRunner::Run(std::function<void()> func) {
-  std::unique_ptr<v8::Task> task(new AdHocTask(std::move(func)));
-  platform_->GetForegroundTaskRunner(isolate_)->PostTask(std::move(task));
+  platform_->GetForegroundTaskRunner(isolate_)->PostTask(
+      std::make_unique<AdHocTask>(std::move(func)));
 }
 
 void TaskRunner::PumpMessages() {
