@@ -1,4 +1,4 @@
-""" Basic JS types tests """
+""" Test loading and executing babel.js """
 
 from os.path import dirname
 from os.path import join as pathjoin

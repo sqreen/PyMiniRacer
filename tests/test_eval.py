@@ -1,4 +1,4 @@
-""" Basic JS types tests """
+""" Test .eval() method """
 
 from time import sleep, time
 
