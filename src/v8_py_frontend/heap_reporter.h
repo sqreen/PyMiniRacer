@@ -1,9 +1,8 @@
 #ifndef INCLUDE_MINI_RACER_HEAP_REPORTER_H
 #define INCLUDE_MINI_RACER_HEAP_REPORTER_H
 
-#include <v8.h>
+#include <v8-isolate.h>
 #include "binary_value.h"
-#include "isolate_memory_monitor.h"
 
 namespace MiniRacer {
 

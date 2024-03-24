@@ -1,6 +1,14 @@
 #include "mini_racer.h"
 #include <libplatform/libplatform.h>
+#include <v8-initialization.h>
+#include <v8-platform.h>
+#include <cstdint>
+#include <filesystem>
+#include <functional>
 #include <future>
+#include <memory>
+#include <string>
+#include "binary_value.h"
 
 namespace MiniRacer {
 
@@ -13,16 +21,16 @@ std::unique_ptr<v8::Platform> current_platform = nullptr;
 // NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)
 }  // end anonymous namespace
 
-void init_v8(char const* v8_flags,
+void init_v8(const std::string& v8_flags,
              const std::filesystem::path& icu_path,
              const std::filesystem::path& snapshot_path) {
   v8::V8::InitializeICU(icu_path.string().c_str());
   v8::V8::InitializeExternalStartupDataFromFile(snapshot_path.string().c_str());
 
-  if (v8_flags != nullptr) {
-    v8::V8::SetFlagsFromString(v8_flags);
+  if (!v8_flags.empty()) {
+    v8::V8::SetFlagsFromString(v8_flags.c_str());
   }
-  if (v8_flags != nullptr && strstr(v8_flags, "--single-threaded") != nullptr) {
+  if (v8_flags.find("--single-threaded") != std::string::npos) {
     current_platform = v8::platform::NewSingleThreadedDefaultPlatform();
   } else {
     current_platform = v8::platform::NewDefaultPlatform();
@@ -51,8 +59,8 @@ auto Context::RunTask(std::function<BinaryValue::Ptr()> func)
   return future.get();
 }
 
-auto Context::Eval(const std::string& code, uint64_t timeout)
-    -> BinaryValue::Ptr {
+auto Context::Eval(const std::string& code,
+                   uint64_t timeout) -> BinaryValue::Ptr {
   return RunTask([&]() { return code_evaluator_.Eval(code, timeout); });
 }
 

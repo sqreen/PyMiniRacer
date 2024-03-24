@@ -1,7 +1,9 @@
 #ifndef INCLUDE_MINI_RACER_ISOLATE_HOLDER_H
 #define INCLUDE_MINI_RACER_ISOLATE_HOLDER_H
 
-#include <v8.h>
+#include <v8-array-buffer.h>
+#include <v8-isolate.h>
+#include <memory>
 
 namespace MiniRacer {
 

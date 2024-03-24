@@ -1,5 +1,14 @@
 #include "binary_value.h"
 
+#include <v8-array-buffer.h>
+#include <v8-date.h>
+#include <v8-local-handle.h>
+#include <v8-primitive.h>
+#include <v8-value.h>
+#include <cstddef>
+#include <memory>
+#include "gsl_stub.h"
+
 namespace MiniRacer {
 
 // NOLINTBEGIN(cppcoreguidelines-pro-type-union-access)
@@ -52,7 +61,7 @@ auto BinaryValueFactory::ConvertFromV8(v8::Local<v8::Context> context,
   // http://www.ecma-international.org/ecma-262/5.1/#sec-4.3.19
   else if (value->IsNumber()) {
     res->type = type_double;
-    double val = value->NumberValue(context).ToChecked();
+    const double val = value->NumberValue(context).ToChecked();
     res->double_val = val;
   } else if (value->IsBoolean()) {
     res->type = type_bool;
@@ -63,17 +72,18 @@ auto BinaryValueFactory::ConvertFromV8(v8::Local<v8::Context> context,
     res->type = type_symbol;
   } else if (value->IsDate()) {
     res->type = type_date;
-    v8::Local<v8::Date> date = v8::Local<v8::Date>::Cast(value);
+    const v8::Local<v8::Date> date = v8::Local<v8::Date>::Cast(value);
 
-    double timestamp = date->ValueOf();
+    const double timestamp = date->ValueOf();
     res->double_val = timestamp;
   } else if (value->IsString()) {
-    v8::Local<v8::String> rstr = value->ToString(context).ToLocalChecked();
+    const v8::Local<v8::String> rstr =
+        value->ToString(context).ToLocalChecked();
 
     res->type = type_str_utf8;
     res->len = static_cast<size_t>(
         rstr->Utf8Length(context->GetIsolate()));  // in bytes
-    size_t capacity = res->len + 1;
+    const size_t capacity = res->len + 1;
     res->bytes = new char[capacity];
     rstr->WriteUtf8(context->GetIsolate(), res->bytes);
   } else if (value->IsSharedArrayBuffer() || value->IsArrayBuffer() ||
@@ -83,7 +93,7 @@ auto BinaryValueFactory::ConvertFromV8(v8::Local<v8::Context> context,
     size_t size = 0;
 
     if (value->IsArrayBufferView()) {
-      v8::Local<v8::ArrayBufferView> view =
+      const v8::Local<v8::ArrayBufferView> view =
           v8::Local<v8::ArrayBufferView>::Cast(value);
 
       backing_store = view->Buffer()->GetBackingStore();

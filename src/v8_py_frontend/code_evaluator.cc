@@ -1,6 +1,21 @@
 #include "code_evaluator.h"
 
-#include <memory>
+#include <v8-context.h>
+#include <v8-exception.h>
+#include <v8-function.h>
+#include <v8-isolate.h>
+#include <v8-local-handle.h>
+#include <v8-locker.h>
+#include <v8-persistent-handle.h>
+#include <v8-primitive.h>
+#include <v8-script.h>
+#include <v8-value.h>
+#include <cstdint>
+#include <optional>
+#include <string>
+#include "binary_value.h"
+#include "breaker_thread.h"
+#include "isolate_memory_monitor.h"
 
 namespace MiniRacer {
 
@@ -72,7 +87,7 @@ auto CodeEvaluator::GetFunction(const std::string& code,
   }
 
   // Check if the value before the () is a callable identifier:
-  v8::MaybeLocal<v8::String> maybe_identifier =
+  const v8::MaybeLocal<v8::String> maybe_identifier =
       v8::String::NewFromUtf8(isolate_, code.data(), v8::NewStringType::kNormal,
                               static_cast<int>(code.size() - 2));
   v8::Local<v8::String> identifier;
@@ -97,7 +112,7 @@ auto CodeEvaluator::EvalFunction(const v8::Local<v8::Function>& func,
                                  v8::Local<v8::Context>& context,
                                  const BreakerThread& breaker_thread)
     -> BinaryValue::Ptr {
-  v8::TryCatch trycatch(isolate_);
+  const v8::TryCatch trycatch(isolate_);
 
   v8::MaybeLocal<v8::Value> maybe_value =
       func->Call(context, v8::Undefined(isolate_), 0, {});
@@ -112,7 +127,7 @@ auto CodeEvaluator::EvalAsScript(const std::string& code,
                                  v8::Local<v8::Context>& context,
                                  const BreakerThread& breaker_thread)
     -> BinaryValue::Ptr {
-  v8::TryCatch trycatch(isolate_);
+  const v8::TryCatch trycatch(isolate_);
 
   v8::MaybeLocal<v8::String> maybe_string =
       v8::String::NewFromUtf8(isolate_, code.data(), v8::NewStringType::kNormal,
@@ -139,16 +154,16 @@ auto CodeEvaluator::EvalAsScript(const std::string& code,
   return SummarizeTryCatchAfterExecution(context, trycatch, breaker_thread);
 }
 
-auto CodeEvaluator::Eval(const std::string& code, uint64_t timeout)
-    -> BinaryValue::Ptr {
-  v8::Locker lock(isolate_);
-  v8::Isolate::Scope isolate_scope(isolate_);
-  v8::HandleScope handle_scope(isolate_);
+auto CodeEvaluator::Eval(const std::string& code,
+                         uint64_t timeout) -> BinaryValue::Ptr {
+  const v8::Locker lock(isolate_);
+  const v8::Isolate::Scope isolate_scope(isolate_);
+  const v8::HandleScope handle_scope(isolate_);
   v8::Local<v8::Context> context = context_->Get(isolate_);
-  v8::Context::Scope context_scope(context);
+  const v8::Context::Scope context_scope(context);
 
   // Spawn a thread to enforce the timeout limit:
-  BreakerThread breaker_thread(isolate_, timeout);
+  const BreakerThread breaker_thread(isolate_, timeout);
 
   // Try and evaluate as a simple function call.
   // This gets us about a speedup of about 1.17 (i.e., 17% faster) on a baseline

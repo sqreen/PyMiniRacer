@@ -108,7 +108,7 @@ class _MiniRacerValueStruct(ctypes.Structure):
     _fields_: ClassVar[tuple[str, object]] = [
         ("value", _MiniRacerValueUnion),
         ("len", ctypes.c_size_t),
-        ("type", ctypes.c_int32),
+        ("type", ctypes.c_uint8),
     ]
     _pack_ = 1
 

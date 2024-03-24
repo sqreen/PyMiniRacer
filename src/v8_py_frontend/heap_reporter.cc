@@ -1,6 +1,14 @@
 #include "heap_reporter.h"
+#include <v8-exception.h>
+#include <v8-json.h>
+#include <v8-local-handle.h>
+#include <v8-locker.h>
+#include <v8-primitive.h>
 #include <v8-profiler.h>
+#include <v8-statistics.h>
 #include <sstream>
+#include <string>
+#include "binary_value.h"
 
 namespace MiniRacer {
 
@@ -9,18 +17,18 @@ HeapReporter::HeapReporter(v8::Isolate* isolate_,
     : isolate_(isolate_), bv_factory_(bv_factory) {}
 
 auto HeapReporter::HeapStats() -> BinaryValue::Ptr {
-  v8::Locker lock(isolate_);
-  v8::Isolate::Scope isolate_scope(isolate_);
-  v8::HandleScope handle_scope(isolate_);
+  const v8::Locker lock(isolate_);
+  const v8::Isolate::Scope isolate_scope(isolate_);
+  const v8::HandleScope handle_scope(isolate_);
 
-  v8::TryCatch trycatch(isolate_);
-  v8::Local<v8::Context> context = v8::Context::New(isolate_);
-  v8::Context::Scope context_scope(context);
+  const v8::TryCatch trycatch(isolate_);
+  const v8::Local<v8::Context> context = v8::Context::New(isolate_);
+  const v8::Context::Scope context_scope(context);
 
   v8::HeapStatistics stats;
   isolate_->GetHeapStatistics(&stats);
 
-  v8::Local<v8::Object> stats_obj = v8::Object::New(isolate_);
+  const v8::Local<v8::Object> stats_obj = v8::Object::New(isolate_);
 
   stats_obj
       ->Set(context,
@@ -80,9 +88,9 @@ class StringOutputStream : public v8::OutputStream {
 }  // end anonymous namespace
 
 auto HeapReporter::HeapSnapshot() -> BinaryValue::Ptr {
-  v8::Locker lock(isolate_);
-  v8::Isolate::Scope isolate_scope(isolate_);
-  v8::HandleScope handle_scope(isolate_);
+  const v8::Locker lock(isolate_);
+  const v8::Isolate::Scope isolate_scope(isolate_);
+  const v8::HandleScope handle_scope(isolate_);
   const auto* snap = isolate_->GetHeapProfiler()->TakeHeapSnapshot();
   StringOutputStream sos;
   snap->Serialize(&sos);

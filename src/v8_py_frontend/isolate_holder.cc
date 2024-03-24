@@ -1,5 +1,8 @@
 #include "isolate_holder.h"
 
+#include <v8-array-buffer.h>
+#include <v8-isolate.h>
+
 namespace MiniRacer {
 
 IsolateHolder::IsolateHolder()

@@ -1,8 +1,9 @@
 #ifndef INCLUDE_MINI_RACER_BREAKER_THREAD_H
 #define INCLUDE_MINI_RACER_BREAKER_THREAD_H
 
-#include <v8.h>
+#include <v8-isolate.h>
 #include <chrono>
+#include <cstdint>
 #include <mutex>
 #include <thread>
 

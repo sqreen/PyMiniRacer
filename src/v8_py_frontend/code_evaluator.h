@@ -1,8 +1,14 @@
 #ifndef INCLUDE_MINI_RACER_CODE_EVALUATOR_H
 #define INCLUDE_MINI_RACER_CODE_EVALUATOR_H
 
-#include <v8.h>
+#include <v8-context.h>
+#include <v8-exception.h>
+#include <v8-isolate.h>
+#include <v8-local-handle.h>
+#include <v8-persistent-handle.h>
+#include <cstdint>
 #include <optional>
+#include <string>
 #include "binary_value.h"
 #include "breaker_thread.h"
 #include "isolate_memory_monitor.h"

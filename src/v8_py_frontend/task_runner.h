@@ -1,7 +1,10 @@
 #ifndef INCLUDE_MINI_RACER_TASK_RUNNER_H
 #define INCLUDE_MINI_RACER_TASK_RUNNER_H
 
-#include <v8.h>
+#include <v8-isolate.h>
+#include <v8-platform.h>
+#include <atomic>
+#include <functional>
 #include <thread>
 
 namespace MiniRacer {

@@ -1,4 +1,4 @@
-name: Linter Checks
+name: Pre-commit checks
 
 on: [pull_request]
 
@@ -7,13 +7,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
-    - uses: actions/setup-python@v1
+    # For clang-tidy and clang-format, let's lint and format with the same release
+    # of LLVM that we compile with:
+    - name: Install up-to-date LLVM
+      run: |
+        LLVM_VERSION=18
+        UBUNTU_VERSION=jammy
+        curl https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+        echo "deb http://apt.llvm.org/${UBUNTU_VERSION}/ llvm-toolchain-${UBUNTU_VERSION}-${LLVM_VERSION} main" \
+                | sudo tee /etc/apt/sources.list.d/llvm.list
+        sudo apt-get update -q -y
+        sudo apt-get install -q -y "clang-format-${LLVM_VERSION}" "clang-tidy-${LLVM_VERSION}"
+        sudo ln -sf "/usr/bin/clang-format-${LLVM_VERSION}" /usr/bin/clang-format
+        sudo ln -sf "/usr/bin/clang-tidy-${LLVM_VERSION}" /usr/bin/clang-tidy
+
+    - uses: actions/setup-python@v5
       with:
-        python-version: 3.8
-    - uses: actions/cache@v1
-      with:
-        path: ~/.cache/pre-commit
-        key: pre-commit|${{ hashFiles('.pre-commit-config.yaml') }}
-    - uses: pre-commit/action@v1.0.1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+        # depot_tools still uses distutils which is gone in 3.12:
+        python-version: 3.11
+
+    - name: Install deps
+      run: python -m pip install --upgrade hatch hatch-mkdocs packaging httplib2
+
+    # needed for clang-tidy:
+    - name: Grab V8 source
+      run: python helpers/v8_build.py --fetch-only
+
+    # Hatch seems to fall over itself due to race conditions on the first pre-commit
+    # run in an environment. (Specifically, there are errors in directory and symlink
+    # creation within the virtual env.) Help it by just initializing docs serially
+    # beforehand:
+    - name: Set up hatch docs env
+      run: hatch env create docs
+
+    - uses: pre-commit/action@v3.0.1

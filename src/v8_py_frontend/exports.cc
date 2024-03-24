@@ -1,4 +1,7 @@
 #include <v8-version-string.h>
+#include <cstddef>
+#include <cstdint>
+#include "binary_value.h"
 #include "gsl_stub.h"
 #include "mini_racer.h"
 

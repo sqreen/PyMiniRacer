@@ -1,5 +1,13 @@
 #include "task_runner.h"
 #include <libplatform/libplatform.h>
+#include <v8-isolate.h>
+#include <v8-local-handle.h>
+#include <v8-microtask-queue.h>
+#include <v8-platform.h>
+#include <functional>
+#include <memory>
+#include <thread>
+#include <utility>
 
 namespace MiniRacer {
 
@@ -26,7 +34,7 @@ void TaskRunner::Run(std::function<void()> func) {
 }
 
 void TaskRunner::PumpMessages() {
-  v8::SealHandleScope shs(isolate_);
+  const v8::SealHandleScope shs(isolate_);
   while (!shutdown_) {
     // Run message loop items (like timers)
     if (!v8::platform::PumpMessageLoop(

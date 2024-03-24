@@ -1,5 +1,10 @@
 #include "isolate_memory_monitor.h"
 
+#include <v8-callbacks.h>
+#include <v8-isolate.h>
+#include <v8-statistics.h>
+#include <cstddef>
+
 namespace MiniRacer {
 
 IsolateMemoryMonitor::IsolateMemoryMonitor(v8::Isolate* isolate)
@@ -21,7 +26,7 @@ void IsolateMemoryMonitor::StaticGCCallback(v8::Isolate* isolate,
 void IsolateMemoryMonitor::GCCallback(v8::Isolate* isolate) {
   v8::HeapStatistics stats;
   isolate->GetHeapStatistics(&stats);
-  size_t used = stats.used_heap_size();
+  const size_t used = stats.used_heap_size();
 
   soft_memory_limit_reached_ =
       (soft_memory_limit_ > 0) && (used > soft_memory_limit_);

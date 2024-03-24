@@ -1,12 +1,20 @@
 #ifndef BINARY_VALUE_H
 #define BINARY_VALUE_H
 
-#include <v8.h>
+#include <v8-array-buffer.h>
+#include <v8-context.h>
+#include <v8-local-handle.h>
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <unordered_map>
 #include "gsl_stub.h"
 
 namespace MiniRacer {
 
-enum BinaryTypes : uint32_t {
+enum BinaryTypes : uint8_t {
   type_invalid = 0,
   type_null = 1,
   type_bool = 2,
@@ -73,8 +81,8 @@ class BinaryValueFactory {
   template <typename... Args>
   auto New(Args&&... args) -> BinaryValue::Ptr;
 
-  auto ConvertFromV8(v8::Local<v8::Context> context, v8::Local<v8::Value> value)
-      -> BinaryValue::Ptr;
+  auto ConvertFromV8(v8::Local<v8::Context> context,
+                     v8::Local<v8::Value> value) -> BinaryValue::Ptr;
 
   // Only for use if the pointer is not wrapped in Ptr (see below), which uses
   // BinaryValueDeleter which calls this automatically:

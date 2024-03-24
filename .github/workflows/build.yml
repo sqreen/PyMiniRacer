@@ -1,6 +1,12 @@
 name: pypi-build
 
-on: push
+on:
+  # For PRs:
+  pull_request: {}
+  # For releases:
+  push:
+    tags:
+      - v*
 
 concurrency:
   group: build-${{ github.head_ref }}
@@ -37,26 +43,33 @@ jobs:
   # architectures (notably aarch64) via emulation. uraimo/run-on-arch-action@v2 doesn't
   # support Mac or Windows, so we run a separate job for those.
   linux-wheels:
-    name: Build wheel for ${{ matrix.config.image }}
+    name: Build wheel for ${{ matrix.image }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        config:
+        image:
           # To maximize compatibility of generated wheels, we should theoreticaly build
           # on the *oldest* supported distros.
           # But V8 ships its own bullseye sysroot and links against that, so we may as
           # well run on bullseye (even though buster would provide an older supported
           # build distro):
-          - image: debian:bullseye
-          - image: arm64v8/debian:bullseye
+          - debian:bullseye
+          - arm64v8/debian:bullseye
           # Alpine 3.19 includes a clang new enough for V8 to build (with only minor
           # patches!). Builds on 3.19 seem incompatible with <= 3.18 due to libstdc++
           # symbols. (And we can't just run on an old Alpine and update clang from the
           # llvm site, because unlike Debian, the llvm project doesn't maintain
           # updated packages for old Alpine distros.)
-          - image: alpine:3.19
-          - image: arm64v8/alpine:3.19
+          - alpine:3.19
+          - arm64v8/alpine:3.19
+        exclude:
+          # The aarch64 builds run really slowly, so let's skip them except for
+          # releases.
+          # For more info on this GitHub Actions hack, see:
+          # https://stackoverflow.com/questions/65384420/how-do-i-make-a-github-action-matrix-element-conditional#answer-73822998
+          - image: ${{ !startsWith(github.ref, 'refs/tags') && 'arm64v8/debian:bullseye' }}
+          - image: ${{ !startsWith(github.ref, 'refs/tags') && 'arm64v8/alpine:3.19' }}
 
     steps:
     - name: Configure git
@@ -69,13 +82,15 @@ jobs:
 
     - name: Run sccache-cache
       uses: mozilla-actions/sccache-action@v0.0.3
+      # For security reasons, only use sccache on releases:
+      if: ${{ startsWith(github.ref, 'refs/tags') }}
 
     - uses: uraimo/run-on-arch-action@v2
       name: Build wheel
       with:
         arch: none
         distro: none
-        base_image: ${{ matrix.config.image }}
+        base_image: ${{ matrix.image }}
 
         setup: |
           mkdir -p "${PWD}/wheels"
@@ -86,7 +101,7 @@ jobs:
         shell: /bin/sh
 
         install: |
-          case "${{ matrix.config.image }}" in
+          case "${{ matrix.image }}" in
             *debian*)
               # Let's download some system packages!
               # Note that the precise list of packages we need is intertwined not just
@@ -179,32 +194,36 @@ jobs:
               ;;
           esac
 
-          # Set up sccache.
-          # We can't directly use the binary fetched by Mozilla's GitHub SCCache
-          # Action, because we're doing a cross-arch build (the job is on x86_64 but
-          # the container may be on aarch64). So we reproduce the logic from the
-          # action:
-          # https://github.com/Mozilla-Actions/sccache-action/blob/main/src/setup.ts
-          SCCACHE_VERSION="v0.7.7"
-          SCCACHE_ARCH="$(uname -m)"
-          SCCACHE_BASE_URL="https://github.com/mozilla/sccache/releases/download"
-          # Note that the sccache binary is statically linked and thus we can use the
-          # musl binary on Debian (this is indeed what Mozilla's Github Action does):
-          SCCACHE_PLATFORM="unknown-linux-musl"
-          SCCACHE_URL="${SCCACHE_BASE_URL}/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}-${SCCACHE_PLATFORM}.tar.gz"
+          if [ ! -z "${{ env.ACTIONS_CACHE_URL }}" ]; then
+            # Set up sccache.
+            # We can't directly use the binary fetched by Mozilla's GitHub SCCache
+            # Action, because we're doing a cross-arch build (the job is on x86_64 but
+            # the container may be on aarch64). So we reproduce the logic from the
+            # action:
+            # https://github.com/Mozilla-Actions/sccache-action/blob/main/src/setup.ts
+            SCCACHE_VERSION="v0.7.7"
+            SCCACHE_ARCH="$(uname -m)"
+            SCCACHE_BASE_URL="https://github.com/mozilla/sccache/releases/download"
+            # Note that the sccache binary is statically linked and thus we can use the
+            # musl binary on Debian (this is indeed what Mozilla's Github Action does):
+            SCCACHE_PLATFORM="unknown-linux-musl"
+            SCCACHE_URL="${SCCACHE_BASE_URL}/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}-${SCCACHE_PLATFORM}.tar.gz"
 
-          mkdir /sccache
-          cd /sccache
-          curl --location "${SCCACHE_URL}" > sccache.tar.gz
-          tar --strip-components 1 -xvzf sccache.tar.gz
+            mkdir /sccache
+            cd /sccache
+            curl --location "${SCCACHE_URL}" > sccache.tar.gz
+            tar --strip-components 1 -xvzf sccache.tar.gz
+          fi
 
         run: |
           set -e
 
-          export SCCACHE_GHA_ENABLED="true"
-          export SCCACHE_PATH=/sccache/sccache
-          export ACTIONS_CACHE_URL="${{ env.ACTIONS_CACHE_URL }}"
-          export ACTIONS_RUNTIME_TOKEN="${{ env.ACTIONS_RUNTIME_TOKEN }}"
+          if [ ! -z "${{ env.ACTIONS_CACHE_URL }}" ]; then
+            export SCCACHE_GHA_ENABLED="true"
+            export SCCACHE_PATH=/sccache/sccache
+            export ACTIONS_CACHE_URL="${{ env.ACTIONS_CACHE_URL }}"
+            export ACTIONS_RUNTIME_TOKEN="${{ env.ACTIONS_RUNTIME_TOKEN }}"
+          fi
 
           python3 -m venv /venv
           . /venv/bin/activate
@@ -219,16 +238,12 @@ jobs:
         path: ./wheels/*
         if-no-files-found: error
 
-    - name: Run sccache stat for check
-      shell: bash
-      run: ${SCCACHE_PATH} --show-stats
-
     - uses: uraimo/run-on-arch-action@v2
       name: Test wheel
       with:
         arch: none
         distro: none
-        base_image: ${{ matrix.config.image }}
+        base_image: ${{ matrix.image }}
 
         setup: |
           mkdir -p "${PWD}/wheels"
@@ -239,7 +254,7 @@ jobs:
         shell: /bin/sh
 
         install: |
-          case "${{ matrix.config.image }}" in
+          case "${{ matrix.image }}" in
             *debian*)
               PACKAGES=""
               PACKAGES="${PACKAGES} python3"
@@ -265,7 +280,7 @@ jobs:
 
           python3 -m venv /venv
           . /venv/bin/activate
-          case "${{ matrix.config.image }}" in
+          case "${{ matrix.image }}" in
             *debian*)
               python3 -m pip install --upgrade hatch hatch-fancy-pypi-readme hatch-mkdocs
               hatch run testinstalled:install /wheels/*.whl
@@ -307,6 +322,8 @@ jobs:
 
     - name: Run sccache-cache
       uses: mozilla-actions/sccache-action@v0.0.3
+      # For security reasons, only use sccache on releases:
+      if: ${{ startsWith(github.ref, 'refs/tags') }}
 
     - uses: actions/setup-python@v5
       with:
@@ -334,7 +351,7 @@ jobs:
 
   release:
     name: Create GitHub release
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+    if: startsWith(github.ref, 'refs/tags')
     needs:
     - linux-wheels
     - non-linux-wheels
@@ -351,7 +368,7 @@ jobs:
 
   publish:
     name: Upload release to PyPI
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+    if: startsWith(github.ref, 'refs/tags')
     needs:
     - release
     runs-on: ubuntu-latest

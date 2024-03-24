@@ -56,6 +56,22 @@ Ready to contribute? Here's how to set up `PyMiniRacer` for local development.
 
 1. Fork the `PyMiniRacer` repo on GitHub.
 
+1. If you plan to change C++ code you should probably install at least `clang-format`
+    and `clang-tidy` from [the latest stable LLVM](https://releases.llvm.org/). While
+    the `PyMiniRacer` build uses its own compiler (!) on most systems, our pre-commit
+    rules rely on the system `clang-format` and `clang-tidy`. If your versions of those
+    utilities do not match the ones `PyMiniRacer` uses on GitHub Actions, you may see
+    spurious pre-commit errors. 
+
+    If you're on a Debian-related Linux distribution using the LLVM project's standard
+    apt packages, note that you will likely have to override `/usr/bin/clang-format`
+    and `/usr/bin/clang-tidy` to point to the latest version, i.e.,
+    `/usr/bin/clang-format-18` and `/usr/bin/clang-tidy-18`, respectively.
+
+    You can always silence local pre-commit errors with the `-n` argument to
+    `git commit`. We check `pre-commit`s on every pull request using GitHub Actions, so
+    you can check for errors there instead.
+
 1. Run some of the following:
 
     ```sh
@@ -75,7 +91,7 @@ Ready to contribute? Here's how to set up `PyMiniRacer` for local development.
         $ hatch run test:run
     ```
 
-    You can also play with your build locally, as follows:
+    You can also play with your build in the Python REPL, as follows:
 
     ```sh
         $ hatch shell
@@ -86,6 +102,17 @@ Ready to contribute? Here's how to set up `PyMiniRacer` for local development.
         42
         >>> exit()
         $ exit
+    ```
+
+    As a shortcut for iterative development, you can skip the `hatch build` and matrix
+    tests, and do:
+
+    ```sh
+        $ python helpers/v8_build.py [--skip-fetch]  # will install a DLL into src/py_mini_racer
+        $ PYTHONPATH=src pytest  # run the tests
+        $ PYTHONPATH=src python  # play with the build in the REPL
+        >>> from py_mini_racer import MiniRacer
+        >>> ...
     ```
 
 1. Create a branch for local development::
@@ -159,7 +186,9 @@ repository.
 
 To release:
 
-1. Push all code to `main` on the offical repository.
+1. Merge all changes into `main` on the offical repository.
+
+1. Update `HISTORY.md` with a summary of changes since the last release.
 
 1. Add and push a tag:
 

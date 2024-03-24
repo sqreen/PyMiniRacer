@@ -7,7 +7,6 @@ v8_shared_library("mini_racer") {
     "binary_value.h",
     "binary_value.cc",
     "breaker_thread.h",
-    "breaker_thread.cc",
     "code_evaluator.h",
     "code_evaluator.cc",
     "context_holder.h",

@@ -1,11 +1,15 @@
 #ifndef MINI_RACER_H
 #define MINI_RACER_H
 
-#include <v8.h>
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
+#include <functional>
+#include <string>
 #include "binary_value.h"
 #include "code_evaluator.h"
 #include "context_holder.h"
+#include "gsl_stub.h"
 #include "heap_reporter.h"
 #include "isolate_holder.h"
 #include "isolate_memory_monitor.h"
@@ -20,8 +24,8 @@ class Context {
   void SetHardMemoryLimit(size_t limit);
   void SetSoftMemoryLimit(size_t limit);
 
-  auto IsSoftMemoryLimitReached() const -> bool;
-  auto IsHardMemoryLimitReached() const -> bool;
+  [[nodiscard]] auto IsSoftMemoryLimitReached() const -> bool;
+  [[nodiscard]] auto IsHardMemoryLimitReached() const -> bool;
   void ApplyLowMemoryNotification();
 
   void FreeBinaryValue(gsl::owner<BinaryValue*> val);
@@ -43,7 +47,7 @@ class Context {
   TaskRunner task_runner_;
 };
 
-void init_v8(char const* v8_flags,
+void init_v8(const std::string& v8_flags,
              const std::filesystem::path& icu_path,
              const std::filesystem::path& snapshot_path);
 

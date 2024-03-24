@@ -13,6 +13,11 @@ repos:
     name: Hatch format docs
     entry: hatch run docs:fmt  # runs mdformat
     language: system
+  - id: hatch-docs-build
+    name: Hatch build docs
+    entry: hatch run docs:build --strict  # checks for, e.g., bad links
+    language: system
+    pass_filenames: false
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v4.5.0
   hooks:
@@ -39,6 +44,7 @@ repos:
         # fuchsia-trailing-return is counter to another cpp modernization rule
         # fuchsia-overloaded-operator is incompatible with... making functors?
         # altera-* is designed for FPGAs and gives weird performance advice.
+        # we aren't using Google's absl lib, so disable its suggestions.
         - >-
           -checks=*,
           -llvmlibc-*,
@@ -47,10 +53,12 @@ repos:
           -fuchsia-default-arguments-calls,
           -fuchsia-trailing-return,
           -fuchsia-overloaded-operator,
-          -altera-*
+          -altera-*,
+          -abseil-*
         - -warnings-as-errors=*
         # Interpret .h as C++:
         - -extra-arg-before=-xc++
         - -extra-arg=-std=c++20
+        - -extra-arg=-stdlib=libstdc++
         - -extra-arg=-isystem
         - -extra-arg=v8_workspace/v8/include
