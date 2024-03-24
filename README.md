@@ -6,6 +6,8 @@ Minimal, modern embedded V8 for Python.
 
 ![MiniRacer logo: a V8 with a very snakey 8](py_mini_racer.png)
 
+[Full documentation](https://bpcreech.com/PyMiniRacer/).
+
 ## Features
 
 - Latest ECMAScript support
