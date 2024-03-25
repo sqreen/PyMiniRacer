@@ -22,6 +22,8 @@ class TaskRunner {
 
   void Run(std::function<void()> func);
 
+  void TerminateOngoingTask();
+
  private:
   void PumpMessages();
 

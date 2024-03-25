@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include "binary_value.h"
+#include "cancelable_task_runner.h"
 #include "gsl_stub.h"
 #include "mini_racer.h"
 
@@ -16,8 +17,9 @@ extern "C" {
 LIB_EXPORT auto mr_eval(MiniRacer::Context* mr_context,
                         char* str,
                         uint64_t len,
-                        uint64_t timeout) -> MiniRacer::BinaryValue* {
-  return mr_context->Eval(std::string(str, len), timeout).release();
+                        MiniRacer::Callback callback,
+                        void* cb_data) -> MiniRacer::CancelableTaskHandle* {
+  return mr_context->Eval(std::string(str, len), callback, cb_data).release();
 }
 
 LIB_EXPORT void mr_init_v8(const char* v8_flags,
@@ -39,9 +41,16 @@ LIB_EXPORT void mr_free_context(gsl::owner<MiniRacer::Context*> mr_context) {
   delete mr_context;
 }
 
-LIB_EXPORT auto mr_heap_stats(MiniRacer::Context* mr_context)
-    -> MiniRacer::BinaryValue* {
-  return mr_context->HeapStats().release();
+LIB_EXPORT void mr_free_task_handle(
+    gsl::owner<MiniRacer::CancelableTaskHandle*> task_handle) {
+  delete task_handle;
+}
+
+LIB_EXPORT auto mr_heap_stats(MiniRacer::Context* mr_context,
+                              MiniRacer::Callback callback,
+                              void* cb_data)
+    -> MiniRacer::CancelableTaskHandle* {
+  return mr_context->HeapStats(callback, cb_data).release();
 }
 
 LIB_EXPORT void mr_set_hard_memory_limit(MiniRacer::Context* mr_context,
@@ -73,9 +82,11 @@ LIB_EXPORT auto mr_v8_version() -> char const* {
 }
 
 // FOR DEBUGGING ONLY
-LIB_EXPORT auto mr_heap_snapshot(MiniRacer::Context* mr_context)
-    -> MiniRacer::BinaryValue* {
-  return mr_context->HeapSnapshot().release();
+LIB_EXPORT auto mr_heap_snapshot(MiniRacer::Context* mr_context,
+                                 MiniRacer::Callback callback,
+                                 void* cb_data)
+    -> MiniRacer::CancelableTaskHandle* {
+  return mr_context->HeapSnapshot(callback, cb_data).release();
 }
 
 LIB_EXPORT auto mr_full_eval_call_count(MiniRacer::Context* mr_context)

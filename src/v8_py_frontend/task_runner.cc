@@ -33,6 +33,10 @@ void TaskRunner::Run(std::function<void()> func) {
       std::make_unique<AdHocTask>(std::move(func)));
 }
 
+void TaskRunner::TerminateOngoingTask() {
+  isolate_->TerminateExecution();
+}
+
 void TaskRunner::PumpMessages() {
   const v8::SealHandleScope shs(isolate_);
   while (!shutdown_) {

@@ -10,11 +10,9 @@
 #include <v8-primitive.h>
 #include <v8-script.h>
 #include <v8-value.h>
-#include <cstdint>
 #include <optional>
 #include <string>
 #include "binary_value.h"
-#include "breaker_thread.h"
 #include "isolate_memory_monitor.h"
 
 namespace MiniRacer {
@@ -61,14 +59,11 @@ auto CodeEvaluator::SummarizeTryCatch(v8::Local<v8::Context>& context,
 
 auto CodeEvaluator::SummarizeTryCatchAfterExecution(
     v8::Local<v8::Context>& context,
-    const v8::TryCatch& trycatch,
-    const BreakerThread& breaker_thread) -> BinaryValue::Ptr {
+    const v8::TryCatch& trycatch) -> BinaryValue::Ptr {
   BinaryTypes resultType = type_execute_exception;
 
   if (memory_monitor_->IsHardMemoryLimitReached()) {
     resultType = type_oom_exception;
-  } else if (breaker_thread.timed_out()) {
-    resultType = type_timeout_exception;
   } else if (trycatch.HasTerminated()) {
     resultType = type_terminated_exception;
   }
@@ -109,8 +104,7 @@ auto CodeEvaluator::GetFunction(const std::string& code,
 }
 
 auto CodeEvaluator::EvalFunction(const v8::Local<v8::Function>& func,
-                                 v8::Local<v8::Context>& context,
-                                 const BreakerThread& breaker_thread)
+                                 v8::Local<v8::Context>& context)
     -> BinaryValue::Ptr {
   const v8::TryCatch trycatch(isolate_);
 
@@ -120,12 +114,11 @@ auto CodeEvaluator::EvalFunction(const v8::Local<v8::Function>& func,
     return bv_factory_->ConvertFromV8(context, maybe_value.ToLocalChecked());
   }
 
-  return SummarizeTryCatchAfterExecution(context, trycatch, breaker_thread);
+  return SummarizeTryCatchAfterExecution(context, trycatch);
 }
 
 auto CodeEvaluator::EvalAsScript(const std::string& code,
-                                 v8::Local<v8::Context>& context,
-                                 const BreakerThread& breaker_thread)
+                                 v8::Local<v8::Context>& context)
     -> BinaryValue::Ptr {
   const v8::TryCatch trycatch(isolate_);
 
@@ -151,19 +144,15 @@ auto CodeEvaluator::EvalAsScript(const std::string& code,
   }
 
   // Didn't execute. Find an error:
-  return SummarizeTryCatchAfterExecution(context, trycatch, breaker_thread);
+  return SummarizeTryCatchAfterExecution(context, trycatch);
 }
 
-auto CodeEvaluator::Eval(const std::string& code,
-                         uint64_t timeout) -> BinaryValue::Ptr {
+auto CodeEvaluator::Eval(const std::string& code) -> BinaryValue::Ptr {
   const v8::Locker lock(isolate_);
   const v8::Isolate::Scope isolate_scope(isolate_);
   const v8::HandleScope handle_scope(isolate_);
   v8::Local<v8::Context> context = context_->Get(isolate_);
   const v8::Context::Scope context_scope(context);
-
-  // Spawn a thread to enforce the timeout limit:
-  const BreakerThread breaker_thread(isolate_, timeout);
 
   // Try and evaluate as a simple function call.
   // This gets us about a speedup of about 1.17 (i.e., 17% faster) on a baseline
@@ -171,12 +160,12 @@ auto CodeEvaluator::Eval(const std::string& code,
   v8::Local<v8::Function> func;
   if (GetFunction(code, context, &func)) {
     function_eval_call_count_++;
-    return EvalFunction(func, context, breaker_thread);
+    return EvalFunction(func, context);
   }
 
   // Fall back on a slower full eval:
   full_eval_call_count_++;
-  return EvalAsScript(code, context, breaker_thread);
+  return EvalAsScript(code, context);
 }
 
 auto CodeEvaluator::ValueToUtf8String(v8::Local<v8::Value> value)

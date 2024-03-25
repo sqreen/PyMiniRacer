@@ -3,14 +3,17 @@ from __future__ import annotations
 import ctypes
 import json
 import sys
-from contextlib import ExitStack, contextmanager
+from asyncio import Future, shield, wait_for
+from asyncio import TimeoutError as asyncio_TimeoutError
+from asyncio import run as asyncio_run
+from contextlib import ExitStack, contextmanager, suppress
 from datetime import datetime, timezone
 from importlib import resources
 from json import JSONEncoder
 from os.path import exists
 from os.path import join as pathjoin
 from sys import platform, version_info
-from threading import Lock
+from threading import Condition, Lock
 from typing import Any, ClassVar, Iterable, Iterator
 
 
@@ -52,6 +55,9 @@ class JSTerminatedException(JSEvalException):
 
 class JSTimeoutException(JSEvalException):
     """JavaScript execution timed out."""
+
+    def __init__(self):
+        super().__init__("JavaScript was terminated by timeout")
 
 
 class JSConversionException(MiniRacerBaseException):
@@ -122,6 +128,11 @@ class ArrayBufferByte(ctypes.Structure):
     _pack_ = 1
 
 
+_MR_CALLBACK = ctypes.CFUNCTYPE(
+    None, ctypes.py_object, ctypes.POINTER(_MiniRacerValueStruct)
+)
+
+
 class _MiniRacerValHolder:
     """An object which holds open a Python reference to a _MiniRacerValueStruct owned by
     a C++ MiniRacer context."""
@@ -146,21 +157,32 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
         ctypes.c_void_p,
         ctypes.c_char_p,
         ctypes.c_uint64,
-        ctypes.c_uint64,
+        _MR_CALLBACK,
+        ctypes.py_object,
     ]
-    handle.mr_eval.restype = ctypes.POINTER(_MiniRacerValueStruct)
+    handle.mr_eval.restype = ctypes.c_void_p
 
     handle.mr_free_value.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
 
     handle.mr_free_context.argtypes = [ctypes.c_void_p]
 
-    handle.mr_heap_stats.argtypes = [ctypes.c_void_p]
-    handle.mr_heap_stats.restype = ctypes.POINTER(_MiniRacerValueStruct)
+    handle.mr_free_task_handle.argtypes = [ctypes.c_void_p]
+
+    handle.mr_heap_stats.argtypes = [
+        ctypes.c_void_p,
+        _MR_CALLBACK,
+        ctypes.py_object,
+    ]
+    handle.mr_heap_stats.restype = ctypes.c_void_p
 
     handle.mr_low_memory_notification.argtypes = [ctypes.c_void_p]
 
-    handle.mr_heap_snapshot.argtypes = [ctypes.c_void_p]
-    handle.mr_heap_snapshot.restype = ctypes.POINTER(_MiniRacerValueStruct)
+    handle.mr_heap_snapshot.argtypes = [
+        ctypes.c_void_p,
+        _MR_CALLBACK,
+        ctypes.py_object,
+    ]
+    handle.mr_heap_snapshot.restype = ctypes.c_void_p
 
     handle.mr_set_hard_memory_limit.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
 
@@ -273,6 +295,38 @@ def init_mini_racer(
         return _dll_handle
 
 
+# Emulating asyncio.Future without asyncio.
+# (Or, concurrent.futures.Future without an executor)
+class _SyncFuture:
+    def __init__(self):
+        self._cv = Condition()
+        self._complete = False
+        self._res = None
+        self._exc = None
+
+    def get(self, *, timeout=None):
+        with self._cv:
+            while not self._complete:
+                if not self._cv.wait(timeout=timeout):
+                    raise JSTimeoutException
+
+            if self._exc:
+                raise self._exc
+            return self._res
+
+    def set_result(self, res):
+        with self._cv:
+            self._res = res
+            self._complete = True
+            self._cv.notify()
+
+    def set_exception(self, exc):
+        with self._cv:
+            self._exc = exc
+            self._complete = True
+            self._cv.notify()
+
+
 class MiniRacer:
     """
     MiniRacer evaluates JavaScript code using a V8 isolate.
@@ -287,7 +341,32 @@ class MiniRacer:
     def __init__(self):
         self._dll: ctypes.CDLL = init_mini_racer(ignore_duplicate_init=True)
         self.ctx = self._dll.mr_init_context()
-        self.lock = Lock()
+        self._active_callbacks = {}
+
+        # define an all-purpose callback for synchronous (non-asyncio) work:
+        @_MR_CALLBACK
+        def mr_sync_callback(future, result):
+            future: _SyncFuture = self._active_callbacks.pop(future)
+            try:
+                value = self._mr_val_to_python(result)
+                future.set_result(value)
+            except MiniRacerBaseException as exc:
+                future.set_exception(exc)
+
+        self._mr_sync_callback = mr_sync_callback
+
+        # define an all-purpose callback for asyncio work:
+        @_MR_CALLBACK
+        def mr_async_callback(future, result):
+            future: Future = self._active_callbacks.pop(future)
+            loop = future.get_loop()
+            try:
+                value = self._mr_val_to_python(result)
+                loop.call_soon_threadsafe(future.set_result, value)
+            except MiniRacerBaseException as exc:
+                loop.call_soon_threadsafe(future.set_exception, exc)
+
+        self._mr_async_callback = mr_async_callback
 
     @property
     def v8_version(self) -> str:
@@ -295,7 +374,11 @@ class MiniRacer:
         return str(self._dll.mr_v8_version())
 
     def eval(  # noqa: A003
-        self, code: str, timeout: int | None = None, max_memory: int | None = None
+        self,
+        code: str,
+        timeout: int | None = None,
+        timeout_sec: int | None = None,
+        max_memory: int | None = None,
     ) -> Any:
         """Evaluate JavaScript code in the V8 isolate.
 
@@ -314,30 +397,58 @@ class MiniRacer:
 
         Args:
             code: JavaScript code
-            timeout: number of milliseconds after which the execution is interrupted
-            max_memory: hard memory limit after which the execution is interrupted
+            timeout: number of milliseconds after which the execution is interrupted.
+                This is deprecated; use timeout_sec instead.
+            timeout_sec: number of seconds after which the execution is interrupted
+            max_memory: hard memory limit, in bytes, after which the execution is
+                interrupted.
         """
 
+        if max_memory is not None:
+            self.set_hard_memory_limit(max_memory)
+
+        if timeout:
+            # PyMiniRacer unfortunately uses milliseconds while Python and
+            # Système international d'unités use seconds.
+            timeout_sec = timeout / 1000
+
         if isinstance(code, str):
-            code = code.encode("utf8")
+            code = code.encode("utf-8")
 
-        with self.lock:
-            if max_memory is not None:
-                self.set_hard_memory_limit(max_memory)
-
-            res = self._dll.mr_eval(
+        def task(callback, future):
+            return self._dll.mr_eval(
                 self.ctx,
                 code,
                 len(code),
-                ctypes.c_uint64(timeout or 0),
+                callback,
+                future,
             )
-        if not res:
-            raise JSConversionException
 
-        return self._mr_val_to_python(res)
+        return self._run_task_sync(task, timeout_sec=timeout_sec)
+
+    async def eval_async(self, code: str, timeout_sec: int | None = None) -> Any:
+        """See eval(). This is the async version of this method."""
+
+        if isinstance(code, str):
+            code = code.encode("utf-8")
+
+        def task(callback, future):
+            return self._dll.mr_eval(
+                self.ctx,
+                code,
+                len(code),
+                callback,
+                future,
+            )
+
+        return await self._run_task_async(task, timeout_sec=timeout_sec)
 
     def execute(
-        self, expr: str, timeout: int | None = None, max_memory: int | None = None
+        self,
+        expr: str,
+        timeout: int | None = None,
+        timeout_sec: int | None = None,
+        max_memory: int | None = None,
     ) -> dict:
         """Helper to evaluate a JavaScript expression and return composite types.
 
@@ -346,12 +457,20 @@ class MiniRacer:
 
         Args:
             expr: JavaScript expression
-            timeout: number of milliseconds after which the execution is interrupted
-            max_memory: hard memory limit after which the execution is interrupted
+            timeout: number of milliseconds after which the execution is interrupted.
+                This is deprecated; use timeout_sec instead.
+            timeout_sec: number of seconds after which the execution is interrupted
+            max_memory: hard memory limit, in bytes, after which the execution is
+                interrupted.
         """
 
+        if timeout:
+            # PyMiniRacer unfortunately uses milliseconds while Python and
+            # Système international d'unités use seconds.
+            timeout_sec = timeout / 1000
+
         wrapped_expr = "JSON.stringify((function(){return (%s)})())" % expr
-        ret = self.eval(wrapped_expr, timeout=timeout, max_memory=max_memory)
+        ret = self.eval(wrapped_expr, timeout_sec=timeout_sec, max_memory=max_memory)
         if not isinstance(ret, str):
             raise WrongReturnTypeException(type(ret))
         return self.json_impl.loads(ret)
@@ -362,6 +481,7 @@ class MiniRacer:
         *args,
         encoder: JSONEncoder | None = None,
         timeout: int | None = None,
+        timeout_sec: int | None = None,
         max_memory: int | None = None,
     ) -> dict:
         """Helper to call a JavaScript function and return compositve types.
@@ -377,14 +497,20 @@ class MiniRacer:
             expr: JavaScript expression referring to a function
             encoder: Custom JSON encoder
             timeout: number of milliseconds after which the execution is
-                interrupted
-            max_memory: hard memory limit after which the execution is
+                interrupted.
+            timeout_sec: number of seconds after which the execution is interrupted
+            max_memory: hard memory limit, in bytes, after which the execution is
                 interrupted
         """
 
+        if timeout:
+            # PyMiniRacer unfortunately uses milliseconds while Python and
+            # Système international d'unités use seconds.
+            timeout_sec = timeout / 1000
+
         json_args = self.json_impl.dumps(args, separators=(",", ":"), cls=encoder)
         js = f"{expr}.apply(this, {json_args})"
-        return self.execute(js, timeout=timeout, max_memory=max_memory)
+        return self.execute(js, timeout_sec=timeout_sec, max_memory=max_memory)
 
     def set_hard_memory_limit(self, limit: int) -> None:
         """Set a hard memory limit on this V8 isolate.
@@ -420,27 +546,38 @@ class MiniRacer:
     def heap_stats(self) -> dict:
         """Return the V8 isolate heap statistics."""
 
-        with self.lock:
-            res = self._dll.mr_heap_stats(self.ctx)
+        return asyncio_run(self.heap_stats_async())
 
-        if not res:
-            return {
-                "total_physical_size": 0,
-                "used_heap_size": 0,
-                "total_heap_size": 0,
-                "total_heap_size_executable": 0,
-                "heap_size_limit": 0,
-            }
+    async def heap_stats_async(self) -> dict:
+        """Return the V8 isolate heap statistics."""
 
-        return self.json_impl.loads(self._mr_val_to_python(res))
+        def task(callback, future):
+            return self._dll.mr_heap_stats(
+                self.ctx,
+                callback,
+                future,
+            )
+
+        res = await self._run_task_async(task)
+
+        return self.json_impl.loads(res)
 
     def heap_snapshot(self) -> dict:
         """Return a snapshot of the V8 isolate heap."""
 
-        with self.lock:
-            res = self._dll.mr_heap_snapshot(self.ctx)
+        return asyncio_run(self.heap_snapshot_async())
 
-        return self._mr_val_to_python(res)
+    async def heap_snapshot_async(self) -> dict:
+        """Return a snapshot of the V8 isolate heap."""
+
+        def task(callback, future):
+            return self._dll.mr_heap_snapshot(
+                self.ctx,
+                callback,
+                future,
+            )
+
+        return await self._run_task_async(task)
 
     def _function_eval_call_count(self) -> int:
         """Return the number of shortcut function-like evaluations done in this context.
@@ -509,6 +646,83 @@ class MiniRacer:
     def _free(self, res: _MiniRacerValueStruct) -> None:
         self._dll.mr_free_value(self.ctx, res)
 
+    def _run_task_sync(self, task, *, timeout_sec: int | None = None):
+        """Manages those tasks which generate callbacks from the MiniRacer DLL.
+
+        Several MiniRacer functions (JS evaluation and 2 heap stats calls) are
+        asynchronous. They take a function callback and callback data parameter, and
+        they return a task handle.
+
+        In this method, we create a future for each callback to get the right data to
+        the right caller, and we manage the lifecycle of the task and task handle.
+
+        This is the synchronous version of this method. We maintain both sync and async
+        versions, rather than making the sync call the async version from an ad-hoc
+        event loop, for performance reasons.timeout_sec
+        """
+
+        future = _SyncFuture()
+
+        # Keep track of this future until we are called back.
+        # This helps ensure Python doesn't garbage collect the future before the C++
+        # side of things is done with it.
+        self._active_callbacks[future] = future
+
+        # Start the task:
+        task_handle = task(self._mr_sync_callback, future)
+        try:
+            # Wait until we get a result via our callback:
+            return future.get(timeout=timeout_sec)
+        finally:
+            # Free the task handle.
+            # Note this also cancels the task if it hasn't completed yet.
+            self._dll.mr_free_task_handle(task_handle)
+            with suppress(JSTerminatedException):
+                # If the task didn't finish yet, we'll get a cancelation notice, so
+                # wait on that to appear so it doesn't try to send its result to a
+                # dangling event loop:
+                future.get()
+
+    async def _run_task_async(self, task, *, timeout_sec: int | None = None):
+        """Manages those tasks which generate callbacks from the MiniRacer DLL.
+
+        Several MiniRacer functions (JS evaluation and 2 heap stats calls) are
+        asynchronous. They take a function callback and callback data parameter, and
+        they return a task handle.
+
+        In this method, we create a future for each callback to get the right data to
+        the right caller, and we manage the lifecycle of the task and task handle.
+
+        This is the synchronous version of this method. We maintain both sync and async
+        versions, rather than making the sync call the async version from an ad-hoc
+        event loop, for performance reasons.
+        """
+
+        future = Future()
+
+        # Keep track of this future until we are called back.
+        # This helps ensure Python doesn't garbage collect the future before the C++
+        # side of things is done with it.
+        self._active_callbacks[future] = future
+
+        # Start the task:
+        task_handle = task(self._mr_async_callback, future)
+        try:
+            # Wait until we get a result via our callback:
+            return await wait_for(shield(future), timeout=timeout_sec)
+        except (TimeoutError, asyncio_TimeoutError) as exc:
+            # Translate to our special MiniRacer exception class:
+            raise JSTimeoutException from exc
+        finally:
+            # Free the task handle.
+            # Note this also cancels the task if it hasn't completed yet.
+            self._dll.mr_free_task_handle(task_handle)
+            with suppress(JSTerminatedException):
+                # If the task didn't finish yet, we'll get a cancelation notice, so
+                # wait on that to appear so it doesn't try to send its result to
+                # a dangling event loop:
+                await future
+
     def __del__(self):
         dll = getattr(self, "_dll", None)
         if dll:
@@ -560,10 +774,6 @@ _ERRORS = {
         "Uknown JavaScript error during execution",
     ),
     MiniRacerTypes.oom_exception: (JSOOMException, "JavaScript memory limit reached"),
-    MiniRacerTypes.timeout_exception: (
-        JSTimeoutException,
-        "JavaScript was terminated by timeout",
-    ),
     MiniRacerTypes.terminated_exception: (
         JSTerminatedException,
         "JavaScript was terminated",

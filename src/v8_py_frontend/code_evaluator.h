@@ -10,7 +10,6 @@
 #include <optional>
 #include <string>
 #include "binary_value.h"
-#include "breaker_thread.h"
 #include "isolate_memory_monitor.h"
 
 namespace MiniRacer {
@@ -23,7 +22,7 @@ class CodeEvaluator {
                 BinaryValueFactory* bv_factory,
                 IsolateMemoryMonitor* memory_monitor);
 
-  auto Eval(const std::string& code, uint64_t timeout) -> BinaryValue::Ptr;
+  auto Eval(const std::string& code) -> BinaryValue::Ptr;
 
   [[nodiscard]] auto FunctionEvalCallCount() const -> uint64_t;
   [[nodiscard]] auto FullEvalCallCount() const -> uint64_t;
@@ -33,19 +32,16 @@ class CodeEvaluator {
                          const v8::TryCatch& trycatch,
                          BinaryTypes resultType) -> BinaryValue::Ptr;
   auto SummarizeTryCatchAfterExecution(v8::Local<v8::Context>& context,
-                                       const v8::TryCatch& trycatch,
-                                       const BreakerThread& breaker_thread)
+                                       const v8::TryCatch& trycatch)
       -> BinaryValue::Ptr;
 
   auto GetFunction(const std::string& code,
                    v8::Local<v8::Context>& context,
                    v8::Local<v8::Function>* func) -> bool;
   auto EvalFunction(const v8::Local<v8::Function>& func,
-                    v8::Local<v8::Context>& context,
-                    const BreakerThread& breaker_thread) -> BinaryValue::Ptr;
+                    v8::Local<v8::Context>& context) -> BinaryValue::Ptr;
   auto EvalAsScript(const std::string& code,
-                    v8::Local<v8::Context>& context,
-                    const BreakerThread& breaker_thread) -> BinaryValue::Ptr;
+                    v8::Local<v8::Context>& context) -> BinaryValue::Ptr;
 
   auto ValueToUtf8String(v8::Local<v8::Value> value)
       -> std::optional<std::string>;

@@ -5,8 +5,10 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <string>
 #include "binary_value.h"
+#include "cancelable_task_runner.h"
 #include "code_evaluator.h"
 #include "context_holder.h"
 #include "gsl_stub.h"
@@ -16,6 +18,8 @@
 #include "task_runner.h"
 
 namespace MiniRacer {
+
+using Callback = void (*)(void*, BinaryValue*);
 
 class Context {
  public:
@@ -29,14 +33,20 @@ class Context {
   void ApplyLowMemoryNotification();
 
   void FreeBinaryValue(gsl::owner<BinaryValue*> val);
-  auto HeapSnapshot() -> BinaryValue::Ptr;
-  auto HeapStats() -> BinaryValue::Ptr;
-  auto Eval(const std::string& code, uint64_t timeout) -> BinaryValue::Ptr;
+  auto HeapSnapshot(MiniRacer::Callback callback,
+                    void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
+  auto HeapStats(MiniRacer::Callback callback,
+                 void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
+  auto Eval(const std::string& code,
+            MiniRacer::Callback callback,
+            void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
   [[nodiscard]] auto FunctionEvalCallCount() const -> uint64_t;
   [[nodiscard]] auto FullEvalCallCount() const -> uint64_t;
 
  private:
-  auto RunTask(std::function<BinaryValue::Ptr()> func) -> BinaryValue::Ptr;
+  auto RunTask(std::function<BinaryValue::Ptr()> func,
+               MiniRacer::Callback callback,
+               void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
 
   IsolateHolder isolate_holder_;
   IsolateMemoryMonitor isolate_memory_monitor_;
@@ -45,6 +55,7 @@ class Context {
   CodeEvaluator code_evaluator_;
   HeapReporter heap_reporter_;
   TaskRunner task_runner_;
+  CancelableTaskRunner cancelable_task_runner_;
 };
 
 void init_v8(const std::string& v8_flags,

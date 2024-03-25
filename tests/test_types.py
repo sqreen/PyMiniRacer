@@ -12,8 +12,8 @@ class Validator:
     def __init__(self):
         self.mr = MiniRacer()
 
-    def validate(self, py_val, **kwargs):
-        testee = kwargs.get("testee", py_val)
+    def validate(self, py_val):
+        testee = py_val
         js_str = dumps(py_val)
 
         parsed = self.mr.execute(js_str)

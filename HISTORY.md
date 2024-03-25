@@ -1,5 +1,12 @@
 # History
 
+## 0.9.0 (2024-03-??)
+
+- Revamped JS execution model to be out-of-thread. Python/C++ interaction now happens
+    via callbacks. 
+
+- Consequently, Control+C (`KeyboardInterrupt`) now interrupts JS execution.
+
 ## 0.8.1 (2024-03-23)
 
 - A series of C++ changes which should not impact the behavior of PyMiniRacer:
