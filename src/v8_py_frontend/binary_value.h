@@ -5,6 +5,7 @@
 #include <v8-context.h>
 #include <v8-local-handle.h>
 #include <v8-message.h>
+#include <v8-persistent-handle.h>
 #include <v8-value.h>
 #include <cstddef>
 #include <cstdint>
@@ -31,6 +32,7 @@ enum BinaryTypes : uint8_t {
   type_function = 100,
   type_shared_array_buffer = 101,
   type_array_buffer = 102,
+  type_promise = 103,
 
   type_execute_exception = 200,
   type_parse_exception = 201,
@@ -60,8 +62,9 @@ class BinaryValueDeleter {
  * foreign function API (e.g., Python ctypes). */
 struct BinaryValue {
   union {
-    gsl::owner<void*> ptr_val;
+    char* backing_store_ptr;
     gsl::owner<char*> bytes;
+    gsl::owner<v8::Persistent<v8::Value>*> value_ptr;
     uint64_t int_val;
     double double_val;
   };

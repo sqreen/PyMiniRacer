@@ -217,15 +217,17 @@ def test_max_memory_soft():
     mr.set_hard_memory_limit(100000000)
     with pytest.raises(JSOOMException) as exc_info:
         mr.eval(
-            """let s = 1000;
-            var a = new Array(s);
-            a.fill(0);
-            while(true) {
-                s *= 1.1;
-                let n = new Array(Math.floor(s));
-                n.fill(0);
-                a = a.concat(n);
-            }""",
+            """\
+let s = 1000;
+var a = new Array(s);
+a.fill(0);
+while(true) {
+    s *= 1.1;
+    let n = new Array(Math.floor(s));
+    n.fill(0);
+    a = a.concat(n);
+}
+"""
         )
 
     assert mr.was_soft_memory_limit_reached()
@@ -238,15 +240,16 @@ def test_max_memory_hard():
     mr.set_hard_memory_limit(100000000)
     with pytest.raises(JSOOMException) as exc_info:
         mr.eval(
-            """let s = 1000;
-            var a = new Array(s);
-            a.fill(0);
-            while(true) {
-                s *= 1.1;
-                let n = new Array(Math.floor(s));
-                n.fill(0);
-                a = a.concat(n);
-            }""",
+            """\
+let s = 1000;
+var a = new Array(s);
+a.fill(0);
+while(true) {
+    s *= 1.1;
+    let n = new Array(Math.floor(s));
+    n.fill(0);
+    a = a.concat(n);
+}"""
         )
 
     assert not mr.was_soft_memory_limit_reached()
@@ -261,15 +264,16 @@ def test_max_memory_hard_eval_arg():
     mr = MiniRacer()
     with pytest.raises(JSOOMException) as exc_info:
         mr.eval(
-            """let s = 1000;
-            var a = new Array(s);
-            a.fill(0);
-            while(true) {
-                s *= 1.1;
-                let n = new Array(Math.floor(s));
-                n.fill(0);
-                a = a.concat(n);
-            }""",
+            """\
+let s = 1000;
+var a = new Array(s);
+a.fill(0);
+while(true) {
+    s *= 1.1;
+    let n = new Array(Math.floor(s));
+    n.fill(0);
+    a = a.concat(n);
+}""",
             max_memory=200000000,
         )
 
@@ -293,30 +297,30 @@ def test_microtask():
     mr = MiniRacer()
     assert not mr.eval(
         """
-    let p = Promise.resolve();
+let p = Promise.resolve();
 
-    var done = false;
+var done = false;
 
-    p.then(() => {done = true});
+p.then(() => {done = true});
 
-    done
-    """
+done
+"""
     )
     assert mr.eval("done")
 
 
-def test_async():
+def test_polling():
     mr = MiniRacer()
     assert not mr.eval(
         """
-    var done = false;
-    const shared = new SharedArrayBuffer(8);
-    const view = new Int32Array(shared);
+var done = false;
+const shared = new SharedArrayBuffer(8);
+const view = new Int32Array(shared);
 
-    const p = Atomics.waitAsync(view, 0, 0, 1000); // 1 s timeout
-    p.value.then(() => { done = true; });
-    done
-    """
+const p = Atomics.waitAsync(view, 0, 0, 1000); // 1 s timeout
+p.value.then(() => { done = true; });
+done
+"""
     )
     assert not mr.eval("done")
     start = time()
@@ -325,6 +329,59 @@ def test_async():
     while time() - start < 10 and not mr.eval("done"):
         sleep(0.1)
     assert mr.eval("done")
+
+
+def test_promise_sync():
+    mr = MiniRacer()
+    promise = mr.eval(
+        """
+const shared = new SharedArrayBuffer(8);
+const view = new Int32Array(shared);
+
+const p = Atomics.waitAsync(view, 0, 0, 1000); // 1 s timeout
+p.value  // returns a promise
+"""
+    )
+    start = time()
+    # Give the 1-second wait 10 seconds to finish. (Emulated aarch64 tests are
+    # surprisingly slow!)
+    val = promise.get(timeout=10)
+    assert time() - start > 0.5
+    assert val == "timed-out"
+
+
+@pytest.mark.asyncio
+async def test_promise_async():
+    mr = MiniRacer()
+    promise = mr.eval(
+        """
+const shared = new SharedArrayBuffer(8);
+const view = new Int32Array(shared);
+
+const p = Atomics.waitAsync(view, 0, 0, 1000); // 1 s timeout
+p.value  // returns a promise
+"""
+    )
+    start = time()
+    val = await promise
+    assert time() - start > 0.5
+    # Give the 1-second wait 10 seconds to finish. (Emulated aarch64 tests are
+    # surprisingly slow!)
+    assert time() - start < 10
+    assert val == "timed-out"
+
+
+def test_resolved_promise_sync():
+    mr = MiniRacer()
+    val = mr.eval("Promise.resolve(6*7)").get()
+    assert val == 42
+
+
+@pytest.mark.asyncio
+async def test_resolved_promise_async():
+    mr = MiniRacer()
+    val = await mr.eval("Promise.resolve(6*7)")
+    assert val == 42
 
 
 def test_fast_call():

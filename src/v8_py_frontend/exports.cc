@@ -1,7 +1,10 @@
+#include <v8-persistent-handle.h>
+#include <v8-value.h>
 #include <v8-version-string.h>
 #include <cstddef>
 #include <cstdint>
 #include "binary_value.h"
+#include "callback.h"
 #include "cancelable_task_runner.h"
 #include "gsl_stub.h"
 #include "mini_racer.h"
@@ -79,6 +82,13 @@ LIB_EXPORT void mr_low_memory_notification(MiniRacer::Context* mr_context) {
 
 LIB_EXPORT auto mr_v8_version() -> char const* {
   return V8_VERSION_STRING;
+}
+
+LIB_EXPORT void mr_attach_promise_then(MiniRacer::Context* mr_context,
+                                       v8::Persistent<v8::Value>* promise,
+                                       MiniRacer::Callback callback,
+                                       void* cb_data) {
+  mr_context->AttachPromiseThen(promise, callback, cb_data);
 }
 
 // FOR DEBUGGING ONLY

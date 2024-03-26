@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import json
 import sys
+from asyncio import Future
 from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 from importlib import resources
@@ -88,6 +89,30 @@ class JSSymbol:
     """JavaScript symbol."""
 
 
+class JSPromise:
+    """JavaScript promise."""
+
+    def __init__(
+        self, val_holder: _MiniRacerValHolder, to_sync_future, to_async_future
+    ):
+        self._val_holder: _MiniRacerValHolder = val_holder
+        self._to_sync_future = to_sync_future
+        self._to_async_future = to_async_future
+
+    def get(self, *, timeout: Numeric | None = None):
+        """Get the value, or raise an exception. This call blocks.
+
+        Args:
+            timeout: number of milliseconds after which the execution is interrupted.
+                This is deprecated; use timeout_sec instead.
+        """
+
+        return self._to_sync_future().get(timeout=timeout)
+
+    def __await__(self):
+        return self._to_async_future().__await__()
+
+
 def _get_lib_filename(name):
     """Return the path of the library called `name` on the current system."""
     if platform == "darwin":
@@ -102,7 +127,7 @@ def _get_lib_filename(name):
 
 class _MiniRacerValueUnion(ctypes.Union):
     _fields_: ClassVar[tuple[str, object]] = [
-        ("ptr_val", ctypes.c_void_p),
+        ("value_ptr", ctypes.c_void_p),
         ("bytes_val", ctypes.POINTER(ctypes.c_char)),
         ("int_val", ctypes.c_int64),
         ("double_val", ctypes.c_double),
@@ -175,6 +200,13 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
     handle.mr_heap_stats.restype = ctypes.c_void_p
 
     handle.mr_low_memory_notification.argtypes = [ctypes.c_void_p]
+
+    handle.mr_attach_promise_then.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        _MR_CALLBACK,
+        ctypes.py_object,
+    ]
 
     handle.mr_heap_snapshot.argtypes = [
         ctypes.c_void_p,
@@ -294,18 +326,22 @@ def init_mini_racer(
         return _dll_handle
 
 
-# Emulating asyncio.Future without asyncio.
-# (Or, concurrent.futures.Future without an executor)
 class _SyncFuture:
+    """A blocking synchronization object for function return values.
+
+    This is like asyncio.Future but blocking, or like
+    concurrent.futures.Future but without an executor.
+    """
+
     def __init__(self):
         self._cv = Condition()
-        self._complete = False
+        self._settled = False
         self._res = None
         self._exc = None
 
     def get(self, *, timeout: Numeric | None = None):
         with self._cv:
-            while not self._complete:
+            while not self._settled:
                 if not self._cv.wait(timeout=timeout):
                     raise JSTimeoutException
 
@@ -316,13 +352,13 @@ class _SyncFuture:
     def set_result(self, res):
         with self._cv:
             self._res = res
-            self._complete = True
+            self._settled = True
             self._cv.notify()
 
     def set_exception(self, exc):
         with self._cv:
             self._exc = exc
-            self._complete = True
+            self._settled = True
             self._cv.notify()
 
 
@@ -342,9 +378,9 @@ class MiniRacer:
         self.ctx = self._dll.mr_init_context()
         self._active_callbacks = {}
 
-        # define an all-purpose callback:
+        # define an all-purpose callback for _SyncFuture:
         @_MR_CALLBACK
-        def mr_callback(future, result):
+        def mr_sync_callback(future, result):
             future: _SyncFuture = self._active_callbacks.pop(future)
             try:
                 value = self._mr_val_to_python(result)
@@ -352,7 +388,20 @@ class MiniRacer:
             except Exception as exc:  # noqa: BLE001
                 future.set_exception(exc)
 
-        self._mr_callback = mr_callback
+        self._mr_sync_callback = mr_sync_callback
+
+        # define an all-purpose callback for asyncio.Future:
+        @_MR_CALLBACK
+        def mr_async_callback(future, result):
+            future: Future = self._active_callbacks.pop(future)
+            loop = future.get_loop()
+            try:
+                value = self._mr_val_to_python(result)
+                loop.call_soon_threadsafe(future.set_result, value)
+            except Exception as exc:  # noqa: BLE001
+                loop.call_soon_threadsafe(future.set_exception, exc)
+
+        self._mr_async_callback = mr_async_callback
 
     @property
     def v8_version(self) -> str:
@@ -553,6 +602,26 @@ class MiniRacer:
         This is exposed for testing only."""
         return self._dll.mr_full_eval_call_count(self.ctx)
 
+    def _make_sync_future(self):
+        future = _SyncFuture()
+
+        # Keep track of this future until we are called back.
+        # This helps ensure Python doesn't garbage collect the future before the C++
+        # side of things is done with it.
+        self._active_callbacks[future] = future
+
+        return future
+
+    def _make_async_future(self):
+        future = Future()
+
+        # Keep track of this future until we are called back.
+        # This helps ensure Python doesn't garbage collect the future before the C++
+        # side of things is done with it.
+        self._active_callbacks[future] = future
+
+        return future
+
     def _mr_val_to_python(self, ptr) -> Any:
         free_value = True
         try:
@@ -588,14 +657,41 @@ class MiniRacer:
             if typ == MiniRacerTypes.symbol:
                 return JSSymbol()
             if typ in (MiniRacerTypes.shared_array_buffer, MiniRacerTypes.array_buffer):
-                cdata = (ArrayBufferByte * length).from_address(val.ptr_val)
-                free_value = False
+                buf = ArrayBufferByte * length
+                cdata = buf.from_address(val.value_ptr)
                 # Keep a reference to prevent garbage collection of the backing store:
+                free_value = False
                 cdata._origin = _MiniRacerValHolder(self, ptr)  # noqa: SLF001
                 result = memoryview(cdata)
                 # Avoids "NotImplementedError: memoryview: unsupported format T{<B:b:}"
                 # in Python 3.12:
                 return result.cast("B")
+
+            if typ == MiniRacerTypes.promise:
+                free_value = False
+                val_holder = _MiniRacerValHolder(self, ptr)
+
+                def attach_future(future, callback):
+                    self._dll.mr_attach_promise_then(
+                        self.ctx,
+                        val.value_ptr,
+                        callback,
+                        future,
+                    )
+                    return future
+
+                def to_sync_future():
+                    return attach_future(
+                        self._make_sync_future(), self._mr_sync_callback
+                    )
+
+                def to_async_future():
+                    return attach_future(
+                        self._make_async_future(), self._mr_async_callback
+                    )
+
+                return JSPromise(val_holder, to_sync_future, to_async_future)
+
             if typ == MiniRacerTypes.object:
                 # The C++ side puts the hash of the JS object into the value:
                 return JSObject(val.int_val)
@@ -620,15 +716,10 @@ class MiniRacer:
         the right caller, and we manage the lifecycle of the task and task handle.
         """
 
-        future = _SyncFuture()
-
-        # Keep track of this future until we are called back.
-        # This helps ensure Python doesn't garbage collect the future before the C++
-        # side of things is done with it.
-        self._active_callbacks[future] = future
+        future = self._make_sync_future()
 
         # Start the task:
-        task_handle = task(self._mr_callback, future)
+        task_handle = task(self._mr_sync_callback, future)
         try:
             # Let the caller handle waiting on the result:
             yield future
@@ -670,6 +761,7 @@ class MiniRacerTypes:
     function = 100
     shared_array_buffer = 101
     array_buffer = 102
+    promise = 103
 
     execute_exception = 200
     parse_exception = 201

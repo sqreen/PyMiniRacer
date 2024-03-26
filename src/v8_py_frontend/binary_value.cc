@@ -4,6 +4,7 @@
 #include <v8-date.h>
 #include <v8-exception.h>
 #include <v8-local-handle.h>
+#include <v8-persistent-handle.h>
 #include <v8-primitive.h>
 #include <v8-value.h>
 #include <algorithm>
@@ -45,6 +46,9 @@ void BinaryValueFactory::Free(gsl::owner<BinaryValue*> val) {
     case type_shared_array_buffer:
     case type_array_buffer:
       backing_stores_.erase(val);
+      break;
+    case type_promise:
+      delete val->value_ptr;
       break;
   }
   delete val;
@@ -119,9 +123,13 @@ auto BinaryValueFactory::FromValue(v8::Local<v8::Context> context,
                                              : type_array_buffer;
     // Let's not bring in gsl/span just for this line:
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-    res->ptr_val = static_cast<char*>(backing_store->Data()) + offset;
+    res->backing_store_ptr = static_cast<char*>(backing_store->Data()) + offset;
     res->len = size;
 
+  } else if (value->IsPromise()) {
+    res->type = type_promise;
+    res->value_ptr =
+        new v8::Persistent<v8::Value>(context->GetIsolate(), value);
   } else if (value->IsObject()) {
     res->type = type_object;
     res->int_val = value->ToObject(context).ToLocalChecked()->GetIdentityHash();

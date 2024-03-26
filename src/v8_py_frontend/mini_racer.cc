@@ -7,6 +7,7 @@
 #include <string>
 #include <utility>
 #include "binary_value.h"
+#include "callback.h"
 #include "cancelable_task_runner.h"
 
 namespace MiniRacer {
@@ -46,11 +47,12 @@ Context::Context()
                       &bv_factory_,
                       &isolate_memory_monitor_),
       heap_reporter_(&bv_factory_),
+      promise_attacher_(&isolate_manager_, context_holder_.Get(), &bv_factory_),
       cancelable_task_runner_(&isolate_manager_) {}
 
 template <typename Runnable>
 auto Context::RunTask(Runnable runnable,
-                      MiniRacer::Callback callback,
+                      Callback callback,
                       void* cb_data) -> std::unique_ptr<CancelableTaskHandle> {
   return cancelable_task_runner_.Schedule(
       /*runnable=*/
@@ -69,7 +71,7 @@ auto Context::RunTask(Runnable runnable,
 }
 
 auto Context::Eval(const std::string& code,
-                   MiniRacer::Callback callback,
+                   Callback callback,
                    void* cb_data) -> std::unique_ptr<CancelableTaskHandle> {
   return RunTask(
       [code, this](v8::Isolate* isolate) {
@@ -78,7 +80,7 @@ auto Context::Eval(const std::string& code,
       callback, cb_data);
 }
 
-auto Context::HeapSnapshot(MiniRacer::Callback callback, void* cb_data)
+auto Context::HeapSnapshot(Callback callback, void* cb_data)
     -> std::unique_ptr<CancelableTaskHandle> {
   return RunTask(
       [this](v8::Isolate* isolate) {
@@ -87,7 +89,7 @@ auto Context::HeapSnapshot(MiniRacer::Callback callback, void* cb_data)
       callback, cb_data);
 }
 
-auto Context::HeapStats(MiniRacer::Callback callback, void* cb_data)
+auto Context::HeapStats(Callback callback, void* cb_data)
     -> std::unique_ptr<CancelableTaskHandle> {
   return RunTask(
       [this](v8::Isolate* isolate) {

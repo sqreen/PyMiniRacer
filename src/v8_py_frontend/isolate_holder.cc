@@ -2,6 +2,7 @@
 
 #include <v8-array-buffer.h>
 #include <v8-isolate.h>
+#include <v8-microtask.h>
 
 namespace MiniRacer {
 
@@ -11,6 +12,11 @@ IsolateHolder::IsolateHolder()
   create_params.array_buffer_allocator = allocator_.get();
 
   isolate_ = v8::Isolate::New(create_params);
+
+  // We should set kExplicit since we're running the Microtasks checkpoint
+  // manually in isolate_manager.cc. Per
+  // https://stackoverflow.com/questions/54393127/v8-how-to-correctly-handle-microtasks
+  isolate_->SetMicrotasksPolicy(v8::MicrotasksPolicy::kExplicit);
 }
 
 IsolateHolder::~IsolateHolder() {
