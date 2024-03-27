@@ -6,11 +6,11 @@
 #include <v8-isolate.h>
 #include <v8-local-handle.h>
 #include <v8-locker.h>
+#include <v8-message.h>
 #include <v8-persistent-handle.h>
 #include <v8-primitive.h>
 #include <v8-script.h>
 #include <v8-value.h>
-#include <optional>
 #include <string>
 #include "binary_value.h"
 #include "isolate_memory_monitor.h"
@@ -27,48 +27,19 @@ CodeEvaluator::CodeEvaluator(v8::Isolate* isolate,
       memory_monitor_(memory_monitor) {}
 
 auto CodeEvaluator::SummarizeTryCatch(v8::Local<v8::Context>& context,
-                                      const v8::TryCatch& trycatch,
-                                      BinaryTypes resultType)
+                                      const v8::TryCatch& trycatch)
     -> BinaryValue::Ptr {
-  if (!trycatch.StackTrace(context).IsEmpty()) {
-    v8::Local<v8::Value> stacktrace;
-
-    if (trycatch.StackTrace(context).ToLocal(&stacktrace)) {
-      std::optional<std::string> backtrace = ValueToUtf8String(stacktrace);
-      if (backtrace.has_value()) {
-        // Generally the backtrace from v8 starts with the exception message, so
-        // we can skip the exception message (below) when we have the backtrace.
-        return bv_factory_->New(backtrace.value(), resultType);
-      }
-    }
-  }
-
-  // Fall back to the backtrace-less exception message:
-  if (!trycatch.Exception()->IsNull()) {
-    std::optional<std::string> message =
-        ValueToUtf8String(trycatch.Exception());
-    if (message.has_value()) {
-      return bv_factory_->New(message.value(), resultType);
-    }
-  }
-
-  // Send no message at all; the recipient can fill in generic messages based on
-  // the type code.
-  return bv_factory_->New("", resultType);
-}
-
-auto CodeEvaluator::SummarizeTryCatchAfterExecution(
-    v8::Local<v8::Context>& context,
-    const v8::TryCatch& trycatch) -> BinaryValue::Ptr {
-  BinaryTypes resultType = type_execute_exception;
-
   if (memory_monitor_->IsHardMemoryLimitReached()) {
-    resultType = type_oom_exception;
-  } else if (trycatch.HasTerminated()) {
-    resultType = type_terminated_exception;
+    return bv_factory_->FromString("", type_oom_exception);
   }
 
-  return SummarizeTryCatch(context, trycatch, resultType);
+  BinaryTypes result_type = type_execute_exception;
+  if (trycatch.HasTerminated()) {
+    result_type = type_terminated_exception;
+  }
+
+  return bv_factory_->FromExceptionMessage(context, trycatch.Message(),
+                                           trycatch.Exception(), result_type);
 }
 
 auto CodeEvaluator::GetFunction(const std::string& code,
@@ -111,10 +82,10 @@ auto CodeEvaluator::EvalFunction(const v8::Local<v8::Function>& func,
   v8::MaybeLocal<v8::Value> maybe_value =
       func->Call(context, v8::Undefined(isolate_), 0, {});
   if (!maybe_value.IsEmpty()) {
-    return bv_factory_->ConvertFromV8(context, maybe_value.ToLocalChecked());
+    return bv_factory_->FromValue(context, maybe_value.ToLocalChecked());
   }
 
-  return SummarizeTryCatchAfterExecution(context, trycatch);
+  return SummarizeTryCatch(context, trycatch);
 }
 
 auto CodeEvaluator::EvalAsScript(const std::string& code,
@@ -128,23 +99,30 @@ auto CodeEvaluator::EvalAsScript(const std::string& code,
 
   if (maybe_string.IsEmpty()) {
     // Implies we couldn't convert from utf-8 bytes, which would be odd.
-    return bv_factory_->New("invalid code string", type_parse_exception);
+    return bv_factory_->FromString("invalid code string", type_parse_exception);
   }
 
+  // Provide a name just for exception messages:
+  v8::ScriptOrigin script_origin(
+      v8::String::NewFromUtf8Literal(isolate_, "<anonymous>"));
+
   v8::Local<v8::Script> script;
-  if (!v8::Script::Compile(context, maybe_string.ToLocalChecked())
+  if (!v8::Script::Compile(context, maybe_string.ToLocalChecked(),
+                           &script_origin)
            .ToLocal(&script) ||
       script.IsEmpty()) {
-    return SummarizeTryCatch(context, trycatch, type_parse_exception);
+    return bv_factory_->FromExceptionMessage(context, trycatch.Message(),
+                                             trycatch.Exception(),
+                                             type_parse_exception);
   }
 
   v8::MaybeLocal<v8::Value> maybe_value = script->Run(context);
   if (!maybe_value.IsEmpty()) {
-    return bv_factory_->ConvertFromV8(context, maybe_value.ToLocalChecked());
+    return bv_factory_->FromValue(context, maybe_value.ToLocalChecked());
   }
 
   // Didn't execute. Find an error:
-  return SummarizeTryCatchAfterExecution(context, trycatch);
+  return SummarizeTryCatch(context, trycatch);
 }
 
 auto CodeEvaluator::Eval(const std::string& code) -> BinaryValue::Ptr {
@@ -155,8 +133,11 @@ auto CodeEvaluator::Eval(const std::string& code) -> BinaryValue::Ptr {
   const v8::Context::Scope context_scope(context);
 
   // Try and evaluate as a simple function call.
-  // This gets us about a speedup of about 1.17 (i.e., 17% faster) on a baseline
-  // of no-op function calls.
+  // This gets us a speedup of about 1.17 (i.e., 17% faster) on a baseline of
+  // no-op function calls. It's not much, but it provides an easy way for users
+  // to eek out performance without exposing a pre-compiled scripts API: users
+  // can simply globally *define* all their functions in one (or more) eval
+  // call(s), and then *call* them in another.
   v8::Local<v8::Function> func;
   if (GetFunction(code, context, &func)) {
     function_eval_call_count_++;
@@ -166,17 +147,6 @@ auto CodeEvaluator::Eval(const std::string& code) -> BinaryValue::Ptr {
   // Fall back on a slower full eval:
   full_eval_call_count_++;
   return EvalAsScript(code, context);
-}
-
-auto CodeEvaluator::ValueToUtf8String(v8::Local<v8::Value> value)
-    -> std::optional<std::string> {
-  v8::String::Utf8Value utf8(isolate_, value);
-
-  if (utf8.length() != 0) {
-    return std::make_optional(std::string(*utf8, utf8.length()));
-  }
-
-  return std::nullopt;
 }
 
 }  // end namespace MiniRacer

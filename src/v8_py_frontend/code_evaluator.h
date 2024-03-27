@@ -7,7 +7,6 @@
 #include <v8-local-handle.h>
 #include <v8-persistent-handle.h>
 #include <cstdint>
-#include <optional>
 #include <string>
 #include "binary_value.h"
 #include "isolate_memory_monitor.h"
@@ -29,11 +28,7 @@ class CodeEvaluator {
 
  private:
   auto SummarizeTryCatch(v8::Local<v8::Context>& context,
-                         const v8::TryCatch& trycatch,
-                         BinaryTypes resultType) -> BinaryValue::Ptr;
-  auto SummarizeTryCatchAfterExecution(v8::Local<v8::Context>& context,
-                                       const v8::TryCatch& trycatch)
-      -> BinaryValue::Ptr;
+                         const v8::TryCatch& trycatch) -> BinaryValue::Ptr;
 
   auto GetFunction(const std::string& code,
                    v8::Local<v8::Context>& context,
@@ -42,9 +37,6 @@ class CodeEvaluator {
                     v8::Local<v8::Context>& context) -> BinaryValue::Ptr;
   auto EvalAsScript(const std::string& code,
                     v8::Local<v8::Context>& context) -> BinaryValue::Ptr;
-
-  auto ValueToUtf8String(v8::Local<v8::Value> value)
-      -> std::optional<std::string>;
 
   v8::Isolate* isolate_;
   v8::Persistent<v8::Context>* context_;

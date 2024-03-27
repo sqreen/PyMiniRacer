@@ -62,10 +62,10 @@ auto Context::RunTask(std::function<BinaryValue::Ptr()> func,
       },
       /*on_canceled=*/
       [callback, cb_data, this]() {
-        callback(
-            cb_data,
-            bv_factory_.New("execution terminated", type_terminated_exception)
-                .release());
+        callback(cb_data, bv_factory_
+                              .FromString("execution terminated",
+                                          type_terminated_exception)
+                              .release());
       });
 }
 

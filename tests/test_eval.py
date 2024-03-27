@@ -23,8 +23,13 @@ def test_invalid():
     assert (
         exc_info.value.args[0]
         == """\
+<anonymous>:1: ReferenceError: invalid is not defined
+invalid
+^
+
 ReferenceError: invalid is not defined
-    at <anonymous>:1:1"""
+    at <anonymous>:1:1
+"""
     )
 
 
@@ -91,9 +96,14 @@ def test_exception_thrown():
     assert (
         exc_info.value.args[0]
         == """\
+<anonymous>:1: Error: blah
+var f = function() {throw new Error('blah')};
+                    ^
+
 Error: blah
     at f (<anonymous>:1:27)
-    at <anonymous>:1:1"""
+    at <anonymous>:1:1
+"""
     )
 
 
@@ -113,10 +123,41 @@ async def test_exception_thrown_async():
     assert (
         exc_info.value.args[0]
         == """\
+<anonymous>:1: Error: blah
+var f = function() {throw new Error('blah')};
+                    ^
+
 Error: blah
     at f (<anonymous>:1:27)
-    at <anonymous>:1:1"""
+    at <anonymous>:1:1
+"""
     )
+
+
+def test_fast_call_exception_thrown():
+    context = MiniRacer()
+
+    js_source = "var f = function() {throw new Error('blah')};"
+
+    context.eval(js_source)
+
+    # This should go into our fast function call route
+    with pytest.raises(JSEvalException) as exc_info:
+        context.eval("f()")
+
+    assert (
+        exc_info.value.args[0]
+        == """\
+<anonymous>:1: Error: blah
+var f = function() {throw new Error('blah')};
+                    ^
+
+Error: blah
+    at f (<anonymous>:1:27)
+"""
+    )
+
+    assert context._function_eval_call_count() == 1  # noqa: SLF001
 
 
 def test_string_thrown():
@@ -131,7 +172,14 @@ def test_string_thrown():
 
     # When you throw a plain string (not wrapping it in a `new Error(...)`), you get no
     # backtrace:
-    assert exc_info.value.args[0] == "blah"
+    assert (
+        exc_info.value.args[0]
+        == """\
+<anonymous>:1: blah
+var f = function() {throw 'blah'};
+                    ^
+"""
+    )
 
 
 def test_cannot_parse():
@@ -141,7 +189,16 @@ def test_cannot_parse():
     with pytest.raises(JSParseException) as exc_info:
         context.eval(js_source)
 
-    assert exc_info.value.args[0] == "SyntaxError: Unexpected end of input"
+    assert (
+        exc_info.value.args[0]
+        == """\
+<anonymous>:1: SyntaxError: Unexpected end of input
+var f = function(
+                 ^
+
+SyntaxError: Unexpected end of input
+"""
+    )
 
 
 @pytest.mark.asyncio
@@ -152,7 +209,16 @@ async def test_cannot_parse_async():
     with pytest.raises(JSParseException) as exc_info:
         await context.eval_async(js_source)
 
-    assert exc_info.value.args[0] == "SyntaxError: Unexpected end of input"
+    assert (
+        exc_info.value.args[0]
+        == """\
+<anonymous>:1: SyntaxError: Unexpected end of input
+var f = function(
+                 ^
+
+SyntaxError: Unexpected end of input
+"""
+    )
 
 
 def test_null_byte():

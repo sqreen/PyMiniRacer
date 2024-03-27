@@ -4,7 +4,8 @@
 #include <v8-array-buffer.h>
 #include <v8-context.h>
 #include <v8-local-handle.h>
-#include <algorithm>
+#include <v8-message.h>
+#include <v8-value.h>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -55,6 +56,8 @@ class BinaryValueDeleter {
 // NOLINTBEGIN(cppcoreguidelines-owning-memory)
 // NOLINTBEGIN(cppcoreguidelines-pro-type-member-init)
 // NOLINTBEGIN(hicpp-member-init)
+/** A simplified structure designed for sharing data with non-C++ code over a C
+ * foreign function API (e.g., Python ctypes). */
 struct BinaryValue {
   union {
     gsl::owner<void*> ptr_val;
@@ -78,19 +81,20 @@ struct BinaryValue {
 
 class BinaryValueFactory {
  public:
-  template <typename... Args>
-  auto New(Args&&... args) -> BinaryValue::Ptr;
-
-  auto ConvertFromV8(v8::Local<v8::Context> context,
-                     v8::Local<v8::Value> value) -> BinaryValue::Ptr;
+  auto FromString(std::string str, BinaryTypes result_type) -> BinaryValue::Ptr;
+  auto FromValue(v8::Local<v8::Context> context,
+                 v8::Local<v8::Value> value) -> BinaryValue::Ptr;
+  auto FromExceptionMessage(v8::Local<v8::Context> context,
+                            v8::Local<v8::Message> message,
+                            v8::Local<v8::Value> exception_obj,
+                            BinaryTypes result_type) -> BinaryValue::Ptr;
 
   // Only for use if the pointer is not wrapped in Ptr (see below), which uses
   // BinaryValueDeleter which calls this automatically:
   void Free(gsl::owner<BinaryValue*> val);
 
-  void Clear() { backing_stores_.clear(); }
-
  private:
+  auto New() -> BinaryValue::Ptr;
   std::unordered_map<void*, std::shared_ptr<v8::BackingStore>> backing_stores_;
 };
 
@@ -101,25 +105,8 @@ inline void BinaryValueDeleter::operator()(gsl::owner<BinaryValue*> val) const {
   factory_->Free(val);
 }
 
-// The following linter check suggests boost::variant, which would be nice but
-// wouldn't let us operate at the low level we need to interperate with Python.
-// NOLINTBEGIN(cppcoreguidelines-pro-type-union-access)
-// NOLINTBEGIN(cppcoreguidelines-pro-type-member-init)
-// NOLINTBEGIN(hicpp-member-init)
-inline BinaryValue::BinaryValue(const std::string& str, BinaryTypes type)
-    : len(str.size()), type(type) {
-  bytes = new char[len + 1];
-  std::copy(str.begin(), str.end(), bytes);
-  bytes[len] = '\0';
-}
-// NOLINTEND(hicpp-member-init)
-// NOLINTEND(cppcoreguidelines-pro-type-member-init)
-// NOLINTEND(cppcoreguidelines-pro-type-union-access)
-
-template <typename... Args>
-inline auto BinaryValueFactory::New(Args&&... args) -> BinaryValue::Ptr {
-  return {new BinaryValue(std::forward<Args>(args)...),
-          BinaryValueDeleter(this)};
+inline auto BinaryValueFactory::New() -> BinaryValue::Ptr {
+  return {new BinaryValue(), BinaryValueDeleter(this)};
 }
 
 }  // namespace MiniRacer
