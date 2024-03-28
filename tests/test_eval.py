@@ -1,6 +1,5 @@
 """ Test .eval() method """
 
-from asyncio import sleep as asyncio_sleep
 from time import sleep, time
 
 import pytest
@@ -36,12 +35,6 @@ ReferenceError: invalid is not defined
 def test_eval():
     mr = MiniRacer()
     assert mr.eval("42") == 42
-
-
-@pytest.mark.asyncio
-async def test_eval_async():
-    mr = MiniRacer()
-    assert await mr.eval_async("42") == 42
 
 
 def test_blank():
@@ -92,33 +85,6 @@ def test_exception_thrown():
     # slightly different traceback:
     with pytest.raises(JSEvalException) as exc_info:
         context.eval("f()+''")
-
-    assert (
-        exc_info.value.args[0]
-        == """\
-<anonymous>:1: Error: blah
-var f = function() {throw new Error('blah')};
-                    ^
-
-Error: blah
-    at f (<anonymous>:1:27)
-    at <anonymous>:1:1
-"""
-    )
-
-
-@pytest.mark.asyncio
-async def test_exception_thrown_async():
-    context = MiniRacer()
-
-    js_source = "var f = function() {throw new Error('blah')};"
-
-    await context.eval_async(js_source)
-
-    # Add extra junk (+'') to avoid our fast function call path which produces a
-    # slightly different traceback:
-    with pytest.raises(JSEvalException) as exc_info:
-        await context.eval_async("f()+''")
 
     assert (
         exc_info.value.args[0]
@@ -201,26 +167,6 @@ SyntaxError: Unexpected end of input
     )
 
 
-@pytest.mark.asyncio
-async def test_cannot_parse_async():
-    context = MiniRacer()
-    js_source = "var f = function("
-
-    with pytest.raises(JSParseException) as exc_info:
-        await context.eval_async(js_source)
-
-    assert (
-        exc_info.value.args[0]
-        == """\
-<anonymous>:1: SyntaxError: Unexpected end of input
-var f = function(
-                 ^
-
-SyntaxError: Unexpected end of input
-"""
-    )
-
-
 def test_null_byte():
     context = MiniRacer()
 
@@ -239,23 +185,6 @@ def test_timeout():
     mr = MiniRacer()
     with pytest.raises(JSTimeoutException) as exc_info:
         mr.eval("while(1) { }", timeout_sec=timeout)
-
-    duration = time() - start_time
-    # Make sure it timed out on time, and allow a giant leeway (because aarch64
-    # emulation tests are surprisingly slow!)
-    assert timeout <= duration <= timeout + 5
-
-    assert exc_info.value.args[0] == "JavaScript was terminated by timeout"
-
-
-@pytest.mark.asyncio
-async def test_timeout_async():
-    timeout = 0.1
-    start_time = time()
-
-    mr = MiniRacer()
-    with pytest.raises(JSTimeoutException) as exc_info:
-        await mr.eval_async("while(1) { }", timeout_sec=timeout)
 
     duration = time() - start_time
     # Make sure it timed out on time, and allow a giant leeway (because aarch64
@@ -288,29 +217,6 @@ def test_max_memory_soft():
     mr.set_hard_memory_limit(100000000)
     with pytest.raises(JSOOMException) as exc_info:
         mr.eval(
-            """let s = 1000;
-            var a = new Array(s);
-            a.fill(0);
-            while(true) {
-                s *= 1.1;
-                let n = new Array(Math.floor(s));
-                n.fill(0);
-                a = a.concat(n);
-            }""",
-        )
-
-    assert mr.was_soft_memory_limit_reached()
-    assert mr.was_hard_memory_limit_reached()
-    assert exc_info.value.args[0] == "JavaScript memory limit reached"
-
-
-@pytest.mark.asyncio
-async def test_max_memory_soft_async():
-    mr = MiniRacer()
-    mr.set_soft_memory_limit(100000000)
-    mr.set_hard_memory_limit(100000000)
-    with pytest.raises(JSOOMException) as exc_info:
-        await mr.eval_async(
             """let s = 1000;
             var a = new Array(s);
             a.fill(0);
@@ -399,23 +305,6 @@ def test_microtask():
     assert mr.eval("done")
 
 
-@pytest.mark.asyncio
-async def test_microtask_async():
-    mr = MiniRacer()
-    assert not await mr.eval_async(
-        """
-    let p = Promise.resolve();
-
-    var done = false;
-
-    p.then(() => {done = true});
-
-    done
-    """
-    )
-    assert await mr.eval_async("done")
-
-
 def test_async():
     mr = MiniRacer()
     assert not mr.eval(
@@ -436,29 +325,6 @@ def test_async():
     while time() - start < 10 and not mr.eval("done"):
         sleep(0.1)
     assert mr.eval("done")
-
-
-@pytest.mark.asyncio
-async def test_async_async():
-    mr = MiniRacer()
-    assert not await mr.eval_async(
-        """
-    var done = false;
-    const shared = new SharedArrayBuffer(8);
-    const view = new Int32Array(shared);
-
-    const p = Atomics.waitAsync(view, 0, 0, 1000); // 1 s timeout
-    p.value.then(() => { done = true; });
-    done
-    """
-    )
-    assert not await mr.eval_async("done")
-    start = time()
-    # Give the 1-second wait 10 seconds to finish. (Emulated aarch64 tests are
-    # surprisingly slow!)
-    while time() - start < 10 and not mr.eval("done"):
-        await asyncio_sleep(0.1)
-    assert await mr.eval_async("done")
 
 
 def test_fast_call():

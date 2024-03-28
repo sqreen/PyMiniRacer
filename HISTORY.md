@@ -7,6 +7,10 @@
 
 - Consequently, Control+C (`KeyboardInterrupt`) now interrupts JS execution.
 
+- Introduced `timeout_sec` parameter to `eval`, `call`, and `execute` to replace the
+    `timeout`, which unfortunately uses milliseconds (unlike the Python standard
+    library). In the future we may emit deprecation warnings for use of `timeout`.
+
 ## 0.8.1 (2024-03-23)
 
 - A series of C++ changes which should not impact the behavior of PyMiniRacer:

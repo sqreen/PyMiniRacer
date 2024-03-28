@@ -70,14 +70,6 @@ supports returning composite types such as objects:
     {'foo': 1}
 ```
 
-MiniRacer supports `async` operation, offloading evaluation from the Python event loop:
-
-```python
-    >>> import asyncio
-    >>> asyncio.run(ctx.eval_async("6*7"))
-    42
-```
-
 Composite values are serialized using JSON. Use a custom JSON encoder when sending
 non-JSON encodable parameters:
 
