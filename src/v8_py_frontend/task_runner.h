@@ -4,8 +4,9 @@
 #include <v8-isolate.h>
 #include <v8-platform.h>
 #include <atomic>
-#include <functional>
+#include <memory>
 #include <thread>
+#include <utility>
 
 namespace MiniRacer {
 
@@ -20,7 +21,8 @@ class TaskRunner {
   TaskRunner(TaskRunner&&) = delete;
   auto operator=(TaskRunner&& other) -> TaskRunner& = delete;
 
-  void Run(std::function<void()> func);
+  template <typename Func>
+  void Run(Func func);
 
   void TerminateOngoingTask();
 
@@ -32,6 +34,33 @@ class TaskRunner {
   std::atomic<bool> shutdown_;
   std::thread thread_;
 };
+
+/** Just a silly way to run code on the foreground task runner thread. */
+template <typename Func>
+class AdHocTask : public v8::Task {
+ public:
+  explicit AdHocTask(Func runnable);
+
+  void Run() override;
+
+ private:
+  Func runnable_;
+};
+
+template <typename Func>
+inline void TaskRunner::Run(Func func) {
+  platform_->GetForegroundTaskRunner(isolate_)->PostTask(
+      std::make_unique<AdHocTask<Func>>(std::move(func)));
+}
+
+template <typename Func>
+inline AdHocTask<Func>::AdHocTask(Func runnable)
+    : runnable_(std::move(runnable)) {}
+
+template <typename Func>
+inline void AdHocTask<Func>::Run() {
+  runnable_();
+}
 
 }  // end namespace MiniRacer
 

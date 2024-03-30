@@ -4,33 +4,13 @@
 #include <v8-local-handle.h>
 #include <v8-microtask-queue.h>
 #include <v8-platform.h>
-#include <functional>
-#include <memory>
 #include <thread>
-#include <utility>
 
 namespace MiniRacer {
 
 TaskRunner::TaskRunner(v8::Platform* platform, v8::Isolate* isolate)
     : platform_(platform), isolate_(isolate) {
   thread_ = std::thread(&TaskRunner::PumpMessages, this);
-}
-
-/** Just a silly way to run code on the foreground task runner thread. */
-class AdHocTask : public v8::Task {
- public:
-  explicit AdHocTask(std::function<void()> runnable)
-      : runnable_(std::move(runnable)) {}
-
-  void Run() override { runnable_(); }
-
- private:
-  std::function<void()> runnable_;
-};
-
-void TaskRunner::Run(std::function<void()> func) {
-  platform_->GetForegroundTaskRunner(isolate_)->PostTask(
-      std::make_unique<AdHocTask>(std::move(func)));
 }
 
 void TaskRunner::TerminateOngoingTask() {
