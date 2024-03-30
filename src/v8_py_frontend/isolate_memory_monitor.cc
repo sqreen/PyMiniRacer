@@ -1,19 +1,22 @@
 #include "isolate_memory_monitor.h"
-
 #include <v8-callbacks.h>
 #include <v8-isolate.h>
 #include <v8-statistics.h>
 #include <cstddef>
+#include "isolate_manager.h"
 
 namespace MiniRacer {
 
-IsolateMemoryMonitor::IsolateMemoryMonitor(v8::Isolate* isolate)
-    : isolate_(isolate),
+IsolateMemoryMonitor::IsolateMemoryMonitor(IsolateManager* isolate_manager)
+    : isolate_manager_(isolate_manager),
       soft_memory_limit_(0),
       soft_memory_limit_reached_(false),
       hard_memory_limit_(0),
       hard_memory_limit_reached_(false) {
-  isolate_->AddGCEpilogueCallback(StaticGCCallback, this);
+  isolate_manager_->RunAndAwait([this](v8::Isolate* isolate) {
+    isolate->AddGCEpilogueCallback(&IsolateMemoryMonitor::StaticGCCallback,
+                                   this);
+  });
 }
 
 void IsolateMemoryMonitor::StaticGCCallback(v8::Isolate* isolate,
@@ -49,8 +52,17 @@ void IsolateMemoryMonitor::SetSoftMemoryLimit(size_t limit) {
   soft_memory_limit_reached_ = false;
 }
 
+void IsolateMemoryMonitor::ApplyLowMemoryNotification() {
+  isolate_manager_->RunAndAwait(
+      [](v8::Isolate* isolate) { isolate->LowMemoryNotification(); },
+      /*interrupt=*/true);
+}
+
 IsolateMemoryMonitor::~IsolateMemoryMonitor() {
-  isolate_->RemoveGCEpilogueCallback(StaticGCCallback, this);
+  isolate_manager_->RunAndAwait([this](v8::Isolate* isolate) {
+    isolate->RemoveGCEpilogueCallback(&IsolateMemoryMonitor::StaticGCCallback,
+                                      this);
+  });
 }
 
 }  // end namespace MiniRacer

@@ -4,12 +4,13 @@
 #include <v8-callbacks.h>
 #include <v8-isolate.h>
 #include <cstddef>
+#include "isolate_manager.h"
 
 namespace MiniRacer {
 
 class IsolateMemoryMonitor {
  public:
-  explicit IsolateMemoryMonitor(v8::Isolate* isolate);
+  explicit IsolateMemoryMonitor(IsolateManager* isolate_manager);
   ~IsolateMemoryMonitor();
 
   IsolateMemoryMonitor(const IsolateMemoryMonitor&) = delete;
@@ -32,7 +33,7 @@ class IsolateMemoryMonitor {
                                void* data);
   void GCCallback(v8::Isolate* isolate);
 
-  v8::Isolate* isolate_;
+  IsolateManager* isolate_manager_;
   size_t soft_memory_limit_;
   bool soft_memory_limit_reached_;
   size_t hard_memory_limit_;
@@ -44,9 +45,6 @@ inline auto IsolateMemoryMonitor::IsSoftMemoryLimitReached() const -> bool {
 }
 inline auto IsolateMemoryMonitor::IsHardMemoryLimitReached() const -> bool {
   return hard_memory_limit_reached_;
-}
-inline void IsolateMemoryMonitor::ApplyLowMemoryNotification() {
-  isolate_->LowMemoryNotification();
 }
 
 }  // end namespace MiniRacer

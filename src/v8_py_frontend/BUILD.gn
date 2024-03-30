@@ -17,12 +17,12 @@ v8_shared_library("mini_racer") {
     "heap_reporter.cc",
     "isolate_holder.h",
     "isolate_holder.cc",
+    "isolate_manager.h",
+    "isolate_manager.cc",
     "isolate_memory_monitor.h",
     "isolate_memory_monitor.cc",
     "mini_racer.h",
     "mini_racer.cc",
-    "task_runner.h",
-    "task_runner.cc",
   ]
   deps = [
     "//build/config:shared_library_deps",

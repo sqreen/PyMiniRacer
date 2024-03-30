@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <functional>
 #include <memory>
 #include <string>
 #include "binary_value.h"
@@ -13,9 +12,8 @@
 #include "context_holder.h"
 #include "gsl_stub.h"
 #include "heap_reporter.h"
-#include "isolate_holder.h"
+#include "isolate_manager.h"
 #include "isolate_memory_monitor.h"
-#include "task_runner.h"
 
 namespace MiniRacer {
 
@@ -44,17 +42,17 @@ class Context {
   [[nodiscard]] auto FullEvalCallCount() const -> uint64_t;
 
  private:
-  auto RunTask(std::function<BinaryValue::Ptr()> func,
+  template <typename Runnable>
+  auto RunTask(Runnable runnable,
                MiniRacer::Callback callback,
                void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
 
-  IsolateHolder isolate_holder_;
+  IsolateManager isolate_manager_;
   IsolateMemoryMonitor isolate_memory_monitor_;
   BinaryValueFactory bv_factory_;
   ContextHolder context_holder_;
   CodeEvaluator code_evaluator_;
   HeapReporter heap_reporter_;
-  TaskRunner task_runner_;
   CancelableTaskRunner cancelable_task_runner_;
 };
 

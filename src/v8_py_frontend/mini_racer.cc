@@ -3,7 +3,6 @@
 #include <v8-initialization.h>
 #include <v8-platform.h>
 #include <filesystem>
-#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -40,22 +39,22 @@ void init_v8(const std::string& v8_flags,
 }
 
 Context::Context()
-    : isolate_memory_monitor_(isolate_holder_.Get()),
-      context_holder_(isolate_holder_.Get()),
-      code_evaluator_(isolate_holder_.Get(),
-                      context_holder_.Get(),
+    : isolate_manager_(current_platform.get()),
+      isolate_memory_monitor_(&isolate_manager_),
+      context_holder_(&isolate_manager_),
+      code_evaluator_(context_holder_.Get(),
                       &bv_factory_,
                       &isolate_memory_monitor_),
-      heap_reporter_(isolate_holder_.Get(), &bv_factory_),
-      task_runner_(current_platform.get(), isolate_holder_.Get()),
-      cancelable_task_runner_(&task_runner_) {}
+      heap_reporter_(&bv_factory_),
+      cancelable_task_runner_(&isolate_manager_) {}
 
-auto Context::RunTask(std::function<BinaryValue::Ptr()> func,
+template <typename Runnable>
+auto Context::RunTask(Runnable runnable,
                       MiniRacer::Callback callback,
                       void* cb_data) -> std::unique_ptr<CancelableTaskHandle> {
-  return cancelable_task_runner_.Schedule<BinaryValue::Ptr>(
+  return cancelable_task_runner_.Schedule(
       /*runnable=*/
-      std::move(func),
+      std::move(runnable),
       /*on_completed=*/
       [callback, cb_data](BinaryValue::Ptr val) {
         callback(cb_data, val.release());
@@ -72,20 +71,29 @@ auto Context::RunTask(std::function<BinaryValue::Ptr()> func,
 auto Context::Eval(const std::string& code,
                    MiniRacer::Callback callback,
                    void* cb_data) -> std::unique_ptr<CancelableTaskHandle> {
-  return RunTask([code, this]() { return code_evaluator_.Eval(code); },
-                 callback, cb_data);
+  return RunTask(
+      [code, this](v8::Isolate* isolate) {
+        return code_evaluator_.Eval(isolate, code);
+      },
+      callback, cb_data);
 }
 
 auto Context::HeapSnapshot(MiniRacer::Callback callback, void* cb_data)
     -> std::unique_ptr<CancelableTaskHandle> {
-  return RunTask([this]() { return heap_reporter_.HeapSnapshot(); }, callback,
-                 cb_data);
+  return RunTask(
+      [this](v8::Isolate* isolate) {
+        return heap_reporter_.HeapSnapshot(isolate);
+      },
+      callback, cb_data);
 }
 
 auto Context::HeapStats(MiniRacer::Callback callback, void* cb_data)
     -> std::unique_ptr<CancelableTaskHandle> {
-  return RunTask([this]() { return heap_reporter_.HeapStats(); }, callback,
-                 cb_data);
+  return RunTask(
+      [this](v8::Isolate* isolate) {
+        return heap_reporter_.HeapStats(isolate);
+      },
+      callback, cb_data);
 }
 
 }  // end namespace MiniRacer

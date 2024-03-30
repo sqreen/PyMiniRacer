@@ -2,16 +2,16 @@
 #define INCLUDE_MINI_RACER_CONTEXT_HOLDER_H
 
 #include <v8-context.h>
-#include <v8-isolate.h>
 #include <v8-persistent-handle.h>
 #include <memory>
+#include "isolate_manager.h"
 
 namespace MiniRacer {
 
 /** Create and manage a v8::Context */
 class ContextHolder {
  public:
-  explicit ContextHolder(v8::Isolate* isolate);
+  explicit ContextHolder(IsolateManager* isolate_manager);
   ~ContextHolder();
 
   ContextHolder(const ContextHolder&) = delete;
@@ -22,6 +22,7 @@ class ContextHolder {
   auto Get() -> v8::Persistent<v8::Context>*;
 
  private:
+  IsolateManager* isolate_manager_;
   std::unique_ptr<v8::Persistent<v8::Context>> context_;
 };
 

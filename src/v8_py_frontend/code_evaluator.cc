@@ -5,7 +5,6 @@
 #include <v8-function.h>
 #include <v8-isolate.h>
 #include <v8-local-handle.h>
-#include <v8-locker.h>
 #include <v8-message.h>
 #include <v8-persistent-handle.h>
 #include <v8-primitive.h>
@@ -17,12 +16,10 @@
 
 namespace MiniRacer {
 
-CodeEvaluator::CodeEvaluator(v8::Isolate* isolate,
-                             v8::Persistent<v8::Context>* context,
+CodeEvaluator::CodeEvaluator(v8::Persistent<v8::Context>* context,
                              BinaryValueFactory* bv_factory,
                              IsolateMemoryMonitor* memory_monitor)
-    : isolate_(isolate),
-      context_(context),
+    : context_(context),
       bv_factory_(bv_factory),
       memory_monitor_(memory_monitor) {}
 
@@ -42,7 +39,8 @@ auto CodeEvaluator::SummarizeTryCatch(v8::Local<v8::Context>& context,
                                            trycatch.Exception(), result_type);
 }
 
-auto CodeEvaluator::GetFunction(const std::string& code,
+auto CodeEvaluator::GetFunction(v8::Isolate* isolate,
+                                const std::string& code,
                                 v8::Local<v8::Context>& context,
                                 v8::Local<v8::Function>* func) -> bool {
   // Is it a single function call?
@@ -54,7 +52,7 @@ auto CodeEvaluator::GetFunction(const std::string& code,
 
   // Check if the value before the () is a callable identifier:
   const v8::MaybeLocal<v8::String> maybe_identifier =
-      v8::String::NewFromUtf8(isolate_, code.data(), v8::NewStringType::kNormal,
+      v8::String::NewFromUtf8(isolate, code.data(), v8::NewStringType::kNormal,
                               static_cast<int>(code.size() - 2));
   v8::Local<v8::String> identifier;
   if (!maybe_identifier.ToLocal(&identifier)) {
@@ -74,13 +72,14 @@ auto CodeEvaluator::GetFunction(const std::string& code,
   return true;
 }
 
-auto CodeEvaluator::EvalFunction(const v8::Local<v8::Function>& func,
+auto CodeEvaluator::EvalFunction(v8::Isolate* isolate,
+                                 const v8::Local<v8::Function>& func,
                                  v8::Local<v8::Context>& context)
     -> BinaryValue::Ptr {
-  const v8::TryCatch trycatch(isolate_);
+  const v8::TryCatch trycatch(isolate);
 
   v8::MaybeLocal<v8::Value> maybe_value =
-      func->Call(context, v8::Undefined(isolate_), 0, {});
+      func->Call(context, v8::Undefined(isolate), 0, {});
   if (!maybe_value.IsEmpty()) {
     return bv_factory_->FromValue(context, maybe_value.ToLocalChecked());
   }
@@ -88,13 +87,14 @@ auto CodeEvaluator::EvalFunction(const v8::Local<v8::Function>& func,
   return SummarizeTryCatch(context, trycatch);
 }
 
-auto CodeEvaluator::EvalAsScript(const std::string& code,
+auto CodeEvaluator::EvalAsScript(v8::Isolate* isolate,
+                                 const std::string& code,
                                  v8::Local<v8::Context>& context)
     -> BinaryValue::Ptr {
-  const v8::TryCatch trycatch(isolate_);
+  const v8::TryCatch trycatch(isolate);
 
   v8::MaybeLocal<v8::String> maybe_string =
-      v8::String::NewFromUtf8(isolate_, code.data(), v8::NewStringType::kNormal,
+      v8::String::NewFromUtf8(isolate, code.data(), v8::NewStringType::kNormal,
                               static_cast<int>(code.size()));
 
   if (maybe_string.IsEmpty()) {
@@ -104,7 +104,7 @@ auto CodeEvaluator::EvalAsScript(const std::string& code,
 
   // Provide a name just for exception messages:
   v8::ScriptOrigin script_origin(
-      v8::String::NewFromUtf8Literal(isolate_, "<anonymous>"));
+      v8::String::NewFromUtf8Literal(isolate, "<anonymous>"));
 
   v8::Local<v8::Script> script;
   if (!v8::Script::Compile(context, maybe_string.ToLocalChecked(),
@@ -125,11 +125,11 @@ auto CodeEvaluator::EvalAsScript(const std::string& code,
   return SummarizeTryCatch(context, trycatch);
 }
 
-auto CodeEvaluator::Eval(const std::string& code) -> BinaryValue::Ptr {
-  const v8::Locker lock(isolate_);
-  const v8::Isolate::Scope isolate_scope(isolate_);
-  const v8::HandleScope handle_scope(isolate_);
-  v8::Local<v8::Context> context = context_->Get(isolate_);
+auto CodeEvaluator::Eval(v8::Isolate* isolate,
+                         const std::string& code) -> BinaryValue::Ptr {
+  const v8::Isolate::Scope isolate_scope(isolate);
+  const v8::HandleScope handle_scope(isolate);
+  v8::Local<v8::Context> context = context_->Get(isolate);
   const v8::Context::Scope context_scope(context);
 
   // Try and evaluate as a simple function call.
@@ -139,14 +139,14 @@ auto CodeEvaluator::Eval(const std::string& code) -> BinaryValue::Ptr {
   // can simply globally *define* all their functions in one (or more) eval
   // call(s), and then *call* them in another.
   v8::Local<v8::Function> func;
-  if (GetFunction(code, context, &func)) {
+  if (GetFunction(isolate, code, context, &func)) {
     function_eval_call_count_++;
-    return EvalFunction(func, context);
+    return EvalFunction(isolate, func, context);
   }
 
   // Fall back on a slower full eval:
   full_eval_call_count_++;
-  return EvalAsScript(code, context);
+  return EvalAsScript(isolate, code, context);
 }
 
 }  // end namespace MiniRacer

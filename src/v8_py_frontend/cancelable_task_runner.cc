@@ -3,12 +3,12 @@
 #include <memory>
 #include <mutex>
 #include <utility>
-#include "task_runner.h"
+#include "isolate_manager.h"
 
 namespace MiniRacer {
 
-CancelableTaskState::CancelableTaskState(TaskRunner* task_runner)
-    : task_runner_(task_runner), state_(State::kNotStarted) {}
+CancelableTaskState::CancelableTaskState(IsolateManager* isolate_manager)
+    : isolate_manager_(isolate_manager), state_(State::kNotStarted) {}
 
 void CancelableTaskState::Cancel() {
   const std::lock_guard<std::mutex> lock(mutex_);
@@ -18,7 +18,7 @@ void CancelableTaskState::Cancel() {
   }
 
   if (state_ == State::kRunning) {
-    task_runner_->TerminateOngoingTask();
+    isolate_manager_->TerminateOngoingTask();
   }
 
   state_ = State::kCanceled;
@@ -57,7 +57,7 @@ void CancelableTaskHandle::Cancel() {
   task_state_->Cancel();
 }
 
-CancelableTaskRunner::CancelableTaskRunner(TaskRunner* task_runner)
-    : task_runner_(task_runner) {}
+CancelableTaskRunner::CancelableTaskRunner(IsolateManager* isolate_manager)
+    : isolate_manager_(isolate_manager) {}
 
 }  // end namespace MiniRacer

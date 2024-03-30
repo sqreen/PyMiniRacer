@@ -9,13 +9,12 @@ namespace MiniRacer {
 /** Report fun facts about an isolate heap */
 class HeapReporter {
  public:
-  HeapReporter(v8::Isolate* isolate, BinaryValueFactory* bv_factory);
+  explicit HeapReporter(BinaryValueFactory* bv_factory);
 
-  auto HeapSnapshot() -> BinaryValue::Ptr;
-  auto HeapStats() -> BinaryValue::Ptr;
+  auto HeapSnapshot(v8::Isolate* isolate) -> BinaryValue::Ptr;
+  auto HeapStats(v8::Isolate* isolate) -> BinaryValue::Ptr;
 
  private:
-  v8::Isolate* isolate_;
   BinaryValueFactory* bv_factory_;
 };
 
