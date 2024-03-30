@@ -1,5 +1,6 @@
 """ Test .eval() method """
 
+from contextlib import contextmanager
 from time import sleep, time
 
 import pytest
@@ -37,13 +38,26 @@ def test_eval():
     assert mr.eval("42") == 42
 
 
+@contextmanager
+def expect_calls(mr, *, full=0, fast=0):
+    full_before = mr._full_eval_call_count()  # noqa: SLF001
+    fast_before = mr._function_eval_call_count()  # noqa: SLF001
+
+    yield
+
+    full_after = mr._full_eval_call_count()  # noqa: SLF001
+    fast_after = mr._function_eval_call_count()  # noqa: SLF001
+
+    assert full_after - full_before == full
+    assert fast_after - fast_before == fast
+
+
 def test_blank():
     mr = MiniRacer()
-    assert mr.eval("") is None
-    assert mr.eval(" ") is None
-    assert mr.eval("\t") is None
-
-    assert mr._full_eval_call_count() == 3  # noqa: SLF001
+    with expect_calls(mr, full=3):
+        assert mr.eval("") is None
+        assert mr.eval(" ") is None
+        assert mr.eval("\t") is None
 
 
 def test_global():
@@ -101,19 +115,20 @@ Error: blah
 
 
 def test_fast_call_exception_thrown():
-    context = MiniRacer()
+    mr = MiniRacer()
 
-    js_source = "var f = function() {throw new Error('blah')};"
+    with expect_calls(mr, full=1, fast=1):
+        js_source = "var f = function() {throw new Error('blah')};"
 
-    context.eval(js_source)
+        mr.eval(js_source)
 
-    # This should go into our fast function call route
-    with pytest.raises(JSEvalException) as exc_info:
-        context.eval("f()")
+        # This should go into our fast function call route
+        with pytest.raises(JSEvalException) as exc_info:
+            mr.eval("f()")
 
-    assert (
-        exc_info.value.args[0]
-        == """\
+        assert (
+            exc_info.value.args[0]
+            == """\
 <anonymous>:1: Error: blah
 var f = function() {throw new Error('blah')};
                     ^
@@ -121,39 +136,38 @@ var f = function() {throw new Error('blah')};
 Error: blah
     at f (<anonymous>:1:27)
 """
-    )
-
-    assert context._function_eval_call_count() == 1  # noqa: SLF001
+        )
 
 
 def test_string_thrown():
-    context = MiniRacer()
+    mr = MiniRacer()
 
     js_source = "var f = function() {throw 'blah'};"
 
-    context.eval(js_source)
+    with expect_calls(mr, full=1, fast=1):
+        mr.eval(js_source)
 
-    with pytest.raises(JSEvalException) as exc_info:
-        context.eval("f()")
+        with pytest.raises(JSEvalException) as exc_info:
+            mr.eval("f()")
 
-    # When you throw a plain string (not wrapping it in a `new Error(...)`), you get no
-    # backtrace:
-    assert (
-        exc_info.value.args[0]
-        == """\
+        # When you throw a plain string (not wrapping it in a `new Error(...)`), you
+        # get no backtrace:
+        assert (
+            exc_info.value.args[0]
+            == """\
 <anonymous>:1: blah
 var f = function() {throw 'blah'};
                     ^
 """
-    )
+        )
 
 
 def test_cannot_parse():
-    context = MiniRacer()
+    mr = MiniRacer()
     js_source = "var f = function("
 
     with pytest.raises(JSParseException) as exc_info:
-        context.eval(js_source)
+        mr.eval(js_source)
 
     assert (
         exc_info.value.args[0]
@@ -168,13 +182,13 @@ SyntaxError: Unexpected end of input
 
 
 def test_null_byte():
-    context = MiniRacer()
+    mr = MiniRacer()
 
     s = "\x00 my string!"
 
     # Try return a string including a null byte
     in_val = 'var str = "' + s + '"; str;'
-    result = context.eval(in_val)
+    result = mr.eval(in_val)
     assert result == s
 
 
@@ -314,11 +328,7 @@ def test_polling():
     assert not mr.eval(
         """
 var done = false;
-const shared = new SharedArrayBuffer(8);
-const view = new Int32Array(shared);
-
-const p = Atomics.waitAsync(view, 0, 0, 1000); // 1 s timeout
-p.value.then(() => { done = true; });
+setTimeout(() => { done = true; }, 1000);
 done
 """
     )
@@ -331,23 +341,42 @@ done
     assert mr.eval("done")
 
 
-def test_promise_sync():
+def test_settimeout():
     mr = MiniRacer()
-    promise = mr.eval(
+    mr.eval(
         """
-const shared = new SharedArrayBuffer(8);
-const view = new Int32Array(shared);
-
-const p = Atomics.waitAsync(view, 0, 0, 1000); // 1 s timeout
-p.value  // returns a promise
+var results = [];
+let a = setTimeout(() => { results.push("a"); }, 2000);
+let b = setTimeout(() => { results.push("b"); }, 3000);
+let c = setTimeout(() => { results.push("c"); }, 1000);
+let d = setTimeout(() => { results.push("d"); }, 4000);
+clearTimeout(b)
 """
     )
     start = time()
     # Give the 1-second wait 10 seconds to finish. (Emulated aarch64 tests are
     # surprisingly slow!)
-    val = promise.get(timeout=10)
+    while time() - start < 10 and mr.eval("results.length") != 3:
+        sleep(0.1)
+    assert mr.eval("results.length") == 3
+    assert mr.eval("results[0]") == "c"
+    assert mr.eval("results[1]") == "a"
+    assert mr.eval("results[2]") == "d"
+
+
+def test_promise_sync():
+    mr = MiniRacer()
+    promise = mr.eval(
+        """
+new Promise((res, rej) => setTimeout(() => res(42), 1000)); // 1 s timeout
+"""
+    )
+    start = time()
+    # Give the 1-second wait 10 seconds to finish. (Emulated aarch64 tests are
+    # surprisingly slow!)
+    result = promise.get(timeout=10)
     assert time() - start > 0.5
-    assert val == "timed-out"
+    assert result == 42
 
 
 @pytest.mark.asyncio
@@ -355,20 +384,16 @@ async def test_promise_async():
     mr = MiniRacer()
     promise = mr.eval(
         """
-const shared = new SharedArrayBuffer(8);
-const view = new Int32Array(shared);
-
-const p = Atomics.waitAsync(view, 0, 0, 1000); // 1 s timeout
-p.value  // returns a promise
+new Promise((res, rej) => setTimeout(() => res(42), 1000)); // 1 s timeout
 """
     )
     start = time()
-    val = await promise
+    result = await promise
     assert time() - start > 0.5
     # Give the 1-second wait 10 seconds to finish. (Emulated aarch64 tests are
     # surprisingly slow!)
     assert time() - start < 10
-    assert val == "timed-out"
+    assert result == 42
 
 
 def test_resolved_promise_sync():
@@ -386,19 +411,17 @@ async def test_resolved_promise_async():
 
 def test_fast_call():
     mr = MiniRacer()
-    mr.eval("var test = function () { return 42; }")
+    with expect_calls(mr, full=2, fast=1):
+        mr.eval("var test = function () { return 42; }")
 
-    # This syntax is optimized and takes another execution path in the extension
-    # Note: the fast call optimization only works with functions defined using
-    # "var", of "function test() { ... }", which place the definition on the global
-    # "this". It doesn't work with functions defined as "let" or "const" because
-    # they place the function onto block scope, where our optimization cannot find
-    # them.
-    assert mr.eval("test()") == 42
+        # This syntax is optimized and takes another execution path in the extension
+        # Note: the fast call optimization only works with functions defined using
+        # "var", of "function test() { ... }", which place the definition on the global
+        # "this". It doesn't work with functions defined as "let" or "const" because
+        # they place the function onto block scope, where our optimization cannot find
+        # them.
+        assert mr.eval("test()") == 42
 
-    # It looks like a fast call but it is not (it ends with '()' but no identifier)
-    # should not fail and do a classical evaluation.
-    assert mr.eval("1+test()") == 43
-
-    assert mr._function_eval_call_count() == 1  # noqa: SLF001
-    assert mr._full_eval_call_count() == 2  # noqa: SLF001
+        # It looks like a fast call but it is not (it ends with '()' but no identifier)
+        # should not fail and do a classical evaluation.
+        assert mr.eval("1+test()") == 43

@@ -100,6 +100,29 @@ MiniRacer is ES6 capable:
     False
 ```
 
+MiniRacer supports asynchronous execution using JS `Promise` instances (*new in
+v0.10.0*):
+
+```python
+    >>> promise = ctx.eval(
+    ...     "new Promise((res, rej) => setTimeout(() => res(42), 10000))")
+    >>> promise.get()  # blocks for 10 seconds, and then:
+    42
+```
+
+You can use JS `Promise` instances with Python `async` (*new in v0.10.0*):
+
+```python
+    >>> import asyncio
+    >>> async def demo():
+    ...     promise = ctx.eval(
+    ...         "new Promise((res, rej) => setTimeout(() => res(42), 10000))")
+    ...     return await promise
+    ... 
+    >>> asyncio.run(demo())  # blocks for 10 seconds, and then:
+    42
+```
+
 MiniRacer supports [the ECMA `Intl` API](https://tc39.es/ecma402/):
 
 ```python

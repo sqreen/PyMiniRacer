@@ -1,5 +1,16 @@
 # History
 
+## 0.10.0 (2024-03-30)
+
+- Added Python-side support for JS Promises. You can now return a JS Promise from code
+    executed by `MiniRacer.eval`, and PyMiniRacer will convert it to a Python object
+    which has a blocking `promise.get()` method, and also supports `await promise` in
+    `async` Python functions.
+
+- Added a `setTimeout` and `clearTimeout`. These common functions live in the Web API
+    standard, not the ECMAScript standard, and thus don't come with V8, but they're so
+    ubiquitious we now ship an implemention with `PyMiniRacer`.
+
 ## 0.9.0 (2024-03-30)
 
 - Revamped JS execution model to be out-of-thread. Python/C++ interaction now happens
