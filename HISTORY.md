@@ -1,11 +1,17 @@
 # History
 
-## 0.9.0 (2024-03-??)
+## 0.9.0 (2024-03-30)
 
 - Revamped JS execution model to be out-of-thread. Python/C++ interaction now happens
     via callbacks. 
 
 - Consequently, Control+C (`KeyboardInterrupt`) now interrupts JS execution.
+
+- Hardened C++-side thread safety model, resolving potential race conditions introduced
+    in v0.8.1 (but not actually reported as happening anywhere).
+
+- Further improved JS exception reporting; exception reports now show the offending code
+    where possible.
 
 - Introduced `timeout_sec` parameter to `eval`, `call`, and `execute` to replace the
     `timeout`, which unfortunately uses milliseconds (unlike the Python standard

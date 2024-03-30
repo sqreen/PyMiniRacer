@@ -190,12 +190,19 @@ To release:
 
 1. Update `HISTORY.md` with a summary of changes since the last release.
 
-1. Add and push a tag:
+1. Pick the next revision number:
 
     ```sh
     $ git fetch --tags
     $ git tag -l
     # observe the next available tag
+    ```
+
+1. Update `src/py_mini_racer/__about__.py` with the new revision number.
+
+1. Add and push a tag:
+
+    ```sh
     NEXT_TAG=the next tag
     $ git tag "${NEXT_TAG}"
     $ git push origin "${NEXT_TAG}"
