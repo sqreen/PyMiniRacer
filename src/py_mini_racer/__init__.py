@@ -6,6 +6,7 @@ JSFunction = py_mini_racer.JSFunction
 JSOOMException = py_mini_racer.JSOOMException
 JSObject = py_mini_racer.JSObject
 JSParseException = py_mini_racer.JSParseException
+JSPromise = py_mini_racer.JSPromise
 JSSymbol = py_mini_racer.JSSymbol
 JSTimeoutException = py_mini_racer.JSTimeoutException
 LibAlreadyInitializedError = py_mini_racer.LibAlreadyInitializedError
