@@ -214,8 +214,9 @@ target_os_only = "True"
         else:
             target_os = ""
 
-        with open(gclient_file, 'w') as f:
-            f.write(f"""\
+        with open(gclient_file, "w") as f:
+            f.write(
+                f"""\
 solutions = [
   {{ "name"        : "v8",
     "url"         : "https://chromium.googlesource.com/v8/v8.git",
@@ -226,7 +227,8 @@ solutions = [
   }},
 ]
 {target_os}\
-""")
+"""
+            )
 
     run(
         executable,

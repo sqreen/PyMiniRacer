@@ -61,7 +61,7 @@ Ready to contribute? Here's how to set up `PyMiniRacer` for local development.
     the `PyMiniRacer` build uses its own compiler (!) on most systems, our pre-commit
     rules rely on the system `clang-format` and `clang-tidy`. If your versions of those
     utilities do not match the ones `PyMiniRacer` uses on GitHub Actions, you may see
-    spurious pre-commit errors. 
+    spurious pre-commit errors.
 
     If you're on a Debian-related Linux distribution using the LLVM project's standard
     apt packages, note that you will likely have to override `/usr/bin/clang-format`
@@ -175,7 +175,7 @@ Before you submit a pull request, check that it meets these guidelines:
 1. The pull request should include tests.
 1. If the pull request adds functionality, the docs should be updated. Put your new
     functionality into a function with a docstring, and add the feature to the list in
-    README.rst. 
+    README.rst.
 1. The pull request should work for the entire test matrix of Python versions
     (`hatch run tests:run`).
 

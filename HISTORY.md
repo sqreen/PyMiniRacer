@@ -3,7 +3,7 @@
 ## 0.9.0 (2024-03-30)
 
 - Revamped JS execution model to be out-of-thread. Python/C++ interaction now happens
-    via callbacks. 
+    via callbacks.
 
 - Consequently, Control+C (`KeyboardInterrupt`) now interrupts JS execution.
 
@@ -56,7 +56,7 @@
     `EXTENSION_NAME` module variables, and `MiniRacer.v8_flags` and `MiniRacer.ext`
     class variable have all been removed.
 - Add support for the [ECMAScript internalization API](https://v8.dev/docs/i18n) and
-    thus [the ECMA `Intl` API](https://tc39.es/ecma402/) 
+    thus [the ECMA `Intl` API](https://tc39.es/ecma402/)
 - Use [fast startup snapshots](https://v8.dev/blog/custom-startup-snapshots)
 - Switch from setuptools to Hatch
 - Switch from tox to Hatch
