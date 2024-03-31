@@ -18,7 +18,7 @@ basicConfig()
 LOGGER = getLogger(__name__)
 LOGGER.setLevel(DEBUG)
 ROOT_DIR = dirname(abspath(__file__))
-V8_VERSION = "branch-heads/12.2"
+V8_VERSION = "branch-heads/12.3"
 
 
 def local_path(path="."):
@@ -194,17 +194,39 @@ def ensure_depot_tools():
 def ensure_v8_src(revision):
     """Ensure that v8 src are present and up-to-date."""
 
-    # Note that we run fetch.py and gclient.py directly instead of the bash+batch
-    # wrappers so that we use the correct virtualized Python.
-    if not isfile(pathjoin(get_workspace_path(), ".gclient")):
+    # We create our own .gclient config instead of creating it via fetch.py so we can
+    # control (non-)installation of a sysroot.
+    gclient_file = pathjoin(get_workspace_path(), ".gclient")
+    if not isfile(gclient_file):
         makedirs(get_workspace_path(), exist_ok=True)
-        run(
-            executable,
-            pathjoin(get_depot_tools_path(), "fetch.py"),
-            "--nohooks",
-            "v8",
-            cwd=get_workspace_path(),
-        )
+        if is_musl():
+            # Prevent fetching of a useless Debian sysroot on Alpine.
+            # We disable use of the sysroot below (see "use_sysroot"), so this is just
+            # an optimization to preempt the download.
+            # (Note that "musl" is not a valid OS in the depot_tools deps system;
+            # "musl" here is just a placeholder to mean "*not* the thing you think is
+            # called 'linux'".)
+            # Syntax from https://source.chromium.org/chromium/chromium/src/+/main:docs/ios/running_against_tot_webkit.md
+            target_os = """\
+target_os = ["musl"]
+target_os_only = "True"
+"""
+        else:
+            target_os = ""
+
+        with open(gclient_file, 'w') as f:
+            f.write(f"""\
+solutions = [
+  {{ "name"        : "v8",
+    "url"         : "https://chromium.googlesource.com/v8/v8.git",
+    "deps_file"   : "DEPS",
+    "managed"     : False,
+    "custom_deps" : {{}},
+    "custom_vars": {{}},
+  }},
+]
+{target_os}\
+""")
 
     run(
         executable,
