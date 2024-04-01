@@ -1,6 +1,6 @@
 # History
 
-## 0.10.0 (2024-03-30)
+## 0.10.0 (2024-03-31)
 
 - Updated to V8 12.3 from V8 12.2 now that Chromium stable is on 12.3.
 
