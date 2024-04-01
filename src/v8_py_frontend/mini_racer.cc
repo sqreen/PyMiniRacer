@@ -1,7 +1,10 @@
 #include "mini_racer.h"
 #include <libplatform/libplatform.h>
 #include <v8-initialization.h>
+#include <v8-locker.h>
+#include <v8-persistent-handle.h>
 #include <v8-platform.h>
+#include <v8-value.h>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -9,6 +12,7 @@
 #include "binary_value.h"
 #include "callback.h"
 #include "cancelable_task_runner.h"
+#include "object_manipulator.h"
 
 namespace MiniRacer {
 
@@ -48,6 +52,7 @@ Context::Context()
                       &isolate_memory_monitor_),
       heap_reporter_(&bv_factory_),
       promise_attacher_(&isolate_manager_, context_holder_.Get(), &bv_factory_),
+      object_manipulator_(context_holder_.Get(), &bv_factory_),
       cancelable_task_runner_(&isolate_manager_) {}
 
 template <typename Runnable>
@@ -96,6 +101,19 @@ auto Context::HeapStats(Callback callback, void* cb_data)
         return heap_reporter_.HeapStats(isolate);
       },
       callback, cb_data);
+}
+
+auto Context::GetIdentityHash(v8::Persistent<v8::Value>* object) -> int {
+  return isolate_manager_.RunAndAwait([object](v8::Isolate* isolate) {
+    return ObjectManipulator::GetIdentityHash(isolate, object);
+  });
+}
+
+auto Context::GetOwnPropertyNames(v8::Persistent<v8::Value>* object)
+    -> BinaryValue::Ptr {
+  return isolate_manager_.RunAndAwait([object, this](v8::Isolate* isolate) {
+    return object_manipulator_.GetOwnPropertyNames(isolate, object);
+  });
 }
 
 }  // end namespace MiniRacer

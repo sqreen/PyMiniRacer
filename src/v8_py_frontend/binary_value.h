@@ -23,11 +23,12 @@ enum BinaryTypes : uint8_t {
   type_integer = 3,
   type_double = 4,
   type_str_utf8 = 5,
-  // type_array     =   6,  // deprecated
+  type_array = 6,
   // type_hash      =   7,  // deprecated
   type_date = 8,
   type_symbol = 9,
   type_object = 10,
+  type_undefined = 11,
 
   type_function = 100,
   type_shared_array_buffer = 101,

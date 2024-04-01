@@ -4,6 +4,7 @@ import ctypes
 import json
 import sys
 from asyncio import Future
+from collections.abc import Mapping, Sequence
 from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 from importlib import resources
@@ -71,31 +72,85 @@ class WrongReturnTypeException(MiniRacerBaseException):
         super().__init__(f"Unexpected return value type {typ}")
 
 
-class JSObject:
-    """JavaScript object."""
+class JSUndefinedType:
+    """The JavaScript undefined type.
 
-    def __init__(self, obj):
-        self.id = obj
+    Where JavaScript null is represented as None, undefined is represented as this
+    type."""
+
+    def __bool__(self):
+        return False
+
+    def __repr__(self):
+        return "JSUndefined"
+
+
+JSUndefined = JSUndefinedType()
+
+
+class JSObject(Mapping):
+    """A JavaScript object.
+
+    Note that Mapping methods (keys(), __getitem__(), etc) are supported. keys()
+    and __iter__() will return properties from any prototypes as well as this object,
+    as if using a for-in statement in JavaScript.
+    """
+
+    def __init__(self, ctx, obj, val_holder: _MiniRacerValHolder):
+        self._val_holder: _MiniRacerValHolder = val_holder
+        self._ctx = ctx
+        self._obj = obj
 
     def __hash__(self):
-        return self.id
+        return self._ctx.get_identity_hash(self._obj)
+
+    def keys(self):
+        return self._ctx.get_own_property_names(self._obj)
+
+    def __iter__(self):
+        return iter(self.keys())
+
+    def __getitem__(self, key):
+        return self._ctx.get_object_item(self._obj, key)
+
+    def __len__(self):
+        return len(self.keys())
 
 
-class JSFunction:
+class JSArray(Sequence, JSObject):
+    """JavaScript array."""
+
+    def __len__(self):
+        return self.__getitem__("length")
+
+    def __getitem__(self, index):
+        return self._ctx.get_object_item(self._obj, index)
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
+
+class JSFunction(JSObject):
     """JavaScript function."""
 
 
-class JSSymbol:
+class JSSymbol(JSObject):
     """JavaScript symbol."""
 
 
-class JSPromise:
+class JSPromise(JSObject):
     """JavaScript promise."""
 
     def __init__(
-        self, val_holder: _MiniRacerValHolder, to_sync_future, to_async_future
+        self,
+        ctx,
+        promise,
+        val_holder: _MiniRacerValHolder,
+        to_sync_future,
+        to_async_future,
     ):
-        self._val_holder: _MiniRacerValHolder = val_holder
+        super().__init__(ctx, promise, val_holder)
         self._to_sync_future = to_sync_future
         self._to_async_future = to_async_future
 
@@ -214,6 +269,32 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
         ctypes.py_object,
     ]
     handle.mr_heap_snapshot.restype = ctypes.c_void_p
+
+    handle.mr_get_identity_hash.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+    ]
+    handle.mr_get_identity_hash.restype = ctypes.c_int
+
+    handle.mr_get_own_property_names.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+    ]
+    handle.mr_get_own_property_names.restype = ctypes.POINTER(_MiniRacerValueStruct)
+
+    handle.mr_get_object_item_string.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+    ]
+    handle.mr_get_object_item_string.restype = ctypes.POINTER(_MiniRacerValueStruct)
+
+    handle.mr_get_object_item_number.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_double,
+    ]
+    handle.mr_get_object_item_number.restype = ctypes.POINTER(_MiniRacerValueStruct)
 
     handle.mr_set_hard_memory_limit.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
 
@@ -579,6 +660,33 @@ class MiniRacer:
         js = f"{expr}.apply(this, {json_args})"
         return self.execute(js, timeout_sec=timeout_sec, max_memory=max_memory)
 
+    def get_identity_hash(self, obj: JSObject) -> int:
+        return self._dll.mr_get_identity_hash(self.ctx, obj)
+
+    def get_own_property_names(self, obj: JSObject) -> int:
+        names_ptr = self._dll.mr_get_own_property_names(self.ctx, obj)
+        names = self._mr_val_to_python(names_ptr)
+        if not isinstance(names, JSArray):
+            raise TypeError
+        return tuple(names)
+
+    def get_object_item(self, obj: JSObject, key: str | Numeric):
+        if isinstance(key, (int, float)):
+            val = self._dll.mr_get_object_item_number(self.ctx, obj, key)
+        elif key is None:
+            val = self._dll.mr_get_object_item_string(self.ctx, obj, b"null")
+        elif key is JSUndefined:
+            val = self._dll.mr_get_object_item_string(self.ctx, obj, b"undefined")
+        else:
+            val = self._dll.mr_get_object_item_string(
+                self.ctx, obj, key.encode("utf-8")
+            )
+
+        if not val:
+            raise KeyError(key)
+
+        return self._mr_val_to_python(val)
+
     def set_hard_memory_limit(self, limit: int) -> None:
         """Set a hard memory limit on this V8 isolate.
 
@@ -688,6 +796,8 @@ class MiniRacer:
 
             if typ == MiniRacerTypes.null:
                 return None
+            if typ == MiniRacerTypes.undefined:
+                return JSUndefined
             if typ == MiniRacerTypes.bool:
                 return val.int_val == 1
             if typ == MiniRacerTypes.integer:
@@ -697,13 +807,17 @@ class MiniRacer:
             if typ == MiniRacerTypes.str_utf8:
                 return val.bytes_val[0:length].decode("utf-8")
             if typ == MiniRacerTypes.function:
-                return JSFunction()
+                free_value = False
+                val_holder = _MiniRacerValHolder(self, ptr)
+                return JSFunction(self, val.value_ptr, val_holder)
             if typ == MiniRacerTypes.date:
                 timestamp = val.double_val
                 # JS timestamp are milliseconds, in python we are in seconds
                 return datetime.fromtimestamp(timestamp / 1000.0, timezone.utc)
             if typ == MiniRacerTypes.symbol:
-                return JSSymbol()
+                free_value = False
+                val_holder = _MiniRacerValHolder(self, ptr)
+                return JSSymbol(self, val.value_ptr, val_holder)
             if typ in (MiniRacerTypes.shared_array_buffer, MiniRacerTypes.array_buffer):
                 buf = ArrayBufferByte * length
                 cdata = buf.from_address(val.value_ptr)
@@ -738,11 +852,19 @@ class MiniRacer:
                         self._make_async_future(), self._mr_async_callback
                     )
 
-                return JSPromise(val_holder, to_sync_future, to_async_future)
+                return JSPromise(
+                    self, val.value_ptr, val_holder, to_sync_future, to_async_future
+                )
+
+            if typ == MiniRacerTypes.array:
+                free_value = False
+                val_holder = _MiniRacerValHolder(self, ptr)
+                return JSArray(self, val.value_ptr, val_holder)
 
             if typ == MiniRacerTypes.object:
-                # The C++ side puts the hash of the JS object into the value:
-                return JSObject(val.int_val)
+                free_value = False
+                val_holder = _MiniRacerValHolder(self, ptr)
+                return JSObject(self, val.value_ptr, val_holder)
 
             raise JSConversionException
         finally:
@@ -798,13 +920,13 @@ class MiniRacerTypes:
     integer = 3
     double = 4
     str_utf8 = 5
-    # deprecated:
     array = 6
     # deprecated:
     hash = 7  # noqa: A003
     date = 8
     symbol = 9
     object = 10  # noqa: A003
+    undefined = 11
 
     function = 100
     shared_array_buffer = 101

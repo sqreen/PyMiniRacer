@@ -1,5 +1,5 @@
 import pytest
-from py_mini_racer import JSEvalException, StrictMiniRacer
+from py_mini_racer import JSEvalException, JSUndefined, StrictMiniRacer
 
 
 def test_basic_int():
@@ -29,7 +29,7 @@ def test_call():
 
     mr = StrictMiniRacer()
 
-    assert mr.eval(js_func) is None
+    assert mr.eval(js_func) is JSUndefined
     assert mr.call("f", list(range(5))) == 5
 
 

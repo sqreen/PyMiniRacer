@@ -17,6 +17,7 @@
 #include "heap_reporter.h"
 #include "isolate_manager.h"
 #include "isolate_memory_monitor.h"
+#include "object_manipulator.h"
 #include "promise_attacher.h"
 
 namespace MiniRacer {
@@ -45,6 +46,12 @@ class Context {
   void AttachPromiseThen(v8::Persistent<v8::Value>* promise,
                          Callback callback,
                          void* cb_data);
+  auto GetIdentityHash(v8::Persistent<v8::Value>* object) -> int;
+  auto GetOwnPropertyNames(v8::Persistent<v8::Value>* object)
+      -> BinaryValue::Ptr;
+  template <typename Key>
+  auto GetObjectItem(v8::Persistent<v8::Value>* object,
+                     Key key) -> BinaryValue::Ptr;
 
  private:
   template <typename Runnable>
@@ -59,6 +66,7 @@ class Context {
   CodeEvaluator code_evaluator_;
   HeapReporter heap_reporter_;
   PromiseAttacher promise_attacher_;
+  ObjectManipulator object_manipulator_;
   CancelableTaskRunner cancelable_task_runner_;
 };
 
@@ -102,6 +110,15 @@ inline void Context::AttachPromiseThen(v8::Persistent<v8::Value>* promise,
                                        MiniRacer::Callback callback,
                                        void* cb_data) {
   promise_attacher_.AttachPromiseThen(promise, callback, cb_data);
+}
+
+template <typename Key>
+inline auto Context::GetObjectItem(v8::Persistent<v8::Value>* object,
+                                   Key key) -> BinaryValue::Ptr {
+  return isolate_manager_.RunAndAwait(
+      [object, this, &key](v8::Isolate* isolate) mutable {
+        return object_manipulator_.GetItem(isolate, object, std::move(key));
+      });
 }
 
 }  // namespace MiniRacer

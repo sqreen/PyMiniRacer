@@ -62,8 +62,28 @@ Variables are kept inside of a context:
     'Sqreen'
 ```
 
-While `eval` only supports returning primitive data types such as strings, `call`
-supports returning composite types such as objects:
+JavaScript Objects and Arrays are modeled in Python as dictionaries and lists (or, more
+precisely,
+[`Mapping`](https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping)
+and
+[`Sequence`](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)
+instances), respectively (*new in v0.11.0*):
+
+```python
+    >>> x = ctx.eval("x")
+    >>> x["company"]
+    'Sqreen'
+    >>> list(x.keys())
+    ['company']
+    >>> y = ctx.eval("['a', 'b']")
+    >>> y[1]
+    'b'
+    >>> 'a' in y
+    True
+```
+
+Meanwhile, `call` uses JSON to transfer data between JavaScript and Python, and converts
+data in bulk:
 
 ```python
     >>> ctx.call("fun")
@@ -121,6 +141,14 @@ You can use JS `Promise` instances with Python `async` (*new in v0.10.0*):
     ... 
     >>> asyncio.run(demo())  # blocks for 10 seconds, and then:
     42
+```
+
+JavaScript `null` and `undefined` are modeled in Python as `None` and `JSUndefined`,
+respectively:
+
+```python
+    >>> list(ctx.eval("[undefined, null]"))
+    [JSUndefined, None]
 ```
 
 MiniRacer supports [the ECMA `Intl` API](https://tc39.es/ecma402/):

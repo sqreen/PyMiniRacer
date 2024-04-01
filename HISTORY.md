@@ -1,5 +1,15 @@
 # History
 
+## 0.11.0 (2024-04-??)
+
+- Added a read-only (for now) interface for all derivatives of JS Objects. You can now
+    read Object properties and Array elements in Python, including recursively.
+
+- Added a `JSUndefined` Python object to model JavaScript `undefined`. This is needed to
+    properly implement the above interface for reading Object and Array elements.
+    *Unfortunately, this may present a breaking change for users who assume JavaScript
+    `undefined` is modeled as Python `None`.*
+
 ## 0.10.0 (2024-03-31)
 
 - Updated to V8 12.3 from V8 12.2 now that Chromium stable is on 12.3.

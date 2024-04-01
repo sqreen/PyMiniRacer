@@ -11,6 +11,7 @@ from py_mini_racer import (
     JSPromise,
     JSSymbol,
     JSTimeoutException,
+    JSUndefined,
     MiniRacer,
 )
 
@@ -56,9 +57,9 @@ def expect_calls(mr, *, full=0, fast=0):
 def test_blank():
     mr = MiniRacer()
     with expect_calls(mr, full=3):
-        assert mr.eval("") is None
-        assert mr.eval(" ") is None
-        assert mr.eval("\t") is None
+        assert mr.eval("") is JSUndefined
+        assert mr.eval(" ") is JSUndefined
+        assert mr.eval("\t") is JSUndefined
 
 
 def test_global():

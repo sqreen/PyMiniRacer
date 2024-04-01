@@ -91,6 +91,31 @@ LIB_EXPORT void mr_attach_promise_then(MiniRacer::Context* mr_context,
   mr_context->AttachPromiseThen(promise, callback, cb_data);
 }
 
+LIB_EXPORT auto mr_get_identity_hash(MiniRacer::Context* mr_context,
+                                     v8::Persistent<v8::Value>* object) -> int {
+  return mr_context->GetIdentityHash(object);
+}
+
+LIB_EXPORT auto mr_get_own_property_names(MiniRacer::Context* mr_context,
+                                          v8::Persistent<v8::Value>* object)
+    -> MiniRacer::BinaryValue* {
+  return mr_context->GetOwnPropertyNames(object).release();
+}
+
+LIB_EXPORT auto mr_get_object_item_string(MiniRacer::Context* mr_context,
+                                          v8::Persistent<v8::Value>* object,
+                                          const char* key)
+    -> gsl::owner<MiniRacer::BinaryValue*> {
+  return mr_context->GetObjectItem(object, std::string(key)).release();
+}
+
+LIB_EXPORT auto mr_get_object_item_number(MiniRacer::Context* mr_context,
+                                          v8::Persistent<v8::Value>* object,
+                                          double key)
+    -> gsl::owner<MiniRacer::BinaryValue*> {
+  return mr_context->GetObjectItem(object, key).release();
+}
+
 // FOR DEBUGGING ONLY
 LIB_EXPORT auto mr_heap_snapshot(MiniRacer::Context* mr_context,
                                  MiniRacer::Callback callback,

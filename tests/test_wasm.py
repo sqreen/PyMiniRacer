@@ -36,7 +36,7 @@ def test_add():
     )
 
     # 4. Wait for WASM module instantiation
-    while not mr.eval("res"):
+    while mr.eval("res") is None:
         pass
 
     assert mr.eval("typeof res !== 'string'")

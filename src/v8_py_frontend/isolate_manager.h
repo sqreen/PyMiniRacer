@@ -7,6 +7,7 @@
 #include <future>
 #include <memory>
 #include <thread>
+#include <type_traits>
 #include <utility>
 #include "isolate_holder.h"
 
@@ -42,7 +43,8 @@ class IsolateManager {
   /** Schedules a task to run on the foreground thread, using
    * v8::TaskRunner::PostTask. Awaits task completion. */
   template <typename Runnable>
-  void RunAndAwait(Runnable runnable, bool interrupt = false);
+  auto RunAndAwait(Runnable runnable, bool interrupt = false)
+      -> std::invoke_result_t<Runnable, v8::Isolate*>;
 
   void TerminateOngoingTask();
 
@@ -52,6 +54,16 @@ class IsolateManager {
   /** Translate from a callback from v8::Isolate::RequestInterrupt into a
    * v8::Task::Run. */
   static void RunInterrupt(v8::Isolate* /*isolate*/, void* data);
+
+  template <typename Runnable>
+  static auto RunAndSetPromiseValue(v8::Isolate* isolate,
+                                    Runnable runnable,
+                                    std::promise<void>& prom);
+
+  template <typename Runnable, typename T>
+  static auto RunAndSetPromiseValue(v8::Isolate* isolate,
+                                    Runnable runnable,
+                                    std::promise<T>& prom);
 
   v8::Platform* platform_;
   IsolateHolder isolate_holder_;
@@ -86,17 +98,34 @@ inline void IsolateManager::Run(Runnable runnable, bool interrupt) {
 }
 
 template <typename Runnable>
-inline void IsolateManager::RunAndAwait(Runnable runnable, bool interrupt) {
-  std::promise<void> prom;
+inline auto IsolateManager::RunAndSetPromiseValue(v8::Isolate* isolate,
+                                                  Runnable runnable,
+                                                  std::promise<void>& prom) {
+  runnable(isolate);
+  prom.set_value();
+}
+
+template <typename Runnable, typename T>
+inline auto IsolateManager::RunAndSetPromiseValue(v8::Isolate* isolate,
+                                                  Runnable runnable,
+                                                  std::promise<T>& prom) {
+  prom.set_value(runnable(isolate));
+}
+
+/** Schedules a task to run on the foreground thread, using
+ * v8::TaskRunner::PostTask. Awaits task completion. */
+template <typename Runnable>
+inline auto IsolateManager::RunAndAwait(Runnable runnable, bool interrupt)
+    -> std::invoke_result_t<Runnable, v8::Isolate*> {
+  std::promise<std::invoke_result_t<Runnable, v8::Isolate*>> prom;
 
   auto run_and_set_result = [&prom, &runnable](v8::Isolate* isolate) {
-    runnable(isolate);
-    prom.set_value();
+    RunAndSetPromiseValue(isolate, runnable, prom);
   };
 
   Run(std::move(run_and_set_result), interrupt);
 
-  prom.get_future().get();
+  return prom.get_future().get();
 }
 
 template <typename Runnable>

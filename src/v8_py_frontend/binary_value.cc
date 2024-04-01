@@ -24,6 +24,7 @@ void BinaryValueFactory::Free(gsl::owner<BinaryValue*> val) {
     return;
   }
   switch (val->type) {
+    // We represent these types as byte arrays in the union:
     case type_execute_exception:
     case type_parse_exception:
     case type_oom_exception:
@@ -32,21 +33,27 @@ void BinaryValueFactory::Free(gsl::owner<BinaryValue*> val) {
     case type_str_utf8:
       delete[] val->bytes;
       break;
+    // We represent these types as scalar values embedded in the union, so
+    // there's nothing extra to free:
     case type_bool:
     case type_double:
     case type_date:
     case type_null:
+    case type_undefined:
     case type_integer:
-    case type_function:  // no value implemented
-    case type_symbol:
-    case type_object:
     case type_invalid:
-      // the other types are scalar values
       break;
+    // We represent these types as pointers *into* a v8::BackingStore, and we
+    // maintain a map of backing stores separately:
     case type_shared_array_buffer:
     case type_array_buffer:
       backing_stores_.erase(val);
       break;
+    // We represent these types as pointers to a v8::Persistent:
+    case type_symbol:
+    case type_function:
+    case type_object:
+    case type_array:
     case type_promise:
       delete val->value_ptr;
       break;
@@ -59,8 +66,10 @@ auto BinaryValueFactory::FromValue(v8::Local<v8::Context> context,
     -> BinaryValue::Ptr {
   BinaryValue::Ptr res = New();
 
-  if (value->IsNull() || value->IsUndefined()) {
+  if (value->IsNull()) {
     res->type = type_null;
+  } else if (value->IsUndefined()) {
+    res->type = type_undefined;
   } else if (value->IsInt32()) {
     res->type = type_integer;
     auto val = value->Uint32Value(context).ToChecked();
@@ -76,8 +85,12 @@ auto BinaryValueFactory::FromValue(v8::Local<v8::Context> context,
     res->type = type_bool;
     res->int_val = (value->IsTrue() ? 1 : 0);
   } else if (value->IsFunction()) {
+    res->value_ptr =
+        new v8::Persistent<v8::Value>(context->GetIsolate(), value);
     res->type = type_function;
   } else if (value->IsSymbol()) {
+    res->value_ptr =
+        new v8::Persistent<v8::Value>(context->GetIsolate(), value);
     res->type = type_symbol;
   } else if (value->IsDate()) {
     res->type = type_date;
@@ -121,7 +134,6 @@ auto BinaryValueFactory::FromValue(v8::Local<v8::Context> context,
     backing_stores_[res.get()] = backing_store;
     res->type = value->IsSharedArrayBuffer() ? type_shared_array_buffer
                                              : type_array_buffer;
-    // Let's not bring in gsl/span just for this line:
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
     res->backing_store_ptr = static_cast<char*>(backing_store->Data()) + offset;
     res->len = size;
@@ -130,9 +142,14 @@ auto BinaryValueFactory::FromValue(v8::Local<v8::Context> context,
     res->type = type_promise;
     res->value_ptr =
         new v8::Persistent<v8::Value>(context->GetIsolate(), value);
+  } else if (value->IsArray()) {
+    res->type = type_array;
+    res->value_ptr =
+        new v8::Persistent<v8::Value>(context->GetIsolate(), value);
   } else if (value->IsObject()) {
     res->type = type_object;
-    res->int_val = value->ToObject(context).ToLocalChecked()->GetIdentityHash();
+    res->value_ptr =
+        new v8::Persistent<v8::Value>(context->GetIsolate(), value);
   } else {
     return {};
   }

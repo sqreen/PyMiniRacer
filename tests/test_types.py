@@ -5,7 +5,14 @@ from json import dumps
 from time import time
 
 import pytest
-from py_mini_racer import JSEvalException, JSFunction, JSObject, MiniRacer
+from py_mini_racer import (
+    JSEvalException,
+    JSFunction,
+    JSObject,
+    JSSymbol,
+    JSUndefined,
+    MiniRacer,
+)
 
 
 class Validator:
@@ -18,6 +25,14 @@ class Validator:
 
         parsed = self.mr.execute(js_str)
         assert testee == parsed
+
+
+def test_undefined():
+    mr = MiniRacer()
+    undef = mr.eval("undefined")
+    assert undef is JSUndefined
+    assert undef == JSUndefined
+    assert not undef
 
 
 def test_str():
@@ -80,16 +95,11 @@ def test_complex():
     )
 
 
-def test_function():
-    mr = MiniRacer()
-    res = mr.eval("var a = function(){}; a")
-    assert isinstance(res, JSFunction)
-
-
 def test_object():
     mr = MiniRacer()
     res = mr.eval("var a = {}; a")
     assert isinstance(res, JSObject)
+    assert res.__hash__() is not None
 
 
 def test_timestamp():
@@ -97,6 +107,20 @@ def test_timestamp():
     mr = MiniRacer()
     res = mr.eval("var a = new Date(%d); a" % (val * 1000))
     assert res == datetime.fromtimestamp(val, timezone.utc)
+
+
+def test_symbol():
+    mr = MiniRacer()
+    res = mr.eval('Symbol("my_symbol")')
+    assert isinstance(res, JSSymbol)
+    assert res.__hash__() is not None
+
+
+def test_function():
+    mr = MiniRacer()
+    res = mr.eval("function func() {}; func")
+    assert isinstance(res, JSFunction)
+    assert res.__hash__() is not None
 
 
 def test_date():
