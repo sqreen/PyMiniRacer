@@ -15,9 +15,16 @@ from py_mini_racer import (
 )
 
 
+def _test_round_trip(mr, val):
+    a = mr.eval("[]")
+    a.append(val)  # force conversion into a JS type
+    assert a[0] == val  # get it back again and verify it
+
+
 class Validator:
-    def __init__(self):
+    def __init__(self, *, round_trip=True):
         self.mr = MiniRacer()
+        self.round_trip = round_trip
 
     def validate(self, py_val):
         testee = py_val
@@ -26,6 +33,9 @@ class Validator:
         parsed = self.mr.execute(js_str)
         assert testee == parsed
 
+        if self.round_trip:
+            _test_round_trip(self.mr, py_val)
+
 
 def test_undefined():
     mr = MiniRacer()
@@ -33,6 +43,7 @@ def test_undefined():
     assert undef is JSUndefined
     assert undef == JSUndefined
     assert not undef
+    _test_round_trip(mr, undef)
 
 
 def test_str():
@@ -46,6 +57,7 @@ def test_unicode():
     mr = MiniRacer()
     res = mr.eval("'" + ustr + "'")
     assert ustr == res
+    _test_round_trip(mr, ustr)
 
 
 def test_numbers():
@@ -59,7 +71,7 @@ def test_numbers():
 
 
 def test_arrays():
-    v = Validator()
+    v = Validator(round_trip=False)
     v.validate([1])
     v.validate([])
     v.validate([1, 2, 3])
@@ -73,7 +85,7 @@ def test_none():
 
 
 def test_hash():
-    v = Validator()
+    v = Validator(round_trip=False)
     v.validate({})
     v.validate("{}")
     v.validate({"a": 1})
@@ -81,7 +93,7 @@ def test_hash():
 
 
 def test_complex():
-    v = Validator()
+    v = Validator(round_trip=False)
     v.validate(
         {
             "1": [
@@ -100,6 +112,7 @@ def test_object():
     res = mr.eval("var a = {}; a")
     assert isinstance(res, JSObject)
     assert res.__hash__() is not None
+    _test_round_trip(mr, res)
 
 
 def test_timestamp():
@@ -107,6 +120,7 @@ def test_timestamp():
     mr = MiniRacer()
     res = mr.eval("var a = new Date(%d); a" % (val * 1000))
     assert res == datetime.fromtimestamp(val, timezone.utc)
+    _test_round_trip(mr, res)
 
 
 def test_symbol():
@@ -114,6 +128,7 @@ def test_symbol():
     res = mr.eval('Symbol("my_symbol")')
     assert isinstance(res, JSSymbol)
     assert res.__hash__() is not None
+    _test_round_trip(mr, res)
 
 
 def test_function():
@@ -121,12 +136,14 @@ def test_function():
     res = mr.eval("function func() {}; func")
     assert isinstance(res, JSFunction)
     assert res.__hash__() is not None
+    _test_round_trip(mr, res)
 
 
 def test_date():
     mr = MiniRacer()
     res = mr.eval("var a = new Date(Date.UTC(2014, 0, 2, 3, 4, 5)); a")
     assert res == datetime(2014, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    _test_round_trip(mr, res)
 
 
 def test_exception():

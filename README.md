@@ -64,22 +64,25 @@ Variables are kept inside of a context:
 
 JavaScript Objects and Arrays are modeled in Python as dictionaries and lists (or, more
 precisely,
-[`Mapping`](https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping)
+[`MutableMapping`](https://docs.python.org/3/library/collections.abc.html#collections.abc.MutableMapping)
 and
-[`Sequence`](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)
+[`MutableSequence`](https://docs.python.org/3/library/collections.abc.html#collections.abc.MutableSequence)
 instances), respectively (*new in v0.11.0*):
 
 ```python
-    >>> x = ctx.eval("x")
-    >>> x["company"]
-    'Sqreen'
-    >>> list(x.keys())
-    ['company']
-    >>> y = ctx.eval("['a', 'b']")
-    >>> y[1]
+    >>> obj = ctx.eval("var obj = {'foo': 'bar'}; obj")
+    >>> obj["foo"]
+    'bar'
+    >>> list(obj.keys())
+    ['foo']
+    >>> arr = ctx.eval("var arr = ['a', 'b']; arr")
+    >>> arr[1]
     'b'
-    >>> 'a' in y
+    >>> 'a' in arr
     True
+    >>> arr.append(obj)
+    >>> ctx.eval("JSON.stringify(arr)")
+    '["a","b",{"foo":"bar"}]'
 ```
 
 Meanwhile, `call` uses JSON to transfer data between JavaScript and Python, and converts

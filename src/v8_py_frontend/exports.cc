@@ -102,18 +102,34 @@ LIB_EXPORT auto mr_get_own_property_names(MiniRacer::Context* mr_context,
   return mr_context->GetOwnPropertyNames(object).release();
 }
 
-LIB_EXPORT auto mr_get_object_item_string(MiniRacer::Context* mr_context,
-                                          v8::Persistent<v8::Value>* object,
-                                          const char* key)
-    -> gsl::owner<MiniRacer::BinaryValue*> {
-  return mr_context->GetObjectItem(object, std::string(key)).release();
-}
-
-LIB_EXPORT auto mr_get_object_item_number(MiniRacer::Context* mr_context,
-                                          v8::Persistent<v8::Value>* object,
-                                          double key)
+LIB_EXPORT auto mr_get_object_item(MiniRacer::Context* mr_context,
+                                   v8::Persistent<v8::Value>* object,
+                                   MiniRacer::BinaryValue* key)
     -> gsl::owner<MiniRacer::BinaryValue*> {
   return mr_context->GetObjectItem(object, key).release();
+}
+
+LIB_EXPORT void mr_set_object_item(MiniRacer::Context* mr_context,
+                                   v8::Persistent<v8::Value>* object,
+                                   MiniRacer::BinaryValue* key,
+                                   MiniRacer::BinaryValue* val) {
+  mr_context->SetObjectItem(object, key, val);
+}
+
+LIB_EXPORT auto mr_del_object_item(MiniRacer::Context* mr_context,
+                                   v8::Persistent<v8::Value>* object,
+                                   MiniRacer::BinaryValue* key) -> bool {
+  return mr_context->DelObjectItem(object, key);
+}
+
+LIB_EXPORT auto mr_splice_array(MiniRacer::Context* mr_context,
+                                v8::Persistent<v8::Value>* object,
+                                int32_t start,
+                                int32_t delete_count,
+                                MiniRacer::BinaryValue* new_val)
+    -> MiniRacer::BinaryValue* {
+  return mr_context->SpliceArray(object, start, delete_count, new_val)
+      .release();
 }
 
 // FOR DEBUGGING ONLY

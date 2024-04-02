@@ -92,6 +92,8 @@ class BinaryValueFactory {
                             v8::Local<v8::Message> message,
                             v8::Local<v8::Value> exception_obj,
                             BinaryTypes result_type) -> BinaryValue::Ptr;
+  static auto ToValue(v8::Local<v8::Context> context,
+                      BinaryValue* ptr) -> v8::Local<v8::Value>;
 
   // Only for use if the pointer is not wrapped in Ptr (see below), which uses
   // BinaryValueDeleter which calls this automatically:

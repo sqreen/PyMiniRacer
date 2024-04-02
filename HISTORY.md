@@ -2,8 +2,11 @@
 
 ## 0.11.0 (2024-04-??)
 
-- Added a read-only (for now) interface for all derivatives of JS Objects. You can now
-    read Object properties and Array elements in Python, including recursively.
+- Added a `MutableMapping` (`dict`-like) interface for all derivatives of JS Objects,
+    and a `MutableSequence` (`list`-like) interface for JS Arrays. You can now use
+    Pythonic idioms to read and write Object properties and Array elements in Python,
+    including recursively (i.e., you can read Objects embedded in other objects, and
+    embed your own).
 
 - Added a `JSUndefined` Python object to model JavaScript `undefined`. This is needed to
     properly implement the above interface for reading Object and Array elements.

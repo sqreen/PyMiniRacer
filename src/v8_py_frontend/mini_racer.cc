@@ -5,6 +5,7 @@
 #include <v8-persistent-handle.h>
 #include <v8-platform.h>
 #include <v8-value.h>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -114,6 +115,42 @@ auto Context::GetOwnPropertyNames(v8::Persistent<v8::Value>* object)
   return isolate_manager_.RunAndAwait([object, this](v8::Isolate* isolate) {
     return object_manipulator_.GetOwnPropertyNames(isolate, object);
   });
+}
+
+auto Context::GetObjectItem(v8::Persistent<v8::Value>* object,
+                            BinaryValue* key) -> BinaryValue::Ptr {
+  return isolate_manager_.RunAndAwait(
+      [object, this, &key](v8::Isolate* isolate) mutable {
+        return object_manipulator_.Get(isolate, object, key);
+      });
+}
+
+void Context::SetObjectItem(v8::Persistent<v8::Value>* object,
+                            BinaryValue* key,
+                            BinaryValue* val) {
+  isolate_manager_.RunAndAwait(
+      [object, this, &key, val](v8::Isolate* isolate) mutable {
+        object_manipulator_.Set(isolate, object, key, val);
+      });
+}
+
+auto Context::DelObjectItem(v8::Persistent<v8::Value>* object,
+                            BinaryValue* key) -> bool {
+  return isolate_manager_.RunAndAwait(
+      [object, this, &key](v8::Isolate* isolate) mutable {
+        return object_manipulator_.Del(isolate, object, key);
+      });
+}
+
+auto Context::SpliceArray(v8::Persistent<v8::Value>* object,
+                          int32_t start,
+                          int32_t delete_count,
+                          BinaryValue* new_val) -> BinaryValue::Ptr {
+  return isolate_manager_.RunAndAwait(
+      [object, this, start, delete_count, new_val](v8::Isolate* isolate) {
+        return object_manipulator_.Splice(isolate, object, start, delete_count,
+                                          new_val);
+      });
 }
 
 }  // end namespace MiniRacer

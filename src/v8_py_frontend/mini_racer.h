@@ -49,9 +49,17 @@ class Context {
   auto GetIdentityHash(v8::Persistent<v8::Value>* object) -> int;
   auto GetOwnPropertyNames(v8::Persistent<v8::Value>* object)
       -> BinaryValue::Ptr;
-  template <typename Key>
   auto GetObjectItem(v8::Persistent<v8::Value>* object,
-                     Key key) -> BinaryValue::Ptr;
+                     BinaryValue* key) -> BinaryValue::Ptr;
+  void SetObjectItem(v8::Persistent<v8::Value>* object,
+                     BinaryValue* key,
+                     BinaryValue* val);
+  auto DelObjectItem(v8::Persistent<v8::Value>* object,
+                     BinaryValue* key) -> bool;
+  auto SpliceArray(v8::Persistent<v8::Value>* object,
+                   int32_t start,
+                   int32_t delete_count,
+                   BinaryValue* new_val) -> BinaryValue::Ptr;
 
  private:
   template <typename Runnable>
@@ -110,15 +118,6 @@ inline void Context::AttachPromiseThen(v8::Persistent<v8::Value>* promise,
                                        MiniRacer::Callback callback,
                                        void* cb_data) {
   promise_attacher_.AttachPromiseThen(promise, callback, cb_data);
-}
-
-template <typename Key>
-inline auto Context::GetObjectItem(v8::Persistent<v8::Value>* object,
-                                   Key key) -> BinaryValue::Ptr {
-  return isolate_manager_.RunAndAwait(
-      [object, this, &key](v8::Isolate* isolate) mutable {
-        return object_manipulator_.GetItem(isolate, object, std::move(key));
-      });
 }
 
 }  // namespace MiniRacer

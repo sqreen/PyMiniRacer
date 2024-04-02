@@ -9,6 +9,7 @@
 #include <v8-value.h>
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <ios>
 #include <memory>
 #include <sstream>
@@ -72,7 +73,7 @@ auto BinaryValueFactory::FromValue(v8::Local<v8::Context> context,
     res->type = type_undefined;
   } else if (value->IsInt32()) {
     res->type = type_integer;
-    auto val = value->Uint32Value(context).ToChecked();
+    auto val = value->Int32Value(context).ToChecked();
     res->int_val = val;
   }
   // ECMA-262, 4.3.20
@@ -165,6 +166,51 @@ auto BinaryValueFactory::FromString(std::string str,
   std::copy(str.begin(), str.end(), res->bytes);
   res->bytes[res->len] = '\0';
   return res;
+}
+
+auto BinaryValueFactory::ToValue(v8::Local<v8::Context> context,
+                                 BinaryValue* ptr) -> v8::Local<v8::Value> {
+  v8::Isolate* isolate = context->GetIsolate();
+
+  if (ptr->type == type_null) {
+    return v8::Null(isolate);
+  }
+
+  if (ptr->type == type_undefined) {
+    return v8::Undefined(isolate);
+  }
+
+  if (ptr->type == type_integer) {
+    return v8::Integer::New(isolate, static_cast<int32_t>(ptr->int_val));
+  }
+
+  if (ptr->type == type_double) {
+    return v8::Number::New(isolate, ptr->double_val);
+  }
+
+  if (ptr->type == type_bool) {
+    return v8::Boolean::New(isolate, ptr->int_val != 0);
+  }
+
+  if (ptr->type == type_function || ptr->type == type_symbol ||
+      ptr->type == type_promise || ptr->type == type_array ||
+      ptr->type == type_object) {
+    return static_cast<v8::Persistent<v8::Value>*>(ptr->value_ptr)
+        ->Get(isolate);
+  }
+
+  if (ptr->type == type_date) {
+    return v8::Date::New(context, ptr->double_val).ToLocalChecked();
+  }
+
+  if (ptr->type == type_str_utf8) {
+    return v8::String::NewFromUtf8(isolate, ptr->bytes).ToLocalChecked();
+  }
+
+  // Unknown type!
+  // Note: we skip shared array buffers, so for now at least, handles to shared
+  // array buffers can only be transmitted from JS to Python.
+  return v8::Undefined(isolate);
 }
 
 // NOLINTEND(cppcoreguidelines-pro-type-union-access)

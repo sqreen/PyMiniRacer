@@ -4,11 +4,12 @@ import ctypes
 import json
 import sys
 from asyncio import Future
-from collections.abc import Mapping, Sequence
+from collections.abc import MutableMapping, MutableSequence
 from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 from importlib import resources
 from json import JSONEncoder
+from operator import index as op_index
 from os.path import exists
 from os.path import join as pathjoin
 from sys import platform, version_info
@@ -62,7 +63,7 @@ class JSTimeoutException(JSEvalException):
 
 
 class JSConversionException(MiniRacerBaseException):
-    """JavaScript type could not be converted."""
+    """Type could not be converted to or from JavaScript."""
 
 
 class WrongReturnTypeException(MiniRacerBaseException):
@@ -70,6 +71,13 @@ class WrongReturnTypeException(MiniRacerBaseException):
 
     def __init__(self, typ):
         super().__init__(f"Unexpected return value type {typ}")
+
+
+class JSArrayIndexError(IndexError):
+    """Invalid index into a JSArray."""
+
+    def __init__(self):
+        super().__init__("JSArray deletion out of range")
 
 
 class JSUndefinedType:
@@ -88,18 +96,22 @@ class JSUndefinedType:
 JSUndefined = JSUndefinedType()
 
 
-class JSObject(Mapping):
-    """A JavaScript object.
-
-    Note that Mapping methods (keys(), __getitem__(), etc) are supported. keys()
-    and __iter__() will return properties from any prototypes as well as this object,
-    as if using a for-in statement in JavaScript.
-    """
+class JSObject:
+    """A JavaScript object."""
 
     def __init__(self, ctx, obj, val_holder: _MiniRacerValHolder):
         self._val_holder: _MiniRacerValHolder = val_holder
         self._ctx = ctx
         self._obj = obj
+
+
+class JSMappedObject(MutableMapping, JSObject):
+    """A JavaScript object with Pythonic MutableMapping methods (keys(),
+    __getitem__(), etc).
+
+    keys() and __iter__() will return properties from any prototypes as well as this
+    object, as if using a for-in statement in JavaScript.
+    """
 
     def __hash__(self):
         return self._ctx.get_identity_hash(self._obj)
@@ -113,33 +125,68 @@ class JSObject(Mapping):
     def __getitem__(self, key):
         return self._ctx.get_object_item(self._obj, key)
 
+    def __setitem__(self, key, obj):
+        return self._ctx.set_object_item(self._obj, key, obj)
+
+    def __delitem__(self, key):
+        return self._ctx.del_object_item(self._obj, key)
+
     def __len__(self):
         return len(self.keys())
 
 
-class JSArray(Sequence, JSObject):
-    """JavaScript array."""
+class JSArray(MutableSequence, JSObject):
+    """JavaScript array.
+
+    Has Pythonic MutableSequence methods (e.g., insert(), __getitem__(), ,,,).
+    """
 
     def __len__(self):
-        return self.__getitem__("length")
+        return self._ctx.get_object_item(self._obj, "length")
 
-    def __getitem__(self, index):
-        return self._ctx.get_object_item(self._obj, index)
+    def __getitem__(self, index: int):
+        index = op_index(index)
+        if index < 0:
+            index += len(self)
+
+        if 0 <= index < len(self):
+            return self._ctx.get_object_item(self._obj, index)
+
+        raise IndexError
+
+    def __setitem__(self, index: int, obj):
+        return self._ctx.set_object_item(self._obj, index, obj)
+
+    def __delitem__(self, index: int):
+        if index >= len(self) or index < -len(self):
+            # JavaScript Array.prototype.splice() just ignores deletion beyond the
+            # end of the array, meaning if you pass a very large value here it would
+            # do nothing. Likewise, it just caps negative values at the length of the
+            # array, meaning if you pass a very negative value here it would just
+            # delete element 0.
+            # For consistency with Python lists, let's tell the caller they're out of
+            # bounds:
+            raise JSArrayIndexError
+
+        return self._ctx.del_from_array(self._obj, index)
+
+    def insert(self, index: int, new_obj):
+        return self._ctx.array_insert(self._obj, index, new_obj)
 
     def __iter__(self):
         for i in range(len(self)):
             yield self[i]
 
 
-class JSFunction(JSObject):
+class JSFunction(JSMappedObject):
     """JavaScript function."""
 
 
-class JSSymbol(JSObject):
+class JSSymbol(JSMappedObject):
     """JavaScript symbol."""
 
 
-class JSPromise(JSObject):
+class JSPromise(JSMappedObject):
     """JavaScript promise."""
 
     def __init__(
@@ -184,6 +231,7 @@ class _MiniRacerValueUnion(ctypes.Union):
     _fields_: ClassVar[tuple[str, object]] = [
         ("value_ptr", ctypes.c_void_p),
         ("bytes_val", ctypes.POINTER(ctypes.c_char)),
+        ("char_p_val", ctypes.c_char_p),
         ("int_val", ctypes.c_int64),
         ("double_val", ctypes.c_double),
     ]
@@ -216,9 +264,9 @@ class _MiniRacerValHolder:
     """An object which holds open a Python reference to a _MiniRacerValueStruct owned by
     a C++ MiniRacer context."""
 
-    def __init__(self, ctx, ptr):
+    def __init__(self, ctx, ptr: ctypes.POINTER(_MiniRacerValueStruct)):
         self.ctx = ctx
-        self.ptr = ptr
+        self.ptr: ctypes.POINTER(_MiniRacerValueStruct) = ptr
 
     def __del__(self):
         self.ctx._free(self.ptr)  # noqa: SLF001
@@ -282,19 +330,35 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
     ]
     handle.mr_get_own_property_names.restype = ctypes.POINTER(_MiniRacerValueStruct)
 
-    handle.mr_get_object_item_string.argtypes = [
+    handle.mr_get_object_item.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
-        ctypes.c_char_p,
+        ctypes.POINTER(_MiniRacerValueStruct),
     ]
-    handle.mr_get_object_item_string.restype = ctypes.POINTER(_MiniRacerValueStruct)
+    handle.mr_get_object_item.restype = ctypes.POINTER(_MiniRacerValueStruct)
 
-    handle.mr_get_object_item_number.argtypes = [
+    handle.mr_set_object_item.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
-        ctypes.c_double,
+        ctypes.POINTER(_MiniRacerValueStruct),
+        ctypes.POINTER(_MiniRacerValueStruct),
     ]
-    handle.mr_get_object_item_number.restype = ctypes.POINTER(_MiniRacerValueStruct)
+
+    handle.mr_del_object_item.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.POINTER(_MiniRacerValueStruct),
+    ]
+    handle.mr_del_object_item.restype = ctypes.c_bool
+
+    handle.mr_splice_array.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.POINTER(_MiniRacerValueStruct),
+    ]
+    handle.mr_splice_array.restype = ctypes.POINTER(_MiniRacerValueStruct)
 
     handle.mr_set_hard_memory_limit.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
 
@@ -670,22 +734,36 @@ class MiniRacer:
             raise TypeError
         return tuple(names)
 
-    def get_object_item(self, obj: JSObject, key: str | Numeric):
-        if isinstance(key, (int, float)):
-            val = self._dll.mr_get_object_item_number(self.ctx, obj, key)
-        elif key is None:
-            val = self._dll.mr_get_object_item_string(self.ctx, obj, b"null")
-        elif key is JSUndefined:
-            val = self._dll.mr_get_object_item_string(self.ctx, obj, b"undefined")
-        else:
-            val = self._dll.mr_get_object_item_string(
-                self.ctx, obj, key.encode("utf-8")
-            )
+    def get_object_item(self, obj: ctypes.c_void_p, key: Any):
+        key_ptr = self._python_to_mr_val(key)
+        val_ptr = self._dll.mr_get_object_item(self.ctx, obj, key_ptr)
 
-        if not val:
+        if not val_ptr:
             raise KeyError(key)
 
-        return self._mr_val_to_python(val)
+        return self._mr_val_to_python(val_ptr)
+
+    def set_object_item(self, obj: ctypes.c_void_p, key: Any, val: Any):
+        key_ptr = self._python_to_mr_val(key)
+        val_ptr = self._python_to_mr_val(val)
+        self._dll.mr_set_object_item(self.ctx, obj, key_ptr, val_ptr)
+
+    def del_object_item(self, obj: ctypes.c_void_p, key: Any):
+        key_ptr = self._python_to_mr_val(key)
+        success = self._dll.mr_del_object_item(self.ctx, obj, key_ptr)
+        if not success:
+            raise KeyError(key)
+
+    def del_from_array(self, arr: ctypes.c_void_p, index: int):
+        res = self._dll.mr_splice_array(self.ctx, arr, index, 1, None)
+        # Convert the value just to convert any exceptions (and GC the result)
+        _ = self._mr_val_to_python(res)
+
+    def array_insert(self, arr: ctypes.c_void_p, index: int, val: Any):
+        ptr = self._python_to_mr_val(val)
+        res = self._dll.mr_splice_array(self.ctx, arr, index, 0, ptr)
+        # Convert the value just to convert any exceptions (and GC the result)
+        _ = self._mr_val_to_python(res)
 
     def set_hard_memory_limit(self, limit: int) -> None:
         """Set a hard memory limit on this V8 isolate.
@@ -778,7 +856,7 @@ class MiniRacer:
 
         return future
 
-    def _mr_val_to_python(self, ptr) -> Any:
+    def _mr_val_to_python(self, ptr: ctypes.POINTER(_MiniRacerValueStruct)) -> Any:
         free_value = True
         try:
             typ = ptr.contents.type
@@ -812,7 +890,7 @@ class MiniRacer:
                 return JSFunction(self, val.value_ptr, val_holder)
             if typ == MiniRacerTypes.date:
                 timestamp = val.double_val
-                # JS timestamp are milliseconds, in python we are in seconds
+                # JS timestamps are milliseconds. In Python we are in seconds:
                 return datetime.fromtimestamp(timestamp / 1000.0, timezone.utc)
             if typ == MiniRacerTypes.symbol:
                 free_value = False
@@ -864,12 +942,77 @@ class MiniRacer:
             if typ == MiniRacerTypes.object:
                 free_value = False
                 val_holder = _MiniRacerValHolder(self, ptr)
-                return JSObject(self, val.value_ptr, val_holder)
+                return JSMappedObject(self, val.value_ptr, val_holder)
 
             raise JSConversionException
         finally:
             if free_value:
                 self._free(ptr)
+
+    def _python_to_mr_val(self, obj) -> _MiniRacerValueStruct:
+        if isinstance(obj, JSObject):
+            # JSObjects originate from the V8 side. We can just send back pointers to
+            # them. (This also covers derived types JSFunction, JSSymbol, JSPromise,
+            # and JSArray.)
+            return obj._val_holder.ptr  # noqa: SLF001
+
+        val = _MiniRacerValueStruct()
+
+        if obj is None:
+            val.type = MiniRacerTypes.null
+            val.value.int_val = 0
+            val.len = 0
+            return val
+        if obj is JSUndefined:
+            val.type = MiniRacerTypes.undefined
+            val.value.int_val = 0
+            val.len = 0
+            return val
+        if isinstance(obj, bool):
+            val.type = MiniRacerTypes.bool
+            val.value.int_val = 1 if obj else 0
+            val.len = 0
+            return val
+        if isinstance(obj, int):
+            if obj - 2**31 <= obj < 2**31:
+                val.type = MiniRacerTypes.integer
+                val.value.int_val = obj
+                val.len = 0
+                return val
+
+            # We transmit ints as int32, so "upgrade" to double upon overflow.
+            # (ECMAScript numeric is double anyway, but V8 does internally distinguish
+            # int types, so we try and preserve integer-ness for round-tripping
+            # purposes.)
+            # JS BigInt would be a closer representation of Python int, but upgrading
+            # to BigInt would probably be surprising for most applications, so for now,
+            # we approximate with double:
+            val.type = MiniRacerTypes.double
+            val.value.double_val = obj
+            val.len = 0
+            return val
+        if isinstance(obj, float):
+            val.type = MiniRacerTypes.double
+            val.value.double_val = obj
+            val.len = 0
+            return val
+        if isinstance(obj, str):
+            val.type = MiniRacerTypes.str_utf8
+            b = obj.encode("utf-8")
+            val.value.char_p_val = b
+            val.len = len(b)
+            return val
+        if isinstance(obj, datetime):
+            val.type = MiniRacerTypes.date
+            # JS timestamps are milliseconds. In Python we are in seconds:
+            val.value.double_val = obj.timestamp() * 1000.0
+            val.len = 0
+            return val
+
+        # Note: we skip shared array buffers, so for now at least, handles to shared
+        # array buffers can only be transmitted from JS to Python.
+
+        raise JSConversionException
 
     def _free(self, res: _MiniRacerValueStruct) -> None:
         self._dll.mr_free_value(self.ctx, res)

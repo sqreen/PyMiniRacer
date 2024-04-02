@@ -2,6 +2,7 @@ from py_mini_racer import py_mini_racer
 
 DEFAULT_V8_FLAGS = py_mini_racer.DEFAULT_V8_FLAGS
 JSArray = py_mini_racer.JSArray
+JSArrayIndexError = py_mini_racer.JSArrayIndexError
 JSEvalException = py_mini_racer.JSEvalException
 JSFunction = py_mini_racer.JSFunction
 JSOOMException = py_mini_racer.JSOOMException
