@@ -1,10 +1,10 @@
 #include "mini_racer.h"
 #include <libplatform/libplatform.h>
 #include <v8-initialization.h>
+#include <v8-local-handle.h>
 #include <v8-locker.h>
 #include <v8-persistent-handle.h>
 #include <v8-platform.h>
-#include <v8-value.h>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -13,6 +13,7 @@
 #include "binary_value.h"
 #include "callback.h"
 #include "cancelable_task_runner.h"
+#include "gsl_stub.h"
 #include "object_manipulator.h"
 
 namespace MiniRacer {
@@ -47,6 +48,7 @@ void init_v8(const std::string& v8_flags,
 Context::Context()
     : isolate_manager_(current_platform.get()),
       isolate_memory_monitor_(&isolate_manager_),
+      bv_factory_(&isolate_manager_),
       context_holder_(&isolate_manager_),
       code_evaluator_(context_holder_.Get(),
                       &bv_factory_,
@@ -104,53 +106,67 @@ auto Context::HeapStats(Callback callback, void* cb_data)
       callback, cb_data);
 }
 
-auto Context::GetIdentityHash(v8::Persistent<v8::Value>* object) -> int {
-  return isolate_manager_.RunAndAwait([object](v8::Isolate* isolate) {
-    return ObjectManipulator::GetIdentityHash(isolate, object);
+auto Context::GetIdentityHash(BinaryValue* bv_ptr) -> int {
+  return isolate_manager_.RunAndAwait([bv_ptr, this](v8::Isolate* isolate) {
+    const v8::HandleScope handle_scope(isolate);
+    return ObjectManipulator::GetIdentityHash(
+        isolate, bv_factory_.GetPersistentHandle(isolate, bv_ptr));
   });
 }
 
-auto Context::GetOwnPropertyNames(v8::Persistent<v8::Value>* object)
-    -> BinaryValue::Ptr {
-  return isolate_manager_.RunAndAwait([object, this](v8::Isolate* isolate) {
-    return object_manipulator_.GetOwnPropertyNames(isolate, object);
+auto Context::GetOwnPropertyNames(BinaryValue* bv_ptr) -> BinaryValue::Ptr {
+  return isolate_manager_.RunAndAwait([bv_ptr, this](v8::Isolate* isolate) {
+    const v8::HandleScope handle_scope(isolate);
+    return object_manipulator_.GetOwnPropertyNames(
+        isolate, bv_factory_.GetPersistentHandle(isolate, bv_ptr));
   });
 }
 
-auto Context::GetObjectItem(v8::Persistent<v8::Value>* object,
+auto Context::GetObjectItem(BinaryValue* bv_ptr,
                             BinaryValue* key) -> BinaryValue::Ptr {
   return isolate_manager_.RunAndAwait(
-      [object, this, &key](v8::Isolate* isolate) mutable {
-        return object_manipulator_.Get(isolate, object, key);
+      [bv_ptr, this, &key](v8::Isolate* isolate) mutable {
+        const v8::HandleScope handle_scope(isolate);
+        return object_manipulator_.Get(
+            isolate, bv_factory_.GetPersistentHandle(isolate, bv_ptr), key);
       });
 }
 
-void Context::SetObjectItem(v8::Persistent<v8::Value>* object,
+void Context::SetObjectItem(BinaryValue* bv_ptr,
                             BinaryValue* key,
                             BinaryValue* val) {
-  isolate_manager_.RunAndAwait(
-      [object, this, &key, val](v8::Isolate* isolate) mutable {
-        object_manipulator_.Set(isolate, object, key, val);
-      });
+  isolate_manager_.RunAndAwait([bv_ptr, this, &key,
+                                val](v8::Isolate* isolate) mutable {
+    const v8::HandleScope handle_scope(isolate);
+    object_manipulator_.Set(
+        isolate, bv_factory_.GetPersistentHandle(isolate, bv_ptr), key, val);
+  });
 }
 
-auto Context::DelObjectItem(v8::Persistent<v8::Value>* object,
-                            BinaryValue* key) -> bool {
+auto Context::DelObjectItem(BinaryValue* bv_ptr, BinaryValue* key) -> bool {
   return isolate_manager_.RunAndAwait(
-      [object, this, &key](v8::Isolate* isolate) mutable {
-        return object_manipulator_.Del(isolate, object, key);
+      [bv_ptr, this, &key](v8::Isolate* isolate) mutable {
+        const v8::HandleScope handle_scope(isolate);
+        return object_manipulator_.Del(
+            isolate, bv_factory_.GetPersistentHandle(isolate, bv_ptr), key);
       });
 }
 
-auto Context::SpliceArray(v8::Persistent<v8::Value>* object,
+auto Context::SpliceArray(BinaryValue* bv_ptr,
                           int32_t start,
                           int32_t delete_count,
                           BinaryValue* new_val) -> BinaryValue::Ptr {
   return isolate_manager_.RunAndAwait(
-      [object, this, start, delete_count, new_val](v8::Isolate* isolate) {
-        return object_manipulator_.Splice(isolate, object, start, delete_count,
-                                          new_val);
+      [bv_ptr, this, start, delete_count, new_val](v8::Isolate* isolate) {
+        const v8::HandleScope handle_scope(isolate);
+        return object_manipulator_.Splice(
+            isolate, bv_factory_.GetPersistentHandle(isolate, bv_ptr), start,
+            delete_count, new_val);
       });
+}
+
+void Context::FreeBinaryValue(gsl::owner<BinaryValue*> val) {
+  bv_factory_.Free(val);
 }
 
 }  // end namespace MiniRacer

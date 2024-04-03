@@ -34,9 +34,7 @@ void IsolateManager::PumpMessages() {
       break;
     }
 
-    if (!shutdown_) {
-      v8::MicrotasksScope::PerformCheckpoint(isolate_holder_.Get());
-    }
+    v8::MicrotasksScope::PerformCheckpoint(isolate_holder_.Get());
   }
 }
 
@@ -56,7 +54,7 @@ IsolateManager::~IsolateManager() {
 
   // From v8/src/d8/d8.cc Worker::Terminate():
   // Terminate any ongoing execution (in case some JS is running forever):
-  isolate_holder_.Get()->TerminateExecution();
+  // isolate_holder_.Get()->TerminateExecution();
 
   thread_.join();
 }

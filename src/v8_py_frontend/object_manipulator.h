@@ -18,22 +18,21 @@ class ObjectManipulator {
                     BinaryValueFactory* bv_factory);
 
   static auto GetIdentityHash(v8::Isolate* isolate,
-                              v8::Persistent<v8::Value>* object) -> int;
-  auto GetOwnPropertyNames(v8::Isolate* isolate,
-                           v8::Persistent<v8::Value>* object) const
-      -> BinaryValue::Ptr;
+                              v8::Local<v8::Value> object) -> int;
+  auto GetOwnPropertyNames(v8::Isolate* isolate, v8::Local<v8::Value> object)
+      const -> BinaryValue::Ptr;
   auto Get(v8::Isolate* isolate,
-           v8::Persistent<v8::Value>* object,
+           v8::Local<v8::Value> object,
            BinaryValue* key) -> BinaryValue::Ptr;
   void Set(v8::Isolate* isolate,
-           v8::Persistent<v8::Value>* object,
+           v8::Local<v8::Value> object,
            BinaryValue* key,
            BinaryValue* val);
   auto Del(v8::Isolate* isolate,
-           v8::Persistent<v8::Value>* object,
+           v8::Local<v8::Value> object,
            BinaryValue* key) -> bool;
   auto Splice(v8::Isolate* isolate,
-              v8::Persistent<v8::Value>* object,
+              v8::Local<v8::Value> object,
               int32_t start,
               int32_t delete_count,
               BinaryValue* new_val) -> BinaryValue::Ptr;

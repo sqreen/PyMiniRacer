@@ -99,10 +99,13 @@ JSUndefined = JSUndefinedType()
 class JSObject:
     """A JavaScript object."""
 
-    def __init__(self, ctx, obj, val_holder: _MiniRacerValHolder):
-        self._val_holder: _MiniRacerValHolder = val_holder
+    def __init__(
+        self,
+        ctx,
+        bv_ptr: _MiniRacerBinaryValuePtr,
+    ):
+        self._bv_holder = _MiniRacerBinaryValueHolder(ctx, bv_ptr)
         self._ctx = ctx
-        self._obj = obj
 
 
 class JSMappedObject(MutableMapping, JSObject):
@@ -114,22 +117,22 @@ class JSMappedObject(MutableMapping, JSObject):
     """
 
     def __hash__(self):
-        return self._ctx.get_identity_hash(self._obj)
+        return self._ctx.get_identity_hash(self._bv_holder.bv_ptr)
 
     def keys(self):
-        return self._ctx.get_own_property_names(self._obj)
+        return self._ctx.get_own_property_names(self._bv_holder.bv_ptr)
 
     def __iter__(self):
         return iter(self.keys())
 
     def __getitem__(self, key):
-        return self._ctx.get_object_item(self._obj, key)
+        return self._ctx.get_object_item(self._bv_holder.bv_ptr, key)
 
     def __setitem__(self, key, obj):
-        return self._ctx.set_object_item(self._obj, key, obj)
+        return self._ctx.set_object_item(self._bv_holder.bv_ptr, key, obj)
 
     def __delitem__(self, key):
-        return self._ctx.del_object_item(self._obj, key)
+        return self._ctx.del_object_item(self._bv_holder.bv_ptr, key)
 
     def __len__(self):
         return len(self.keys())
@@ -142,7 +145,7 @@ class JSArray(MutableSequence, JSObject):
     """
 
     def __len__(self):
-        return self._ctx.get_object_item(self._obj, "length")
+        return self._ctx.get_object_item(self._bv_holder.bv_ptr, "length")
 
     def __getitem__(self, index: int):
         index = op_index(index)
@@ -150,12 +153,12 @@ class JSArray(MutableSequence, JSObject):
             index += len(self)
 
         if 0 <= index < len(self):
-            return self._ctx.get_object_item(self._obj, index)
+            return self._ctx.get_object_item(self._bv_holder.bv_ptr, index)
 
         raise IndexError
 
     def __setitem__(self, index: int, obj):
-        return self._ctx.set_object_item(self._obj, index, obj)
+        return self._ctx.set_object_item(self._bv_holder.bv_ptr, index, obj)
 
     def __delitem__(self, index: int):
         if index >= len(self) or index < -len(self):
@@ -168,10 +171,10 @@ class JSArray(MutableSequence, JSObject):
             # bounds:
             raise JSArrayIndexError
 
-        return self._ctx.del_from_array(self._obj, index)
+        return self._ctx.del_from_array(self._bv_holder.bv_ptr, index)
 
     def insert(self, index: int, new_obj):
-        return self._ctx.array_insert(self._obj, index, new_obj)
+        return self._ctx.array_insert(self._bv_holder.bv_ptr, index, new_obj)
 
     def __iter__(self):
         for i in range(len(self)):
@@ -192,12 +195,11 @@ class JSPromise(JSMappedObject):
     def __init__(
         self,
         ctx,
-        promise,
-        val_holder: _MiniRacerValHolder,
+        bv_ptr,
         to_sync_future,
         to_async_future,
     ):
-        super().__init__(ctx, promise, val_holder)
+        super().__init__(ctx, bv_ptr)
         self._to_sync_future = to_sync_future
         self._to_async_future = to_async_future
 
@@ -227,7 +229,7 @@ def _get_lib_filename(name):
     return prefix + name + ext
 
 
-class _MiniRacerValueUnion(ctypes.Union):
+class _MiniRacerBinaryValueUnion(ctypes.Union):
     _fields_: ClassVar[tuple[str, object]] = [
         ("value_ptr", ctypes.c_void_p),
         ("bytes_val", ctypes.POINTER(ctypes.c_char)),
@@ -237,13 +239,16 @@ class _MiniRacerValueUnion(ctypes.Union):
     ]
 
 
-class _MiniRacerValueStruct(ctypes.Structure):
+class _MiniRacerBinaryValue(ctypes.Structure):
     _fields_: ClassVar[tuple[str, object]] = [
-        ("value", _MiniRacerValueUnion),
+        ("value", _MiniRacerBinaryValueUnion),
         ("len", ctypes.c_size_t),
         ("type", ctypes.c_uint8),
     ]
     _pack_ = 1
+
+
+_MiniRacerBinaryValuePtr = ctypes.POINTER(_MiniRacerBinaryValue)
 
 
 class ArrayBufferByte(ctypes.Structure):
@@ -255,21 +260,19 @@ class ArrayBufferByte(ctypes.Structure):
     _pack_ = 1
 
 
-_MR_CALLBACK = ctypes.CFUNCTYPE(
-    None, ctypes.py_object, ctypes.POINTER(_MiniRacerValueStruct)
-)
+_MR_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.py_object, _MiniRacerBinaryValuePtr)
 
 
-class _MiniRacerValHolder:
-    """An object which holds open a Python reference to a _MiniRacerValueStruct owned by
+class _MiniRacerBinaryValueHolder:
+    """An object which holds open a Python reference to a _MiniRacerBinaryValue owned by
     a C++ MiniRacer context."""
 
-    def __init__(self, ctx, ptr: ctypes.POINTER(_MiniRacerValueStruct)):
+    def __init__(self, ctx, bv_ptr: _MiniRacerBinaryValuePtr):
         self.ctx = ctx
-        self.ptr: ctypes.POINTER(_MiniRacerValueStruct) = ptr
+        self.bv_ptr: _MiniRacerBinaryValuePtr = bv_ptr
 
     def __del__(self):
-        self.ctx._free(self.ptr)  # noqa: SLF001
+        self.ctx._free(self.bv_ptr)  # noqa: SLF001
 
 
 def _build_dll_handle(dll_path) -> ctypes.CDLL:
@@ -306,7 +309,7 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
 
     handle.mr_attach_promise_then.argtypes = [
         ctypes.c_void_p,
-        ctypes.c_void_p,
+        _MiniRacerBinaryValuePtr,
         _MR_CALLBACK,
         ctypes.py_object,
     ]
@@ -320,45 +323,45 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
 
     handle.mr_get_identity_hash.argtypes = [
         ctypes.c_void_p,
-        ctypes.c_void_p,
+        _MiniRacerBinaryValuePtr,
     ]
     handle.mr_get_identity_hash.restype = ctypes.c_int
 
     handle.mr_get_own_property_names.argtypes = [
         ctypes.c_void_p,
-        ctypes.c_void_p,
+        _MiniRacerBinaryValuePtr,
     ]
-    handle.mr_get_own_property_names.restype = ctypes.POINTER(_MiniRacerValueStruct)
+    handle.mr_get_own_property_names.restype = _MiniRacerBinaryValuePtr
 
     handle.mr_get_object_item.argtypes = [
         ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.POINTER(_MiniRacerValueStruct),
+        _MiniRacerBinaryValuePtr,
+        _MiniRacerBinaryValuePtr,
     ]
-    handle.mr_get_object_item.restype = ctypes.POINTER(_MiniRacerValueStruct)
+    handle.mr_get_object_item.restype = _MiniRacerBinaryValuePtr
 
     handle.mr_set_object_item.argtypes = [
         ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.POINTER(_MiniRacerValueStruct),
-        ctypes.POINTER(_MiniRacerValueStruct),
+        _MiniRacerBinaryValuePtr,
+        _MiniRacerBinaryValuePtr,
+        _MiniRacerBinaryValuePtr,
     ]
 
     handle.mr_del_object_item.argtypes = [
         ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.POINTER(_MiniRacerValueStruct),
+        _MiniRacerBinaryValuePtr,
+        _MiniRacerBinaryValuePtr,
     ]
     handle.mr_del_object_item.restype = ctypes.c_bool
 
     handle.mr_splice_array.argtypes = [
         ctypes.c_void_p,
-        ctypes.c_void_p,
+        _MiniRacerBinaryValuePtr,
         ctypes.c_int32,
         ctypes.c_int32,
-        ctypes.POINTER(_MiniRacerValueStruct),
+        _MiniRacerBinaryValuePtr,
     ]
-    handle.mr_splice_array.restype = ctypes.POINTER(_MiniRacerValueStruct)
+    handle.mr_splice_array.restype = _MiniRacerBinaryValuePtr
 
     handle.mr_set_hard_memory_limit.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
 
@@ -574,7 +577,7 @@ class MiniRacer:
         def mr_sync_callback(future, result):
             future: _SyncFuture = self._active_callbacks.pop(future)
             try:
-                value = self._mr_val_to_python(result)
+                value = self._binary_value_ptr_to_python(result)
                 future.set_result(value)
             except Exception as exc:  # noqa: BLE001
                 future.set_exception(exc)
@@ -589,7 +592,7 @@ class MiniRacer:
             future: Future = self._active_callbacks.pop(future)
             loop = future.get_loop()
             try:
-                value = self._mr_val_to_python(result)
+                value = self._binary_value_ptr_to_python(result)
                 loop.call_soon_threadsafe(future.set_result, value)
             except Exception as exc:  # noqa: BLE001
                 loop.call_soon_threadsafe(future.set_exception, exc)
@@ -724,46 +727,46 @@ class MiniRacer:
         js = f"{expr}.apply(this, {json_args})"
         return self.execute(js, timeout_sec=timeout_sec, max_memory=max_memory)
 
-    def get_identity_hash(self, obj: JSObject) -> int:
-        return self._dll.mr_get_identity_hash(self.ctx, obj)
+    def get_identity_hash(self, bv_ptr: _MiniRacerBinaryValuePtr) -> int:
+        return self._dll.mr_get_identity_hash(self.ctx, bv_ptr)
 
-    def get_own_property_names(self, obj: JSObject) -> int:
-        names_ptr = self._dll.mr_get_own_property_names(self.ctx, obj)
-        names = self._mr_val_to_python(names_ptr)
+    def get_own_property_names(self, bv_ptr: _MiniRacerBinaryValuePtr) -> int:
+        names_bv_ptr = self._dll.mr_get_own_property_names(self.ctx, bv_ptr)
+        names = self._binary_value_ptr_to_python(names_bv_ptr)
         if not isinstance(names, JSArray):
             raise TypeError
         return tuple(names)
 
-    def get_object_item(self, obj: ctypes.c_void_p, key: Any):
-        key_ptr = self._python_to_mr_val(key)
-        val_ptr = self._dll.mr_get_object_item(self.ctx, obj, key_ptr)
+    def get_object_item(self, bv_ptr: ctypes.c_void_p, key: Any):
+        key_bv_ptr = self._python_to_binary_value_ptr(key)
+        val_bv_ptr = self._dll.mr_get_object_item(self.ctx, bv_ptr, key_bv_ptr)
 
-        if not val_ptr:
+        if not val_bv_ptr:
             raise KeyError(key)
 
-        return self._mr_val_to_python(val_ptr)
+        return self._binary_value_ptr_to_python(val_bv_ptr)
 
-    def set_object_item(self, obj: ctypes.c_void_p, key: Any, val: Any):
-        key_ptr = self._python_to_mr_val(key)
-        val_ptr = self._python_to_mr_val(val)
-        self._dll.mr_set_object_item(self.ctx, obj, key_ptr, val_ptr)
+    def set_object_item(self, bv_ptr: _MiniRacerBinaryValuePtr, key: Any, val: Any):
+        key_bv_ptr = self._python_to_binary_value_ptr(key)
+        val_bv_ptr = self._python_to_binary_value_ptr(val)
+        self._dll.mr_set_object_item(self.ctx, bv_ptr, key_bv_ptr, val_bv_ptr)
 
-    def del_object_item(self, obj: ctypes.c_void_p, key: Any):
-        key_ptr = self._python_to_mr_val(key)
-        success = self._dll.mr_del_object_item(self.ctx, obj, key_ptr)
+    def del_object_item(self, bv_ptr: _MiniRacerBinaryValuePtr, key: Any):
+        key_bv_ptr = self._python_to_binary_value_ptr(key)
+        success = self._dll.mr_del_object_item(self.ctx, bv_ptr, key_bv_ptr)
         if not success:
             raise KeyError(key)
 
-    def del_from_array(self, arr: ctypes.c_void_p, index: int):
-        res = self._dll.mr_splice_array(self.ctx, arr, index, 1, None)
+    def del_from_array(self, bv_ptr: _MiniRacerBinaryValuePtr, index: int):
+        res = self._dll.mr_splice_array(self.ctx, bv_ptr, index, 1, None)
         # Convert the value just to convert any exceptions (and GC the result)
-        _ = self._mr_val_to_python(res)
+        _ = self._binary_value_ptr_to_python(res)
 
-    def array_insert(self, arr: ctypes.c_void_p, index: int, val: Any):
-        ptr = self._python_to_mr_val(val)
-        res = self._dll.mr_splice_array(self.ctx, arr, index, 0, ptr)
+    def array_insert(self, bv_ptr: _MiniRacerBinaryValuePtr, index: int, new_val: Any):
+        new_val_bv_ptr = self._python_to_binary_value_ptr(new_val)
+        res = self._dll.mr_splice_array(self.ctx, bv_ptr, index, 0, new_val_bv_ptr)
         # Convert the value just to convert any exceptions (and GC the result)
-        _ = self._mr_val_to_python(res)
+        _ = self._binary_value_ptr_to_python(res)
 
     def set_hard_memory_limit(self, limit: int) -> None:
         """Set a hard memory limit on this V8 isolate.
@@ -856,14 +859,14 @@ class MiniRacer:
 
         return future
 
-    def _mr_val_to_python(self, ptr: ctypes.POINTER(_MiniRacerValueStruct)) -> Any:
+    def _binary_value_ptr_to_python(self, bv_ptr: _MiniRacerBinaryValuePtr) -> Any:
         free_value = True
         try:
-            typ = ptr.contents.type
-            val = ptr.contents.value
-            length = ptr.contents.len
+            typ = bv_ptr.contents.type
+            val = bv_ptr.contents.value
+            length = bv_ptr.contents.len
 
-            error_info = _ERRORS.get(ptr.contents.type)
+            error_info = _ERRORS.get(bv_ptr.contents.type)
             if error_info:
                 klass, generic_msg = error_info
 
@@ -886,22 +889,20 @@ class MiniRacer:
                 return val.bytes_val[0:length].decode("utf-8")
             if typ == MiniRacerTypes.function:
                 free_value = False
-                val_holder = _MiniRacerValHolder(self, ptr)
-                return JSFunction(self, val.value_ptr, val_holder)
+                return JSFunction(self, bv_ptr)
             if typ == MiniRacerTypes.date:
                 timestamp = val.double_val
                 # JS timestamps are milliseconds. In Python we are in seconds:
                 return datetime.fromtimestamp(timestamp / 1000.0, timezone.utc)
             if typ == MiniRacerTypes.symbol:
                 free_value = False
-                val_holder = _MiniRacerValHolder(self, ptr)
-                return JSSymbol(self, val.value_ptr, val_holder)
+                return JSSymbol(self, bv_ptr)
             if typ in (MiniRacerTypes.shared_array_buffer, MiniRacerTypes.array_buffer):
                 buf = ArrayBufferByte * length
                 cdata = buf.from_address(val.value_ptr)
                 # Keep a reference to prevent garbage collection of the backing store:
                 free_value = False
-                cdata._origin = _MiniRacerValHolder(self, ptr)  # noqa: SLF001
+                cdata._origin = _MiniRacerBinaryValueHolder(self, bv_ptr)  # noqa: SLF001
                 result = memoryview(cdata)
                 # Avoids "NotImplementedError: memoryview: unsupported format T{<B:b:}"
                 # in Python 3.12:
@@ -909,12 +910,11 @@ class MiniRacer:
 
             if typ == MiniRacerTypes.promise:
                 free_value = False
-                val_holder = _MiniRacerValHolder(self, ptr)
 
                 def attach_future(future, callback):
                     self._dll.mr_attach_promise_then(
                         self.ctx,
-                        val.value_ptr,
+                        bv_ptr,
                         callback,
                         future,
                     )
@@ -930,33 +930,29 @@ class MiniRacer:
                         self._make_async_future(), self._mr_async_callback
                     )
 
-                return JSPromise(
-                    self, val.value_ptr, val_holder, to_sync_future, to_async_future
-                )
+                return JSPromise(self, bv_ptr, to_sync_future, to_async_future)
 
             if typ == MiniRacerTypes.array:
                 free_value = False
-                val_holder = _MiniRacerValHolder(self, ptr)
-                return JSArray(self, val.value_ptr, val_holder)
+                return JSArray(self, bv_ptr)
 
             if typ == MiniRacerTypes.object:
                 free_value = False
-                val_holder = _MiniRacerValHolder(self, ptr)
-                return JSMappedObject(self, val.value_ptr, val_holder)
+                return JSMappedObject(self, bv_ptr)
 
             raise JSConversionException
         finally:
             if free_value:
-                self._free(ptr)
+                self._free(bv_ptr)
 
-    def _python_to_mr_val(self, obj) -> _MiniRacerValueStruct:
+    def _python_to_binary_value_ptr(self, obj) -> _MiniRacerBinaryValue:
         if isinstance(obj, JSObject):
             # JSObjects originate from the V8 side. We can just send back pointers to
             # them. (This also covers derived types JSFunction, JSSymbol, JSPromise,
             # and JSArray.)
-            return obj._val_holder.ptr  # noqa: SLF001
+            return obj._bv_holder.bv_ptr  # noqa: SLF001
 
-        val = _MiniRacerValueStruct()
+        val = _MiniRacerBinaryValue()
 
         if obj is None:
             val.type = MiniRacerTypes.null
@@ -1014,7 +1010,7 @@ class MiniRacer:
 
         raise JSConversionException
 
-    def _free(self, res: _MiniRacerValueStruct) -> None:
+    def _free(self, res: _MiniRacerBinaryValue) -> None:
         self._dll.mr_free_value(self.ctx, res)
 
     @contextmanager

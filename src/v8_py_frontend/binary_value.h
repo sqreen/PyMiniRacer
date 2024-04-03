@@ -10,9 +10,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include "gsl_stub.h"
+#include "isolate_manager.h"
 
 namespace MiniRacer {
 
@@ -66,7 +68,8 @@ struct BinaryValue {
     char* backing_store_ptr;
     gsl::owner<char*> bytes;
     gsl::owner<v8::Persistent<v8::Value>*> value_ptr;
-    uint64_t int_val;
+    int64_t int_val;
+    uint64_t uint_val;
     double double_val;
   };
   size_t len;
@@ -85,6 +88,8 @@ struct BinaryValue {
 
 class BinaryValueFactory {
  public:
+  explicit BinaryValueFactory(IsolateManager* isolate_manager);
+
   auto FromString(std::string str, BinaryTypes result_type) -> BinaryValue::Ptr;
   auto FromValue(v8::Local<v8::Context> context,
                  v8::Local<v8::Value> value) -> BinaryValue::Ptr;
@@ -92,16 +97,31 @@ class BinaryValueFactory {
                             v8::Local<v8::Message> message,
                             v8::Local<v8::Value> exception_obj,
                             BinaryTypes result_type) -> BinaryValue::Ptr;
-  static auto ToValue(v8::Local<v8::Context> context,
-                      BinaryValue* ptr) -> v8::Local<v8::Value>;
+  auto ToValue(v8::Local<v8::Context> context,
+               BinaryValue* bv_ptr) -> v8::Local<v8::Value>;
 
   // Only for use if the pointer is not wrapped in Ptr (see below), which uses
   // BinaryValueDeleter which calls this automatically:
   void Free(gsl::owner<BinaryValue*> val);
+  auto GetPersistentHandle(v8::Isolate* isolate,
+                           BinaryValue* bv_ptr) -> v8::Local<v8::Value>;
 
  private:
   auto New() -> BinaryValue::Ptr;
-  std::unordered_map<void*, std::shared_ptr<v8::BackingStore>> backing_stores_;
+  void SavePersistentHandle(v8::Isolate* isolate,
+                            BinaryValue* bv_ptr,
+                            v8::Local<v8::Value> value);
+  void DeletePersistentHandle(BinaryValue* bv_ptr);
+  void CreateBackingStoreRef(v8::Local<v8::Value> value, BinaryValue* bv_ptr);
+  void DeleteBackingStoreRef(BinaryValue* bv_ptr);
+
+  IsolateManager* isolate_manager_;
+  std::mutex backing_stores_mutex_;
+  std::unordered_map<BinaryValue*, std::shared_ptr<v8::BackingStore>>
+      backing_stores_;
+  std::mutex persistent_handles_mutex_;
+  std::unordered_map<BinaryValue*, std::unique_ptr<v8::Persistent<v8::Value>>>
+      persistent_handles_;
 };
 
 inline BinaryValueDeleter::BinaryValueDeleter(BinaryValueFactory* factory)

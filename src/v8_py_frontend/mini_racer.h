@@ -1,8 +1,6 @@
 #ifndef MINI_RACER_H
 #define MINI_RACER_H
 
-#include <v8-persistent-handle.h>
-#include <v8-value.h>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -43,20 +41,13 @@ class Context {
             void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
   [[nodiscard]] auto FunctionEvalCallCount() const -> uint64_t;
   [[nodiscard]] auto FullEvalCallCount() const -> uint64_t;
-  void AttachPromiseThen(v8::Persistent<v8::Value>* promise,
-                         Callback callback,
-                         void* cb_data);
-  auto GetIdentityHash(v8::Persistent<v8::Value>* object) -> int;
-  auto GetOwnPropertyNames(v8::Persistent<v8::Value>* object)
-      -> BinaryValue::Ptr;
-  auto GetObjectItem(v8::Persistent<v8::Value>* object,
-                     BinaryValue* key) -> BinaryValue::Ptr;
-  void SetObjectItem(v8::Persistent<v8::Value>* object,
-                     BinaryValue* key,
-                     BinaryValue* val);
-  auto DelObjectItem(v8::Persistent<v8::Value>* object,
-                     BinaryValue* key) -> bool;
-  auto SpliceArray(v8::Persistent<v8::Value>* object,
+  void AttachPromiseThen(BinaryValue* bv_ptr, Callback callback, void* cb_data);
+  auto GetIdentityHash(BinaryValue* bv_ptr) -> int;
+  auto GetOwnPropertyNames(BinaryValue* bv_ptr) -> BinaryValue::Ptr;
+  auto GetObjectItem(BinaryValue* bv_ptr, BinaryValue* key) -> BinaryValue::Ptr;
+  void SetObjectItem(BinaryValue* bv_ptr, BinaryValue* key, BinaryValue* val);
+  auto DelObjectItem(BinaryValue* bv_ptr, BinaryValue* key) -> bool;
+  auto SpliceArray(BinaryValue* bv_ptr,
                    int32_t start,
                    int32_t delete_count,
                    BinaryValue* new_val) -> BinaryValue::Ptr;
@@ -102,10 +93,6 @@ inline void Context::ApplyLowMemoryNotification() {
   isolate_memory_monitor_.ApplyLowMemoryNotification();
 }
 
-inline void Context::FreeBinaryValue(gsl::owner<BinaryValue*> val) {
-  bv_factory_.Free(val);
-}
-
 inline auto Context::FunctionEvalCallCount() const -> uint64_t {
   return code_evaluator_.FunctionEvalCallCount();
 }
@@ -114,10 +101,10 @@ inline auto Context::FullEvalCallCount() const -> uint64_t {
   return code_evaluator_.FullEvalCallCount();
 }
 
-inline void Context::AttachPromiseThen(v8::Persistent<v8::Value>* promise,
+inline void Context::AttachPromiseThen(BinaryValue* bv_ptr,
                                        MiniRacer::Callback callback,
                                        void* cb_data) {
-  promise_attacher_.AttachPromiseThen(promise, callback, cb_data);
+  promise_attacher_.AttachPromiseThen(bv_ptr, callback, cb_data);
 }
 
 }  // namespace MiniRacer

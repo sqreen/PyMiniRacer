@@ -1,5 +1,3 @@
-#include <v8-persistent-handle.h>
-#include <v8-value.h>
 #include <v8-version-string.h>
 #include <cstddef>
 #include <cstdint>
@@ -85,50 +83,50 @@ LIB_EXPORT auto mr_v8_version() -> char const* {
 }
 
 LIB_EXPORT void mr_attach_promise_then(MiniRacer::Context* mr_context,
-                                       v8::Persistent<v8::Value>* promise,
+                                       MiniRacer::BinaryValue* bv_ptr,
                                        MiniRacer::Callback callback,
                                        void* cb_data) {
-  mr_context->AttachPromiseThen(promise, callback, cb_data);
+  mr_context->AttachPromiseThen(bv_ptr, callback, cb_data);
 }
 
 LIB_EXPORT auto mr_get_identity_hash(MiniRacer::Context* mr_context,
-                                     v8::Persistent<v8::Value>* object) -> int {
-  return mr_context->GetIdentityHash(object);
+                                     MiniRacer::BinaryValue* bv_ptr) -> int {
+  return mr_context->GetIdentityHash(bv_ptr);
 }
 
 LIB_EXPORT auto mr_get_own_property_names(MiniRacer::Context* mr_context,
-                                          v8::Persistent<v8::Value>* object)
+                                          MiniRacer::BinaryValue* bv_ptr)
     -> MiniRacer::BinaryValue* {
-  return mr_context->GetOwnPropertyNames(object).release();
+  return mr_context->GetOwnPropertyNames(bv_ptr).release();
 }
 
 LIB_EXPORT auto mr_get_object_item(MiniRacer::Context* mr_context,
-                                   v8::Persistent<v8::Value>* object,
+                                   MiniRacer::BinaryValue* bv_ptr,
                                    MiniRacer::BinaryValue* key)
     -> gsl::owner<MiniRacer::BinaryValue*> {
-  return mr_context->GetObjectItem(object, key).release();
+  return mr_context->GetObjectItem(bv_ptr, key).release();
 }
 
 LIB_EXPORT void mr_set_object_item(MiniRacer::Context* mr_context,
-                                   v8::Persistent<v8::Value>* object,
+                                   MiniRacer::BinaryValue* bv_ptr,
                                    MiniRacer::BinaryValue* key,
                                    MiniRacer::BinaryValue* val) {
-  mr_context->SetObjectItem(object, key, val);
+  mr_context->SetObjectItem(bv_ptr, key, val);
 }
 
 LIB_EXPORT auto mr_del_object_item(MiniRacer::Context* mr_context,
-                                   v8::Persistent<v8::Value>* object,
+                                   MiniRacer::BinaryValue* bv_ptr,
                                    MiniRacer::BinaryValue* key) -> bool {
-  return mr_context->DelObjectItem(object, key);
+  return mr_context->DelObjectItem(bv_ptr, key);
 }
 
 LIB_EXPORT auto mr_splice_array(MiniRacer::Context* mr_context,
-                                v8::Persistent<v8::Value>* object,
+                                MiniRacer::BinaryValue* bv_ptr,
                                 int32_t start,
                                 int32_t delete_count,
                                 MiniRacer::BinaryValue* new_val)
     -> MiniRacer::BinaryValue* {
-  return mr_context->SpliceArray(object, start, delete_count, new_val)
+  return mr_context->SpliceArray(bv_ptr, start, delete_count, new_val)
       .release();
 }
 

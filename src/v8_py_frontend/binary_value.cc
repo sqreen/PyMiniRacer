@@ -12,11 +12,17 @@
 #include <cstdint>
 #include <ios>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
+#include <utility>
 #include "gsl_stub.h"
+#include "isolate_manager.h"
 
 namespace MiniRacer {
+
+BinaryValueFactory::BinaryValueFactory(IsolateManager* isolate_manager)
+    : isolate_manager_(isolate_manager) {}
 
 // NOLINTBEGIN(cppcoreguidelines-pro-type-union-access)
 
@@ -48,15 +54,16 @@ void BinaryValueFactory::Free(gsl::owner<BinaryValue*> val) {
     // maintain a map of backing stores separately:
     case type_shared_array_buffer:
     case type_array_buffer:
-      backing_stores_.erase(val);
+      DeleteBackingStoreRef(val);
       break;
-    // We represent these types as pointers to a v8::Persistent:
+    // We represent these types as identifiers pointing into a map of
+    // v8::Persistent handles:
     case type_symbol:
     case type_function:
     case type_object:
     case type_array:
     case type_promise:
-      delete val->value_ptr;
+      DeletePersistentHandle(val);
       break;
   }
   delete val;
@@ -86,13 +93,11 @@ auto BinaryValueFactory::FromValue(v8::Local<v8::Context> context,
     res->type = type_bool;
     res->int_val = (value->IsTrue() ? 1 : 0);
   } else if (value->IsFunction()) {
-    res->value_ptr =
-        new v8::Persistent<v8::Value>(context->GetIsolate(), value);
     res->type = type_function;
+    SavePersistentHandle(context->GetIsolate(), res.get(), value);
   } else if (value->IsSymbol()) {
-    res->value_ptr =
-        new v8::Persistent<v8::Value>(context->GetIsolate(), value);
     res->type = type_symbol;
+    SavePersistentHandle(context->GetIsolate(), res.get(), value);
   } else if (value->IsDate()) {
     res->type = type_date;
     const v8::Local<v8::Date> date = v8::Local<v8::Date>::Cast(value);
@@ -111,50 +116,132 @@ auto BinaryValueFactory::FromValue(v8::Local<v8::Context> context,
     rstr->WriteUtf8(context->GetIsolate(), res->bytes);
   } else if (value->IsSharedArrayBuffer() || value->IsArrayBuffer() ||
              value->IsArrayBufferView()) {
-    std::shared_ptr<v8::BackingStore> backing_store;
-    size_t offset = 0;
-    size_t size = 0;
-
-    if (value->IsArrayBufferView()) {
-      const v8::Local<v8::ArrayBufferView> view =
-          v8::Local<v8::ArrayBufferView>::Cast(value);
-
-      backing_store = view->Buffer()->GetBackingStore();
-      offset = view->ByteOffset();
-      size = view->ByteLength();
-    } else if (value->IsSharedArrayBuffer()) {
-      backing_store =
-          v8::Local<v8::SharedArrayBuffer>::Cast(value)->GetBackingStore();
-      size = backing_store->ByteLength();
-    } else {
-      backing_store =
-          v8::Local<v8::ArrayBuffer>::Cast(value)->GetBackingStore();
-      size = backing_store->ByteLength();
-    }
-
-    backing_stores_[res.get()] = backing_store;
-    res->type = value->IsSharedArrayBuffer() ? type_shared_array_buffer
-                                             : type_array_buffer;
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-    res->backing_store_ptr = static_cast<char*>(backing_store->Data()) + offset;
-    res->len = size;
-
+    CreateBackingStoreRef(value, res.get());
   } else if (value->IsPromise()) {
     res->type = type_promise;
-    res->value_ptr =
-        new v8::Persistent<v8::Value>(context->GetIsolate(), value);
+    SavePersistentHandle(context->GetIsolate(), res.get(), value);
   } else if (value->IsArray()) {
     res->type = type_array;
-    res->value_ptr =
-        new v8::Persistent<v8::Value>(context->GetIsolate(), value);
+    SavePersistentHandle(context->GetIsolate(), res.get(), value);
   } else if (value->IsObject()) {
     res->type = type_object;
-    res->value_ptr =
-        new v8::Persistent<v8::Value>(context->GetIsolate(), value);
+    SavePersistentHandle(context->GetIsolate(), res.get(), value);
   } else {
     return {};
   }
   return res;
+}
+
+void BinaryValueFactory::SavePersistentHandle(v8::Isolate* isolate,
+                                              BinaryValue* bv_ptr,
+                                              v8::Local<v8::Value> value) {
+  // We store a map from BinaryValue* to v8::Persistent* rather than exposing
+  // the latter to the Python side, for two reasons:
+  //
+  // 1. This makes it easier to reason about memory management. The Python side
+  //    only has to deal with the BinaryValue pointer and free it.
+  //
+  // 2. Because freeing Persistent handles is necessarily asynchronous and
+  //    relies on the IsolateManager's message pump (see
+  //    BinaryValueFactory::DeletePersistentHandle for more on why), keeping a
+  //    map here helps us free any dangling Persistent handles in the event the
+  //    message pump is destroyed before it finishes cleaning up all the
+  //    garbage we throw at it.
+  const std::lock_guard<std::mutex> lock(persistent_handles_mutex_);
+  persistent_handles_[bv_ptr] =
+      std::make_unique<v8::Persistent<v8::Value>>(isolate, value);
+}
+
+auto BinaryValueFactory::GetPersistentHandle(v8::Isolate* isolate,
+                                             BinaryValue* bv_ptr)
+    -> v8::Local<v8::Value> {
+  const std::lock_guard<std::mutex> lock(persistent_handles_mutex_);
+  auto iter = persistent_handles_.find(bv_ptr);
+  if (iter == persistent_handles_.end()) {
+    return {};
+  }
+  return iter->second->Get(isolate);
+}
+
+void BinaryValueFactory::DeletePersistentHandle(BinaryValue* bv_ptr) {
+  const std::lock_guard<std::mutex> lock(persistent_handles_mutex_);
+  auto iter = persistent_handles_.find(bv_ptr);
+  if (iter == persistent_handles_.end()) {
+    return;
+  }
+
+  auto persistent_handle = std::move(iter->second);
+  persistent_handles_.erase(iter);
+
+  // We don't generally own the isolate lock (i.e., aren't running from the
+  // IsolateManager's message loop) here. From the V8 documentation, it's not
+  // clear if we can safely free a v8::Persistent handle without the lock
+  // (As a rule, messing with Isolate-owned objects without holding the Isolate
+  // lock is not safe, and there is no documentation indicating
+  // v8::Persistent::~Persistent is exempt from this rule.)
+  // So let's have the message loop handle the deletion.
+  // Note that we don't wait on the deletion here.
+  // This method may be called by Python, as a result of callbacks from the C++
+  // side of MiniRacer. Those callbacks originate from the IsolateManager
+  // message loop itself. If we were to wait on this *new* task we're adding to
+  // the message loop, we would deadlock.
+  isolate_manager_->Run([ptr = std::move(persistent_handle)](
+                            v8::Isolate* /*isolate*/) mutable { ptr.reset(); });
+}
+
+void BinaryValueFactory::CreateBackingStoreRef(v8::Local<v8::Value> value,
+                                               BinaryValue* bv_ptr) {
+  // For ArrayBuffer and friends, we store a reference to the ArrayBuffer
+  // shared_ptr in this BinaryValueFactory instance, and return a pointer
+  // *into* the buffer to the Python side.
+
+  std::shared_ptr<v8::BackingStore> backing_store;
+  size_t offset = 0;
+  size_t size = 0;
+
+  if (value->IsArrayBufferView()) {
+    const v8::Local<v8::ArrayBufferView> view =
+        v8::Local<v8::ArrayBufferView>::Cast(value);
+
+    backing_store = view->Buffer()->GetBackingStore();
+    offset = view->ByteOffset();
+    size = view->ByteLength();
+  } else if (value->IsSharedArrayBuffer()) {
+    backing_store =
+        v8::Local<v8::SharedArrayBuffer>::Cast(value)->GetBackingStore();
+    size = backing_store->ByteLength();
+  } else {
+    backing_store = v8::Local<v8::ArrayBuffer>::Cast(value)->GetBackingStore();
+    size = backing_store->ByteLength();
+  }
+
+  {
+    const std::lock_guard<std::mutex> lock(backing_stores_mutex_);
+    backing_stores_[bv_ptr] = backing_store;
+  }
+
+  bv_ptr->type = value->IsSharedArrayBuffer() ? type_shared_array_buffer
+                                              : type_array_buffer;
+  // NOLINTBEGIN(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+  bv_ptr->backing_store_ptr =
+      static_cast<char*>(backing_store->Data()) + offset;
+  // NOLINTEND(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+  bv_ptr->len = size;
+}
+
+void BinaryValueFactory::DeleteBackingStoreRef(BinaryValue* bv_ptr) {
+  const std::lock_guard<std::mutex> lock(backing_stores_mutex_);
+  auto iter = backing_stores_.find(bv_ptr);
+  if (iter == backing_stores_.end()) {
+    return;
+  }
+
+  auto backing_store = std::move(iter->second);
+  backing_stores_.erase(iter);
+
+  // See note in BinaryValueFactory::DeletePersistentHandle. Same applies here.
+  isolate_manager_->Run([ptr = std::move(backing_store)](
+                            v8::Isolate* /*isolate*/) mutable { ptr.reset(); });
 }
 
 auto BinaryValueFactory::FromString(std::string str,
@@ -169,42 +256,41 @@ auto BinaryValueFactory::FromString(std::string str,
 }
 
 auto BinaryValueFactory::ToValue(v8::Local<v8::Context> context,
-                                 BinaryValue* ptr) -> v8::Local<v8::Value> {
+                                 BinaryValue* bv_ptr) -> v8::Local<v8::Value> {
   v8::Isolate* isolate = context->GetIsolate();
 
-  if (ptr->type == type_null) {
+  if (bv_ptr->type == type_null) {
     return v8::Null(isolate);
   }
 
-  if (ptr->type == type_undefined) {
+  if (bv_ptr->type == type_undefined) {
     return v8::Undefined(isolate);
   }
 
-  if (ptr->type == type_integer) {
-    return v8::Integer::New(isolate, static_cast<int32_t>(ptr->int_val));
+  if (bv_ptr->type == type_integer) {
+    return v8::Integer::New(isolate, static_cast<int32_t>(bv_ptr->int_val));
   }
 
-  if (ptr->type == type_double) {
-    return v8::Number::New(isolate, ptr->double_val);
+  if (bv_ptr->type == type_double) {
+    return v8::Number::New(isolate, bv_ptr->double_val);
   }
 
-  if (ptr->type == type_bool) {
-    return v8::Boolean::New(isolate, ptr->int_val != 0);
+  if (bv_ptr->type == type_bool) {
+    return v8::Boolean::New(isolate, bv_ptr->int_val != 0);
   }
 
-  if (ptr->type == type_function || ptr->type == type_symbol ||
-      ptr->type == type_promise || ptr->type == type_array ||
-      ptr->type == type_object) {
-    return static_cast<v8::Persistent<v8::Value>*>(ptr->value_ptr)
-        ->Get(isolate);
+  if (bv_ptr->type == type_function || bv_ptr->type == type_symbol ||
+      bv_ptr->type == type_promise || bv_ptr->type == type_array ||
+      bv_ptr->type == type_object) {
+    return GetPersistentHandle(isolate, bv_ptr);
   }
 
-  if (ptr->type == type_date) {
-    return v8::Date::New(context, ptr->double_val).ToLocalChecked();
+  if (bv_ptr->type == type_date) {
+    return v8::Date::New(context, bv_ptr->double_val).ToLocalChecked();
   }
 
-  if (ptr->type == type_str_utf8) {
-    return v8::String::NewFromUtf8(isolate, ptr->bytes).ToLocalChecked();
+  if (bv_ptr->type == type_str_utf8) {
+    return v8::String::NewFromUtf8(isolate, bv_ptr->bytes).ToLocalChecked();
   }
 
   // Unknown type!

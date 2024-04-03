@@ -17,9 +17,7 @@ class PromiseAttacher {
                   v8::Persistent<v8::Context>* context,
                   BinaryValueFactory* bv_factory);
 
-  void AttachPromiseThen(v8::Persistent<v8::Value>* promise_val,
-                         Callback callback,
-                         void* cb_data);
+  void AttachPromiseThen(BinaryValue* bv_ptr, Callback callback, void* cb_data);
 
  private:
   IsolateManager* isolate_manager_;

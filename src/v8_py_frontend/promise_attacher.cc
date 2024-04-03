@@ -24,15 +24,16 @@ PromiseAttacher::PromiseAttacher(IsolateManager* isolate_manager,
       context_(context),
       bv_factory_(bv_factory) {}
 
-void PromiseAttacher::AttachPromiseThen(v8::Persistent<v8::Value>* promise_val,
+void PromiseAttacher::AttachPromiseThen(BinaryValue* bv_ptr,
                                         Callback callback,
                                         void* cb_data) {
-  isolate_manager_->RunAndAwait([promise_val, callback, cb_data,
+  isolate_manager_->RunAndAwait([bv_ptr, callback, cb_data,
                                  this](v8::Isolate* isolate) {
     const v8::Locker lock(isolate);
     const v8::HandleScope scope(isolate);
 
-    const v8::Local<v8::Value> value = promise_val->Get(isolate);
+    const v8::Local<v8::Value> value =
+        bv_factory_->GetPersistentHandle(isolate, bv_ptr);
     const v8::Local<v8::Promise> promise = value.As<v8::Promise>();
 
     // Note that completion_handler will be deleted by whichever callback is

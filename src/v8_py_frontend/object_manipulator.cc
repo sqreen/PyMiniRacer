@@ -19,23 +19,20 @@ ObjectManipulator::ObjectManipulator(v8::Persistent<v8::Context>* context,
     : context_(context), bv_factory_(bv_factory) {}
 
 auto ObjectManipulator::GetIdentityHash(v8::Isolate* isolate,
-                                        v8::Persistent<v8::Value>* object)
-    -> int {
+                                        v8::Local<v8::Value> object) -> int {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
-  const v8::Local<v8::Object> local_object =
-      object->Get(isolate).As<v8::Object>();
+  const v8::Local<v8::Object> local_object = object.As<v8::Object>();
 
   return local_object->GetIdentityHash();
 }
 
-auto ObjectManipulator::GetOwnPropertyNames(
-    v8::Isolate* isolate,
-    v8::Persistent<v8::Value>* object) const -> BinaryValue::Ptr {
+auto ObjectManipulator::GetOwnPropertyNames(v8::Isolate* isolate,
+                                            v8::Local<v8::Value> object) const
+    -> BinaryValue::Ptr {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
-  const v8::Local<v8::Object> local_object =
-      object->Get(isolate).As<v8::Object>();
+  const v8::Local<v8::Object> local_object = object.As<v8::Object>();
   const v8::Local<v8::Context> local_context = context_->Get(isolate);
   const v8::Context::Scope context_scope(local_context);
 
@@ -46,16 +43,15 @@ auto ObjectManipulator::GetOwnPropertyNames(
 }
 
 auto ObjectManipulator::Get(v8::Isolate* isolate,
-                            v8::Persistent<v8::Value>* object,
+                            v8::Local<v8::Value> object,
                             BinaryValue* key) -> BinaryValue::Ptr {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
-  const v8::Local<v8::Object> local_object =
-      object->Get(isolate).As<v8::Object>();
+  const v8::Local<v8::Object> local_object = object.As<v8::Object>();
   const v8::Local<v8::Context> local_context = context_->Get(isolate);
 
   const v8::Local<v8::Value> local_key =
-      BinaryValueFactory::ToValue(local_context, key);
+      bv_factory_->ToValue(local_context, key);
 
   if (!local_object->Has(local_context, local_key).ToChecked()) {
     // Return null if no item.
@@ -69,35 +65,33 @@ auto ObjectManipulator::Get(v8::Isolate* isolate,
 }
 
 void ObjectManipulator::Set(v8::Isolate* isolate,
-                            v8::Persistent<v8::Value>* object,
+                            v8::Local<v8::Value> object,
                             BinaryValue* key,
                             BinaryValue* val) {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
-  const v8::Local<v8::Object> local_object =
-      object->Get(isolate).As<v8::Object>();
+  const v8::Local<v8::Object> local_object = object.As<v8::Object>();
   const v8::Local<v8::Context> local_context = context_->Get(isolate);
 
   const v8::Local<v8::Value> local_key =
-      BinaryValueFactory::ToValue(local_context, key);
+      bv_factory_->ToValue(local_context, key);
 
   const v8::Local<v8::Value> local_value =
-      BinaryValueFactory::ToValue(local_context, val);
+      bv_factory_->ToValue(local_context, val);
 
   local_object->Set(local_context, local_key, local_value).ToChecked();
 }
 
 auto ObjectManipulator::Del(v8::Isolate* isolate,
-                            v8::Persistent<v8::Value>* object,
+                            v8::Local<v8::Value> object,
                             BinaryValue* key) -> bool {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
-  const v8::Local<v8::Object> local_object =
-      object->Get(isolate).As<v8::Object>();
+  const v8::Local<v8::Object> local_object = object.As<v8::Object>();
   const v8::Local<v8::Context> local_context = context_->Get(isolate);
 
   const v8::Local<v8::Value> local_key =
-      BinaryValueFactory::ToValue(local_context, key);
+      bv_factory_->ToValue(local_context, key);
 
   if (!local_object->Has(local_context, local_key).ToChecked()) {
     return false;
@@ -107,14 +101,13 @@ auto ObjectManipulator::Del(v8::Isolate* isolate,
 }
 
 auto ObjectManipulator::Splice(v8::Isolate* isolate,
-                               v8::Persistent<v8::Value>* object,
+                               v8::Local<v8::Value> object,
                                int32_t start,
                                int32_t delete_count,
                                BinaryValue* new_val) -> BinaryValue::Ptr {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
-  const v8::Local<v8::Object> local_object =
-      object->Get(isolate).As<v8::Object>();
+  const v8::Local<v8::Object> local_object = object.As<v8::Object>();
   const v8::Local<v8::Context> local_context = context_->Get(isolate);
 
   // Array.prototype.splice doesn't exist in C++ in V8. We have to find the JS
@@ -142,7 +135,7 @@ auto ObjectManipulator::Splice(v8::Isolate* isolate,
       v8::Int32::New(isolate, delete_count),
   };
   if (new_val != nullptr) {
-    argv.push_back(BinaryValueFactory::ToValue(local_context, new_val));
+    argv.push_back(bv_factory_->ToValue(local_context, new_val));
   }
 
   v8::MaybeLocal<v8::Value> maybe_value = splice_func->Call(
