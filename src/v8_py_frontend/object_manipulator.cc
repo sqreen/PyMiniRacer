@@ -109,6 +109,7 @@ auto ObjectManipulator::Splice(v8::Isolate* isolate,
   const v8::HandleScope handle_scope(isolate);
   const v8::Local<v8::Object> local_object = object.As<v8::Object>();
   const v8::Local<v8::Context> local_context = context_->Get(isolate);
+  const v8::Context::Scope context_scope(local_context);
 
   // Array.prototype.splice doesn't exist in C++ in V8. We have to find the JS
   // function and call it:
@@ -140,6 +141,53 @@ auto ObjectManipulator::Splice(v8::Isolate* isolate,
 
   v8::MaybeLocal<v8::Value> maybe_value = splice_func->Call(
       local_context, local_object, static_cast<int>(argv.size()), argv.data());
+  if (maybe_value.IsEmpty()) {
+    return bv_factory_->FromExceptionMessage(local_context, trycatch.Message(),
+                                             trycatch.Exception(),
+                                             type_execute_exception);
+  }
+
+  return bv_factory_->FromValue(local_context, maybe_value.ToLocalChecked());
+}
+
+auto ObjectManipulator::Call(v8::Isolate* isolate,
+                             v8::Local<v8::Value> func,
+                             BinaryValue* this_ptr,
+                             BinaryValue* argv_ptr) -> BinaryValue::Ptr {
+  const v8::Isolate::Scope isolate_scope(isolate);
+  const v8::HandleScope handle_scope(isolate);
+  const v8::Local<v8::Context> local_context = context_->Get(isolate);
+  const v8::Context::Scope context_scope(local_context);
+
+  if (!func->IsFunction()) {
+    return bv_factory_->FromString("function is not callable",
+                                   type_execute_exception);
+  }
+
+  const v8::Local<v8::Function> local_func = func.As<v8::Function>();
+
+  const v8::Local<v8::Value> local_this =
+      bv_factory_->ToValue(local_context, this_ptr);
+  const v8::Local<v8::Value> local_argv_value =
+      bv_factory_->ToValue(local_context, argv_ptr);
+
+  if (!local_argv_value->IsArray()) {
+    return bv_factory_->FromString("argv is not an array",
+                                   type_execute_exception);
+  }
+
+  const v8::Local<v8::Array> local_argv_array =
+      local_argv_value.As<v8::Array>();
+
+  std::vector<v8::Local<v8::Value>> argv;
+  for (uint32_t i = 0; i < local_argv_array->Length(); i++) {
+    argv.push_back(local_argv_array->Get(local_context, i).ToLocalChecked());
+  }
+
+  const v8::TryCatch trycatch(isolate);
+
+  v8::MaybeLocal<v8::Value> maybe_value = local_func->Call(
+      local_context, local_this, static_cast<int>(argv.size()), argv.data());
   if (maybe_value.IsEmpty()) {
     return bv_factory_->FromExceptionMessage(local_context, trycatch.Message(),
                                              trycatch.Exception(),

@@ -184,6 +184,11 @@ class JSArray(MutableSequence, JSObject):
 class JSFunction(JSMappedObject):
     """JavaScript function."""
 
+    def __call__(self, *args, this=None, timeout_sec: Numeric | None = None):
+        return self._ctx.call_function(
+            self._bv_holder.bv_ptr, *args, this=this, timeout_sec=timeout_sec
+        )
+
 
 class JSSymbol(JSMappedObject):
     """JavaScript symbol."""
@@ -363,6 +368,16 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
     ]
     handle.mr_splice_array.restype = _MiniRacerBinaryValuePtr
 
+    handle.mr_call_function.argtypes = [
+        ctypes.c_void_p,
+        _MiniRacerBinaryValuePtr,
+        _MiniRacerBinaryValuePtr,
+        _MiniRacerBinaryValuePtr,
+        _MR_CALLBACK,
+        ctypes.py_object,
+    ]
+    handle.mr_call_function.restype = ctypes.c_void_p
+
     handle.mr_set_hard_memory_limit.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
 
     handle.mr_set_soft_memory_limit.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
@@ -375,11 +390,6 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
     handle.mr_soft_memory_limit_reached.restype = ctypes.c_bool
 
     handle.mr_v8_version.restype = ctypes.c_char_p
-
-    handle.mr_full_eval_call_count.argtypes = [ctypes.c_void_p]
-    handle.mr_full_eval_call_count.restype = ctypes.c_uint64
-    handle.mr_function_eval_call_count.argtypes = [ctypes.c_void_p]
-    handle.mr_function_eval_call_count.restype = ctypes.c_uint64
 
     return handle
 
@@ -575,7 +585,7 @@ class MiniRacer:
         # define an all-purpose callback for _SyncFuture:
         @_MR_CALLBACK
         def mr_sync_callback(future, result):
-            future: _SyncFuture = self._active_callbacks.pop(future)
+            self._active_callbacks.pop(future)
             try:
                 value = self._binary_value_ptr_to_python(result)
                 future.set_result(value)
@@ -589,7 +599,7 @@ class MiniRacer:
         # define an all-purpose callback for asyncio.Future:
         @_MR_CALLBACK
         def mr_async_callback(future, result):
-            future: Future = self._active_callbacks.pop(future)
+            self._active_callbacks.pop(future)
             loop = future.get_loop()
             try:
                 value = self._binary_value_ptr_to_python(result)
@@ -646,16 +656,9 @@ class MiniRacer:
         if isinstance(code, str):
             code = code.encode("utf-8")
 
-        def task(callback, future):
-            return self._dll.mr_eval(
-                self.ctx,
-                code,
-                len(code),
-                callback,
-                future,
-            )
-
-        with self._run_task(task) as future:
+        with self._run_mr_async_task(
+            self._dll.mr_eval, self.ctx, code, len(code)
+        ) as future:
             return future.get(timeout=timeout_sec)
 
     def execute(
@@ -768,6 +771,25 @@ class MiniRacer:
         # Convert the value just to convert any exceptions (and GC the result)
         _ = self._binary_value_ptr_to_python(res)
 
+    def call_function(
+        self,
+        func_ptr: _MiniRacerBinaryValuePtr,
+        *args,
+        this=None,
+        timeout_sec: Numeric | None = None,
+    ):
+        argv = self.eval("[]")
+        for arg in args:
+            argv.append(arg)
+
+        argv_ptr = self._python_to_binary_value_ptr(argv)
+        this_ptr = self._python_to_binary_value_ptr(this)
+
+        with self._run_mr_async_task(
+            self._dll.mr_call_function, self.ctx, func_ptr, this_ptr, argv_ptr
+        ) as future:
+            return future.get(timeout=timeout_sec)
+
     def set_hard_memory_limit(self, limit: int) -> None:
         """Set a hard memory limit on this V8 isolate.
 
@@ -802,14 +824,7 @@ class MiniRacer:
     def heap_stats(self) -> dict:
         """Return the V8 isolate heap statistics."""
 
-        def task(callback, future):
-            return self._dll.mr_heap_stats(
-                self.ctx,
-                callback,
-                future,
-            )
-
-        with self._run_task(task) as future:
+        with self._run_mr_async_task(self._dll.mr_heap_stats, self.ctx) as future:
             res = future.get()
 
         return self.json_impl.loads(res)
@@ -817,45 +832,28 @@ class MiniRacer:
     def heap_snapshot(self) -> dict:
         """Return a snapshot of the V8 isolate heap."""
 
-        def task(callback, future):
-            return self._dll.mr_heap_snapshot(
-                self.ctx,
-                callback,
-                future,
-            )
-
-        with self._run_task(task) as future:
+        with self._run_mr_async_task(self._dll.mr_heap_snapshot, self.ctx) as future:
             return future.get()
 
-    def _function_eval_call_count(self) -> int:
-        """Return the number of shortcut function-like evaluations done in this context.
-
-        This is exposed for testing only."""
-        return self._dll.mr_function_eval_call_count(self.ctx)
-
-    def _full_eval_call_count(self) -> int:
-        """Return the number of full script evaluations done in this context.
-
-        This is exposed for testing only."""
-        return self._dll.mr_full_eval_call_count(self.ctx)
-
-    def _make_sync_future(self):
+    def _make_sync_future(self, hold=None):
         future = _SyncFuture()
 
         # Keep track of this future until we are called back.
         # This helps ensure Python doesn't garbage collect the future before the C++
         # side of things is done with it.
-        self._active_callbacks[future] = future
+        # The items in "hold" are the things we passed into the C++ call, likewise
+        # here to avoid garbage collection until the callback completes.
+        self._active_callbacks[future] = hold
 
         return future
 
-    def _make_async_future(self):
+    def _make_async_future(self, hold=None):
         future = Future()
 
         # Keep track of this future until we are called back.
         # This helps ensure Python doesn't garbage collect the future before the C++
         # side of things is done with it.
-        self._active_callbacks[future] = future
+        self._active_callbacks[future] = hold
 
         return future
 
@@ -1015,7 +1013,7 @@ class MiniRacer:
             self._dll.mr_free_value(self.ctx, res)
 
     @contextmanager
-    def _run_task(self, task):
+    def _run_mr_async_task(self, dll_method, *args):
         """Manages those tasks which generate callbacks from the MiniRacer DLL.
 
         Several MiniRacer functions (JS evaluation and 2 heap stats calls) are
@@ -1026,10 +1024,12 @@ class MiniRacer:
         the right caller, and we manage the lifecycle of the task and task handle.
         """
 
-        future = self._make_sync_future()
+        # Stuff the args into a map along with the future, so they aren't GC'd until
+        # the task completes:
+        future = self._make_sync_future(hold=args)
 
         # Start the task:
-        task_handle = task(self._mr_sync_callback, future)
+        task_handle = dll_method(*args, self._mr_sync_callback, future)
         try:
             # Let the caller handle waiting on the result:
             yield future

@@ -178,4 +178,20 @@ void Context::FreeBinaryValue(gsl::owner<BinaryValue*> val) {
   bv_factory_.Free(val);
 }
 
+auto Context::CallFunction(BinaryValue* func_ptr,
+                           BinaryValue* this_ptr,
+                           BinaryValue* argv,
+                           Callback callback,
+                           void* cb_data)
+    -> std::unique_ptr<CancelableTaskHandle> {
+  return RunTask(
+      [func_ptr, this, this_ptr, argv](v8::Isolate* isolate) {
+        const v8::HandleScope handle_scope(isolate);
+        return object_manipulator_.Call(
+            isolate, bv_factory_.GetPersistentHandle(isolate, func_ptr),
+            this_ptr, argv);
+      },
+      callback, cb_data);
+}
+
 }  // end namespace MiniRacer

@@ -130,22 +130,23 @@ LIB_EXPORT auto mr_splice_array(MiniRacer::Context* mr_context,
       .release();
 }
 
+LIB_EXPORT auto mr_call_function(MiniRacer::Context* mr_context,
+                                 MiniRacer::BinaryValue* func_ptr,
+                                 MiniRacer::BinaryValue* this_ptr,
+                                 MiniRacer::BinaryValue* argv,
+                                 MiniRacer::Callback callback,
+                                 void* cb_data)
+    -> MiniRacer::CancelableTaskHandle* {
+  return mr_context->CallFunction(func_ptr, this_ptr, argv, callback, cb_data)
+      .release();
+}
+
 // FOR DEBUGGING ONLY
 LIB_EXPORT auto mr_heap_snapshot(MiniRacer::Context* mr_context,
                                  MiniRacer::Callback callback,
                                  void* cb_data)
     -> MiniRacer::CancelableTaskHandle* {
   return mr_context->HeapSnapshot(callback, cb_data).release();
-}
-
-LIB_EXPORT auto mr_full_eval_call_count(MiniRacer::Context* mr_context)
-    -> uint64_t {
-  return mr_context->FullEvalCallCount();
-}
-
-LIB_EXPORT auto mr_function_eval_call_count(MiniRacer::Context* mr_context)
-    -> uint64_t {
-  return mr_context->FunctionEvalCallCount();
 }
 
 }  // end extern "C"

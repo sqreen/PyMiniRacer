@@ -40,8 +40,6 @@ class Context {
   auto Eval(const std::string& code,
             Callback callback,
             void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
-  [[nodiscard]] auto FunctionEvalCallCount() const -> uint64_t;
-  [[nodiscard]] auto FullEvalCallCount() const -> uint64_t;
   void AttachPromiseThen(BinaryValue* bv_ptr, Callback callback, void* cb_data);
   auto GetIdentityHash(BinaryValue* bv_ptr) -> int;
   auto GetOwnPropertyNames(BinaryValue* bv_ptr) -> BinaryValue::Ptr;
@@ -52,6 +50,11 @@ class Context {
                    int32_t start,
                    int32_t delete_count,
                    BinaryValue* new_val) -> BinaryValue::Ptr;
+  auto CallFunction(BinaryValue* func_ptr,
+                    BinaryValue* this_ptr,
+                    BinaryValue* argv,
+                    Callback callback,
+                    void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
 
  private:
   template <typename Runnable>
@@ -95,14 +98,6 @@ inline auto Context::IsHardMemoryLimitReached() const -> bool {
 
 inline void Context::ApplyLowMemoryNotification() {
   isolate_memory_monitor_.ApplyLowMemoryNotification();
-}
-
-inline auto Context::FunctionEvalCallCount() const -> uint64_t {
-  return code_evaluator_.FunctionEvalCallCount();
-}
-
-inline auto Context::FullEvalCallCount() const -> uint64_t {
-  return code_evaluator_.FullEvalCallCount();
 }
 
 inline void Context::AttachPromiseThen(BinaryValue* bv_ptr,

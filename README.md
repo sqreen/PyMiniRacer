@@ -62,6 +62,15 @@ Variables are kept inside of a context:
     'Sqreen'
 ```
 
+You can evaluate whole scripts within JavaScript, or define and return JavaScript
+function objects and call them from Python (*new in v0.11.0*):
+
+```python
+    >>> square = ctx.eval("a => a*a")
+    >>> square(4)
+    16
+```
+
 JavaScript Objects and Arrays are modeled in Python as dictionaries and lists (or, more
 precisely,
 [`MutableMapping`](https://docs.python.org/3/library/collections.abc.html#collections.abc.MutableMapping)

@@ -1,6 +1,5 @@
 """ Test .eval() method """
 
-from contextlib import contextmanager
 from time import sleep, time
 
 import pytest
@@ -40,26 +39,11 @@ def test_eval():
     assert mr.eval("42") == 42
 
 
-@contextmanager
-def expect_calls(mr, *, full=0, fast=0):
-    full_before = mr._full_eval_call_count()  # noqa: SLF001
-    fast_before = mr._function_eval_call_count()  # noqa: SLF001
-
-    yield
-
-    full_after = mr._full_eval_call_count()  # noqa: SLF001
-    fast_after = mr._function_eval_call_count()  # noqa: SLF001
-
-    assert full_after - full_before == full
-    assert fast_after - fast_before == fast
-
-
 def test_blank():
     mr = MiniRacer()
-    with expect_calls(mr, full=3):
-        assert mr.eval("") is JSUndefined
-        assert mr.eval(" ") is JSUndefined
-        assert mr.eval("\t") is JSUndefined
+    assert mr.eval("") is JSUndefined
+    assert mr.eval(" ") is JSUndefined
+    assert mr.eval("\t") is JSUndefined
 
 
 def test_global():
@@ -97,10 +81,8 @@ def test_exception_thrown():
 
     context.eval(js_source)
 
-    # Add extra junk (+'') to avoid our fast function call path which produces a
-    # slightly different traceback:
     with pytest.raises(JSEvalException) as exc_info:
-        context.eval("f()+''")
+        context.eval("f()")
 
     assert (
         exc_info.value.args[0]
@@ -116,52 +98,26 @@ Error: blah
     )
 
 
-def test_fast_call_exception_thrown():
-    mr = MiniRacer()
-
-    with expect_calls(mr, full=1, fast=1):
-        js_source = "var f = function() {throw new Error('blah')};"
-
-        mr.eval(js_source)
-
-        # This should go into our fast function call route
-        with pytest.raises(JSEvalException) as exc_info:
-            mr.eval("f()")
-
-        assert (
-            exc_info.value.args[0]
-            == """\
-<anonymous>:1: Error: blah
-var f = function() {throw new Error('blah')};
-                    ^
-
-Error: blah
-    at f (<anonymous>:1:27)
-"""
-        )
-
-
 def test_string_thrown():
     mr = MiniRacer()
 
     js_source = "var f = function() {throw 'blah'};"
 
-    with expect_calls(mr, full=1, fast=1):
-        mr.eval(js_source)
+    mr.eval(js_source)
 
-        with pytest.raises(JSEvalException) as exc_info:
-            mr.eval("f()")
+    with pytest.raises(JSEvalException) as exc_info:
+        mr.eval("f()")
 
-        # When you throw a plain string (not wrapping it in a `new Error(...)`), you
-        # get no backtrace:
-        assert (
-            exc_info.value.args[0]
-            == """\
+    # When you throw a plain string (not wrapping it in a `new Error(...)`), you
+    # get no backtrace:
+    assert (
+        exc_info.value.args[0]
+        == """\
 <anonymous>:1: blah
 var f = function() {throw 'blah'};
                     ^
 """
-        )
+    )
 
 
 def test_cannot_parse():
@@ -411,21 +367,3 @@ async def test_resolved_promise_async():
     mr = MiniRacer()
     val = await mr.eval("Promise.resolve(6*7)")
     assert val == 42
-
-
-def test_fast_call():
-    mr = MiniRacer()
-    with expect_calls(mr, full=2, fast=1):
-        mr.eval("var test = function () { return 42; }")
-
-        # This syntax is optimized and takes another execution path in the extension
-        # Note: the fast call optimization only works with functions defined using
-        # "var", of "function test() { ... }", which place the definition on the global
-        # "this". It doesn't work with functions defined as "let" or "const" because
-        # they place the function onto block scope, where our optimization cannot find
-        # them.
-        assert mr.eval("test()") == 42
-
-        # It looks like a fast call but it is not (it ends with '()' but no identifier)
-        # should not fail and do a classical evaluation.
-        assert mr.eval("1+test()") == 43

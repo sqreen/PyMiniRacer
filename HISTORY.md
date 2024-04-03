@@ -8,10 +8,21 @@
     including recursively (i.e., you can read Objects embedded in other objects, and
     embed your own).
 
+- Added ability to directly call `JSFunction` objects from Python. E.g.,
+    `mr.eval("a => a*a")(4)` parses the given number-squaring code into a function,
+    returns a handle to that function to Python, calls it with the number `4`, and
+    recieves the result of `16`.
+
 - Added a `JSUndefined` Python object to model JavaScript `undefined`. This is needed to
     properly implement the above interface for reading Object and Array elements.
     *Unfortunately, this may present a breaking change for users who assume JavaScript
     `undefined` is modeled as Python `None`.*
+
+- Removed an old optimization for `eval` on simple no-argument function calls (i.e.,
+    `myfunc()`). The optimization only delivered about a 17% speedup on no-op calls (and
+    helped relatively *less* on calls which actually did work), and for the purpose of
+    optimizing repeated calls to the same function, it's now redundant with extracting
+    and calling the function from Python, e.g., `mr.eval("myfunc")()`.
 
 ## 0.10.0 (2024-03-31)
 

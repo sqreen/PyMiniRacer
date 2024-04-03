@@ -36,6 +36,10 @@ class ObjectManipulator {
               int32_t start,
               int32_t delete_count,
               BinaryValue* new_val) -> BinaryValue::Ptr;
+  auto Call(v8::Isolate* isolate,
+            v8::Local<v8::Value> func,
+            BinaryValue* this_ptr,
+            BinaryValue* argv_ptr) -> BinaryValue::Ptr;
 
  private:
   v8::Persistent<v8::Context>* context_;
