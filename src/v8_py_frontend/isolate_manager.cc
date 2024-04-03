@@ -44,8 +44,11 @@ void IsolateManager::RunInterrupt(v8::Isolate* /*isolate*/, void* data) {
   task->Run();
 }
 
-IsolateManager::~IsolateManager() {
-  shutdown_ = true;
+void IsolateManager::Shutdown() {
+  const bool was_shutdown = shutdown_.exchange(true);
+  if (was_shutdown) {
+    return;
+  }
 
   // From v8/src/d8/d8.cc Worker::Terminate():
   // Throw a no-op task on the queue just to kick the message loop into noticing
@@ -57,6 +60,13 @@ IsolateManager::~IsolateManager() {
   // isolate_holder_.Get()->TerminateExecution();
 
   thread_.join();
+}
+
+IsolateManagerStopper::IsolateManagerStopper(IsolateManager* isolate_manager)
+    : isolate_manager_(isolate_manager) {}
+
+IsolateManagerStopper::~IsolateManagerStopper() {
+  isolate_manager_->Shutdown();
 }
 
 }  // end namespace MiniRacer

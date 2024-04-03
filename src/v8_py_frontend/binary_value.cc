@@ -24,9 +24,27 @@ namespace MiniRacer {
 BinaryValueFactory::BinaryValueFactory(IsolateManager* isolate_manager)
     : isolate_manager_(isolate_manager) {}
 
+BinaryValueFactory::~BinaryValueFactory() {
+  // Free any binary values which Python didn't free before destroying the
+  // MiniRacer::Context:
+  // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
+  for (gsl::owner<BinaryValue*> bv_ptr : binary_values_) {
+    DoFree(bv_ptr);
+  }
+}
+
 // NOLINTBEGIN(cppcoreguidelines-pro-type-union-access)
 
 void BinaryValueFactory::Free(gsl::owner<BinaryValue*> val) {
+  {
+    const std::lock_guard<std::mutex> lock(binary_values_mutex_);
+    binary_values_.erase(val);
+  }
+
+  DoFree(val);
+}
+
+void BinaryValueFactory::DoFree(gsl::owner<BinaryValue*> val) {
   if (val == nullptr) {
     return;
   }
@@ -132,21 +150,27 @@ auto BinaryValueFactory::FromValue(v8::Local<v8::Context> context,
   return res;
 }
 
+auto BinaryValueFactory::New() -> BinaryValue::Ptr {
+  auto ret = BinaryValue::Ptr(new BinaryValue(), BinaryValueDeleter(this));
+
+  {
+    // Track all created binary values to relieve Python of the duty of garbage
+    // collecting them in the correct order relative to the MiniRacer::Context:
+    const std::lock_guard<std::mutex> lock(binary_values_mutex_);
+    binary_values_.insert(ret.get());
+  }
+
+  return ret;
+}
+
 void BinaryValueFactory::SavePersistentHandle(v8::Isolate* isolate,
                                               BinaryValue* bv_ptr,
                                               v8::Local<v8::Value> value) {
   // We store a map from BinaryValue* to v8::Persistent* rather than exposing
-  // the latter to the Python side, for two reasons:
-  //
-  // 1. This makes it easier to reason about memory management. The Python side
-  //    only has to deal with the BinaryValue pointer and free it.
-  //
-  // 2. Because freeing Persistent handles is necessarily asynchronous and
-  //    relies on the IsolateManager's message pump (see
-  //    BinaryValueFactory::DeletePersistentHandle for more on why), keeping a
-  //    map here helps us free any dangling Persistent handles in the event the
-  //    message pump is destroyed before it finishes cleaning up all the
-  //    garbage we throw at it.
+  // the latter to the Python side, because this makes it easier to reason
+  // about memory management. The Python side only sees the BinaryValue
+  // pointer, and freeing it (via BinaryValueFactory::Free) takes care of the
+  // hidden underlying v8::Persistent* automatically.
   const std::lock_guard<std::mutex> lock(persistent_handles_mutex_);
   persistent_handles_[bv_ptr] =
       std::make_unique<v8::Persistent<v8::Value>>(isolate, value);

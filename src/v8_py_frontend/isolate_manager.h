@@ -28,12 +28,6 @@ namespace MiniRacer {
 class IsolateManager {
  public:
   explicit IsolateManager(v8::Platform* platform);
-  ~IsolateManager();
-
-  IsolateManager(const IsolateManager&) = delete;
-  auto operator=(const IsolateManager&) -> IsolateManager& = delete;
-  IsolateManager(IsolateManager&&) = delete;
-  auto operator=(IsolateManager&& other) -> IsolateManager& = delete;
 
   /** Schedules a task to run on the foreground thread, using
    * v8::TaskRunner::PostTask. */
@@ -47,6 +41,8 @@ class IsolateManager {
       -> std::invoke_result_t<Runnable, v8::Isolate*>;
 
   void TerminateOngoingTask();
+
+  void Shutdown();
 
  private:
   void PumpMessages();
@@ -70,6 +66,22 @@ class IsolateManager {
   std::shared_ptr<v8::TaskRunner> task_runner_;
   std::atomic<bool> shutdown_;
   std::thread thread_;
+};
+
+class IsolateManagerStopper {
+ public:
+  explicit IsolateManagerStopper(IsolateManager* isolate_manager);
+  ~IsolateManagerStopper();
+
+  IsolateManagerStopper(const IsolateManagerStopper&) = delete;
+  auto operator=(const IsolateManagerStopper&) -> IsolateManagerStopper& =
+                                                      delete;
+  IsolateManagerStopper(IsolateManagerStopper&&) = delete;
+  auto operator=(IsolateManagerStopper&& other) -> IsolateManagerStopper& =
+                                                       delete;
+
+ private:
+  IsolateManager* isolate_manager_;
 };
 
 /** Just a silly way to run code on the foreground task runner thread. */

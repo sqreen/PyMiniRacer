@@ -47,6 +47,7 @@ void init_v8(const std::string& v8_flags,
 
 Context::Context()
     : isolate_manager_(current_platform.get()),
+      isolate_manager_stopper_(&isolate_manager_),
       isolate_memory_monitor_(&isolate_manager_),
       bv_factory_(&isolate_manager_),
       context_holder_(&isolate_manager_),
@@ -56,25 +57,33 @@ Context::Context()
       heap_reporter_(&bv_factory_),
       promise_attacher_(&isolate_manager_, context_holder_.Get(), &bv_factory_),
       object_manipulator_(context_holder_.Get(), &bv_factory_),
-      cancelable_task_runner_(&isolate_manager_) {}
+      cancelable_task_runner_(&isolate_manager_),
+      pending_task_waiter_(&pending_task_counter_) {}
 
 template <typename Runnable>
 auto Context::RunTask(Runnable runnable,
                       Callback callback,
                       void* cb_data) -> std::unique_ptr<CancelableTaskHandle> {
+  // Start an async task!
+
+  // To make sure we perform an orderly exit, we track this async work, and
+  // wait for it to complete before we start destructing the Context:
+  pending_task_counter_.Increment();
+
   return cancelable_task_runner_.Schedule(
       /*runnable=*/
       std::move(runnable),
       /*on_completed=*/
-      [callback, cb_data](BinaryValue::Ptr val) {
+      [callback, cb_data, this](BinaryValue::Ptr val) {
+        pending_task_counter_.Decrement();
         callback(cb_data, val.release());
       },
       /*on_canceled=*/
       [callback, cb_data, this]() {
-        callback(cb_data, bv_factory_
-                              .FromString("execution terminated",
-                                          type_terminated_exception)
-                              .release());
+        auto err = bv_factory_.FromString("execution terminated",
+                                          type_terminated_exception);
+        pending_task_counter_.Decrement();
+        callback(cb_data, err.release());
       });
 }
 

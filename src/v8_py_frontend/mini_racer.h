@@ -11,6 +11,7 @@
 #include "cancelable_task_runner.h"
 #include "code_evaluator.h"
 #include "context_holder.h"
+#include "count_down_latch.h"
 #include "gsl_stub.h"
 #include "heap_reporter.h"
 #include "isolate_manager.h"
@@ -59,6 +60,7 @@ class Context {
                void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
 
   IsolateManager isolate_manager_;
+  IsolateManagerStopper isolate_manager_stopper_;
   IsolateMemoryMonitor isolate_memory_monitor_;
   BinaryValueFactory bv_factory_;
   ContextHolder context_holder_;
@@ -67,6 +69,8 @@ class Context {
   PromiseAttacher promise_attacher_;
   ObjectManipulator object_manipulator_;
   CancelableTaskRunner cancelable_task_runner_;
+  CountDownLatch pending_task_counter_;
+  CountDownLatchWaiter pending_task_waiter_;
 };
 
 void init_v8(const std::string& v8_flags,

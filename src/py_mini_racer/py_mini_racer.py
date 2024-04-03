@@ -1011,7 +1011,8 @@ class MiniRacer:
         raise JSConversionException
 
     def _free(self, res: _MiniRacerBinaryValue) -> None:
-        self._dll.mr_free_value(self.ctx, res)
+        if self._dll and self.ctx:
+            self._dll.mr_free_value(self.ctx, res)
 
     @contextmanager
     def _run_task(self, task):
@@ -1038,9 +1039,17 @@ class MiniRacer:
             self._dll.mr_free_task_handle(task_handle)
 
     def __del__(self):
-        dll = getattr(self, "_dll", None)
-        if dll:
-            dll.mr_free_context(getattr(self, "ctx", None))
+        if self._dll and self.ctx:
+            # Because finalizers aren't necessarily called in any consistent order,
+            # it's possible for this MiniRacer.__del__() method to be called before
+            # _MiniRacerBinaryValueHolder.__del__() which calls MiniRacer._free() on
+            # this same object.
+            # To prevent further attempted use of the context, remove the variable.
+            # (Note that the C++ MiniRacer object tracks all _MiniRacerBinaryValue
+            # instances and frees them upon its own destruction, so there is no memory
+            # leak in practice when belated calls to MiniRacer._free() are ignored.)
+            ctx, self.ctx = self.ctx, None
+            self._dll.mr_free_context(ctx)
 
 
 # Compatibility with versions 0.4 & 0.5

@@ -13,6 +13,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include "gsl_stub.h"
 #include "isolate_manager.h"
 
@@ -69,7 +70,6 @@ struct BinaryValue {
     gsl::owner<char*> bytes;
     gsl::owner<v8::Persistent<v8::Value>*> value_ptr;
     int64_t int_val;
-    uint64_t uint_val;
     double double_val;
   };
   size_t len;
@@ -89,6 +89,12 @@ struct BinaryValue {
 class BinaryValueFactory {
  public:
   explicit BinaryValueFactory(IsolateManager* isolate_manager);
+  ~BinaryValueFactory();
+
+  BinaryValueFactory(const BinaryValueFactory&) = delete;
+  auto operator=(const BinaryValueFactory&) -> BinaryValueFactory& = delete;
+  BinaryValueFactory(BinaryValueFactory&&) = delete;
+  auto operator=(BinaryValueFactory&& other) -> BinaryValueFactory& = delete;
 
   auto FromString(std::string str, BinaryTypes result_type) -> BinaryValue::Ptr;
   auto FromValue(v8::Local<v8::Context> context,
@@ -114,8 +120,11 @@ class BinaryValueFactory {
   void DeletePersistentHandle(BinaryValue* bv_ptr);
   void CreateBackingStoreRef(v8::Local<v8::Value> value, BinaryValue* bv_ptr);
   void DeleteBackingStoreRef(BinaryValue* bv_ptr);
+  void DoFree(gsl::owner<BinaryValue*> val);
 
   IsolateManager* isolate_manager_;
+  std::mutex binary_values_mutex_;
+  std::unordered_set<BinaryValue*> binary_values_;
   std::mutex backing_stores_mutex_;
   std::unordered_map<BinaryValue*, std::shared_ptr<v8::BackingStore>>
       backing_stores_;
@@ -129,10 +138,6 @@ inline BinaryValueDeleter::BinaryValueDeleter(BinaryValueFactory* factory)
 
 inline void BinaryValueDeleter::operator()(gsl::owner<BinaryValue*> val) const {
   factory_->Free(val);
-}
-
-inline auto BinaryValueFactory::New() -> BinaryValue::Ptr {
-  return {new BinaryValue(), BinaryValueDeleter(this)};
 }
 
 }  // namespace MiniRacer
