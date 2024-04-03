@@ -314,7 +314,10 @@ auto BinaryValueFactory::ToValue(v8::Local<v8::Context> context,
   }
 
   if (bv_ptr->type == type_str_utf8) {
-    return v8::String::NewFromUtf8(isolate, bv_ptr->bytes).ToLocalChecked();
+    return v8::String::NewFromUtf8(isolate, bv_ptr->bytes,
+                                   v8::NewStringType::kNormal,
+                                   static_cast<int>(bv_ptr->len))
+        .ToLocalChecked();
   }
 
   // Unknown type!

@@ -68,7 +68,6 @@ struct BinaryValue {
   union {
     char* backing_store_ptr;
     gsl::owner<char*> bytes;
-    gsl::owner<v8::Persistent<v8::Value>*> value_ptr;
     int64_t int_val;
     double double_val;
   };

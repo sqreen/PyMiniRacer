@@ -50,6 +50,7 @@ def test_str():
     v = Validator()
     v.validate("'a string'")
     v.validate("'a ' + 'string'")
+    v.validate("string with null \0 byte")
 
 
 def test_unicode():
