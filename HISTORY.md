@@ -1,6 +1,6 @@
 # History
 
-## 0.11.0 (2024-04-??)
+## 0.11.0 (2024-04-03)
 
 - Added a `MutableMapping` (`dict`-like) interface for all derivatives of JS Objects,
     and a `MutableSequence` (`list`-like) interface for JS Arrays. You can now use
@@ -23,6 +23,14 @@
     helped relatively *less* on calls which actually did work), and for the purpose of
     optimizing repeated calls to the same function, it's now redundant with extracting
     and calling the function from Python, e.g., `mr.eval("myfunc")()`.
+
+- Hardening (meaning "fixing potential but not-yet-seen bugs") related to freeing
+    `BinaryValue` instances (which convey data from C++ to Python).
+
+- More hardening related to race conditions on teardown of the `MiniRacer` object in the
+    unlikely condition that `eval` operations are still executing on the C++ side, and
+    abandoned on the Python side, when Python attempts to garbage collect the
+    `MiniRacer` object.
 
 ## 0.10.0 (2024-03-31)
 
