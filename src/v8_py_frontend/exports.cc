@@ -1,3 +1,4 @@
+#include <v8-initialization.h>
 #include <v8-version-string.h>
 #include <cstddef>
 #include <cstdint>
@@ -104,6 +105,10 @@ LIB_EXPORT void mr_low_memory_notification(MiniRacer::Context* mr_context) {
 
 LIB_EXPORT auto mr_v8_version() -> char const* {
   return V8_VERSION_STRING;
+}
+
+LIB_EXPORT auto mr_v8_is_using_sandbox() -> bool {
+  return v8::V8::IsSandboxConfiguredSecurely();
 }
 
 LIB_EXPORT void mr_attach_promise_then(

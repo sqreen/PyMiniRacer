@@ -28,3 +28,8 @@ def test_init():
 def test_version():
     mr = MiniRacer()
     assert match(r"^\d+\.\d+\.\d+\.\d+$", mr.v8_version) is not None
+
+
+def test_sandbox():
+    mr = MiniRacer()
+    assert mr._ctx.v8_is_using_sandbox()  # noqa: SLF001

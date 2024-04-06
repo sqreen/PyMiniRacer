@@ -492,6 +492,8 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
 
     handle.mr_v8_version.restype = ctypes.c_char_p
 
+    handle.mr_v8_is_using_sandbox.restype = ctypes.c_bool
+
     handle.mr_value_count.argtypes = [ctypes.c_void_p]
     handle.mr_value_count.restype = ctypes.c_size_t
 
@@ -701,6 +703,11 @@ class _Context:
 
     def v8_version(self) -> str:
         return self._dll.mr_v8_version().decode("utf-8")
+
+    def v8_is_using_sandbox(self) -> bool:
+        """Checks for enablement of the V8 Sandbox. See https://v8.dev/blog/sandbox."""
+
+        return self._dll.mr_v8_is_using_sandbox()
 
     def evaluate(
         self,

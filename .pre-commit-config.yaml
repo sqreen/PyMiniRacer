@@ -65,3 +65,7 @@ repos:
         - -extra-arg=-stdlib=libstdc++
         - -extra-arg=-isystem
         - -extra-arg=v8_workspace/v8/include
+        # The real build knows the sandbox is enabled but clang-tidy needs to be
+        # informed:
+        - -extra-arg=-DV8_ENABLE_SANDBOX
+        - -extra-arg=-DV8_COMPRESS_POINTERS
