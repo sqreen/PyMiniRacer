@@ -1,5 +1,17 @@
 # History
 
+## 0.11.1 (2024-04-??)
+
+- Fixed Python crash on long-running microtasks, introduced in v0.8.1 (before which
+    long-running microtasks would probably not run at all).
+
+- Fixed memory leak on the exception object reported when an `eval` times out.
+
+- Hardened the memory management of JS value interchange between C++ and Python.
+
+- Hardened the memory management of task identification for asynchronous tasks between
+    C++ and Python.
+
 ## 0.11.0 (2024-04-03)
 
 - Added a `MutableMapping` (`dict`-like) interface for all derivatives of JS Objects,
