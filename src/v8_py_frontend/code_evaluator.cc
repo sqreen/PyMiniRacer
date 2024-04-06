@@ -37,7 +37,7 @@ auto CodeEvaluator::Eval(v8::Isolate* isolate,
 
   if (maybe_string.IsEmpty()) {
     // Implies we couldn't convert from utf-8 bytes, which would be odd.
-    return bv_factory_->FromString("invalid code string", type_parse_exception);
+    return bv_factory_->New("invalid code string", type_parse_exception);
   }
 
   // Provide a name just for exception messages:
@@ -49,19 +49,18 @@ auto CodeEvaluator::Eval(v8::Isolate* isolate,
                            &script_origin)
            .ToLocal(&script) ||
       script.IsEmpty()) {
-    return bv_factory_->FromExceptionMessage(context, trycatch.Message(),
-                                             trycatch.Exception(),
-                                             type_parse_exception);
+    return bv_factory_->New(context, trycatch.Message(), trycatch.Exception(),
+                            type_parse_exception);
   }
 
   v8::MaybeLocal<v8::Value> maybe_value = script->Run(context);
   if (!maybe_value.IsEmpty()) {
-    return bv_factory_->FromValue(context, maybe_value.ToLocalChecked());
+    return bv_factory_->New(context, maybe_value.ToLocalChecked());
   }
 
   // Didn't execute. Find an error:
   if (memory_monitor_->IsHardMemoryLimitReached()) {
-    return bv_factory_->FromString("", type_oom_exception);
+    return bv_factory_->New("", type_oom_exception);
   }
 
   BinaryTypes result_type = type_execute_exception;
@@ -69,8 +68,8 @@ auto CodeEvaluator::Eval(v8::Isolate* isolate,
     result_type = type_terminated_exception;
   }
 
-  return bv_factory_->FromExceptionMessage(context, trycatch.Message(),
-                                           trycatch.Exception(), result_type);
+  return bv_factory_->New(context, trycatch.Message(), trycatch.Exception(),
+                          result_type);
 }
 
 }  // end namespace MiniRacer

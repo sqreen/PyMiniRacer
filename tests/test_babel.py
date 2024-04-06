@@ -1,5 +1,6 @@
 """ Test loading and executing babel.js """
 
+from gc import collect
 from os.path import dirname
 from os.path import join as pathjoin
 
@@ -7,7 +8,7 @@ from py_mini_racer import MiniRacer
 
 
 def test_babel():
-    context = MiniRacer()
+    mr = MiniRacer()
 
     path = pathjoin(dirname(__file__), "fixtures/babel.js")
     with open(path, encoding="utf-8") as f:
@@ -22,5 +23,8 @@ def test_babel():
     """
         % babel_source
     )
-    context.eval(source)
-    assert context.eval("babel.eval(((x) => x * x)(8))") == 64
+    mr.eval(source)
+    assert mr.eval("babel.eval(((x) => x * x)(8))") == 64
+
+    collect()
+    assert mr.value_count() == 0

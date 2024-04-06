@@ -114,7 +114,7 @@ inline void CancelableTask<Runnable, OnCompleted, OnCanceled>::Run(
     v8::Isolate* isolate) {
   if (!task_state_->SetRunningIfNotCanceled()) {
     // Canceled before we started the task.
-    on_canceled_();
+    on_canceled_({});
 
     return;
   }
@@ -132,7 +132,9 @@ inline void CancelableTask<Runnable, OnCompleted, OnCanceled>::Run(
     // Keeping track of what happened, if it matters at all, is the caller's
     // responsibility. The only guarantee we provide is that we call *exactly
     // one of* on_canceled or on_completed.
-    on_canceled_();
+    // Note that we pass the result to the on_canceled_ function so it can
+    // clean up the result if needed.
+    on_canceled_(result);
     return;
   }
 

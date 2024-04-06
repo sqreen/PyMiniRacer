@@ -1,5 +1,6 @@
 """ Test .eval() method """
 
+from gc import collect
 from time import sleep, time
 
 import pytest
@@ -33,10 +34,17 @@ ReferenceError: invalid is not defined
 """
     )
 
+    del exc_info
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_eval():
     mr = MiniRacer()
     assert mr.eval("42") == 42
+
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_blank():
@@ -45,11 +53,17 @@ def test_blank():
     assert mr.eval(" ") is JSUndefined
     assert mr.eval("\t") is JSUndefined
 
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_global():
     mr = MiniRacer()
     mr.eval("var xabc = 22;")
     assert mr.eval("xabc") == 22
+
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_fun():
@@ -59,6 +73,9 @@ def test_fun():
     assert mr.eval("x(1)") == 2
     assert mr.eval("x(10)") == 11
     assert mr.eval("x(100)") == 101
+
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_multiple_ctx():
@@ -73,16 +90,21 @@ def test_multiple_ctx():
     assert c2.eval("(x)") == 2
     assert c3.eval("(x)") == 3
 
+    collect()
+    assert c1.value_count() == 0
+    assert c2.value_count() == 0
+    assert c3.value_count() == 0
+
 
 def test_exception_thrown():
-    context = MiniRacer()
+    mr = MiniRacer()
 
     js_source = "var f = function() {throw new Error('blah')};"
 
-    context.eval(js_source)
+    mr.eval(js_source)
 
     with pytest.raises(JSEvalException) as exc_info:
-        context.eval("f()")
+        mr.eval("f()")
 
     assert (
         exc_info.value.args[0]
@@ -96,6 +118,10 @@ Error: blah
     at <anonymous>:1:1
 """
     )
+
+    del exc_info
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_string_thrown():
@@ -119,6 +145,10 @@ var f = function() {throw 'blah'};
 """
     )
 
+    del exc_info
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_cannot_parse():
     mr = MiniRacer()
@@ -138,6 +168,10 @@ SyntaxError: Unexpected end of input
 """
     )
 
+    del exc_info
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_null_byte():
     mr = MiniRacer()
@@ -148,6 +182,9 @@ def test_null_byte():
     in_val = 'var str = "' + s + '"; str;'
     result = mr.eval(in_val)
     assert result == s
+
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_timeout():
@@ -165,6 +202,10 @@ def test_timeout():
 
     assert exc_info.value.args[0] == "JavaScript was terminated by timeout"
 
+    del exc_info
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_timeout_ms():
     # Same as above but with the deprecated timeout millisecond argument
@@ -181,6 +222,10 @@ def test_timeout_ms():
     assert timeout <= duration <= timeout + 5
 
     assert exc_info.value.args[0] == "JavaScript was terminated by timeout"
+
+    del exc_info
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_max_memory_soft():
@@ -206,6 +251,10 @@ while(true) {
     assert mr.was_hard_memory_limit_reached()
     assert exc_info.value.args[0] == "JavaScript memory limit reached"
 
+    del exc_info
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_max_memory_hard():
     mr = MiniRacer()
@@ -227,6 +276,10 @@ while(true) {
     assert not mr.was_soft_memory_limit_reached()
     assert mr.was_hard_memory_limit_reached()
     assert exc_info.value.args[0] == "JavaScript memory limit reached"
+
+    del exc_info
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_max_memory_hard_eval_arg():
@@ -251,11 +304,19 @@ while(true) {
 
     assert exc_info.value.args[0] == "JavaScript memory limit reached"
 
+    del exc_info
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_symbol():
     mr = MiniRacer()
     res = mr.eval("Symbol.toPrimitive")
     assert isinstance(res, JSSymbol)
+
+    del res
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_microtask():
@@ -280,6 +341,9 @@ done
     )
     assert mr.eval("done")
 
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_polling():
     mr = MiniRacer()
@@ -297,6 +361,9 @@ done
     while time() - start < 10 and not mr.eval("done"):
         sleep(0.1)
     assert mr.eval("done")
+
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_settimeout():
@@ -321,6 +388,9 @@ clearTimeout(b)
     assert mr.eval("results[1]") == "a"
     assert mr.eval("results[2]") == "d"
 
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_promise_sync():
     mr = MiniRacer()
@@ -336,6 +406,10 @@ new Promise((res, rej) => setTimeout(() => res(42), 1000)); // 1 s timeout
     result = promise.get(timeout=10)
     assert time() - start > 0.5
     assert result == 42
+
+    del promise
+    collect()
+    assert mr.value_count() == 0
 
 
 @pytest.mark.asyncio
@@ -355,11 +429,18 @@ new Promise((res, rej) => setTimeout(() => res(42), 1000)); // 1 s timeout
     assert time() - start < 10
     assert result == 42
 
+    del promise
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_resolved_promise_sync():
     mr = MiniRacer()
     val = mr.eval("Promise.resolve(6*7)").get()
     assert val == 42
+
+    collect()
+    assert mr.value_count() == 0
 
 
 @pytest.mark.asyncio
@@ -367,3 +448,6 @@ async def test_resolved_promise_async():
     mr = MiniRacer()
     val = await mr.eval("Promise.resolve(6*7)")
     assert val == 42
+
+    collect()
+    assert mr.value_count() == 0

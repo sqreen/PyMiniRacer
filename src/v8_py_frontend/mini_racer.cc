@@ -5,6 +5,7 @@
 #include <v8-locker.h>
 #include <v8-persistent-handle.h>
 #include <v8-platform.h>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -13,7 +14,6 @@
 #include "binary_value.h"
 #include "callback.h"
 #include "cancelable_task_runner.h"
-#include "gsl_stub.h"
 #include "object_manipulator.h"
 
 namespace MiniRacer {
@@ -55,7 +55,7 @@ Context::Context()
                       &bv_factory_,
                       &isolate_memory_monitor_),
       heap_reporter_(&bv_factory_),
-      promise_attacher_(&isolate_manager_, context_holder_.Get(), &bv_factory_),
+      promise_attacher_(context_holder_.Get(), &bv_factory_),
       object_manipulator_(context_holder_.Get(), &bv_factory_),
       cancelable_task_runner_(&isolate_manager_),
       pending_task_waiter_(&pending_task_counter_) {}
@@ -74,16 +74,21 @@ auto Context::RunTask(Runnable runnable,
       /*runnable=*/
       std::move(runnable),
       /*on_completed=*/
-      [callback, cb_data, this](BinaryValue::Ptr val) {
+      [callback, cb_data, this](const BinaryValue::Ptr& val) {
         pending_task_counter_.Decrement();
-        callback(cb_data, val.release());
+        callback(cb_data, val->GetHandle());
       },
       /*on_canceled=*/
-      [callback, cb_data, this]() {
-        auto err = bv_factory_.FromString("execution terminated",
-                                          type_terminated_exception);
+      [callback, cb_data, this](const BinaryValue::Ptr& val) {
+        if (val) {
+          // Ignore the produced value, if any:
+          bv_factory_.Free(val->GetHandle());
+        }
+
+        auto err =
+            bv_factory_.New("execution terminated", type_terminated_exception);
         pending_task_counter_.Decrement();
-        callback(cb_data, err.release());
+        callback(cb_data, err->GetHandle());
       });
 }
 
@@ -115,83 +120,199 @@ auto Context::HeapStats(Callback callback, void* cb_data)
       callback, cb_data);
 }
 
-auto Context::GetIdentityHash(BinaryValue* bv_ptr) -> int {
-  return isolate_manager_.RunAndAwait([bv_ptr, this](v8::Isolate* isolate) {
-    const v8::HandleScope handle_scope(isolate);
-    return ObjectManipulator::GetIdentityHash(
-        isolate, bv_factory_.GetPersistentHandle(isolate, bv_ptr));
-  });
+auto Context::AttachPromiseThen(BinaryValueHandle* promise_handle,
+                                MiniRacer::Callback callback,
+                                void* cb_data) -> BinaryValueHandle* {
+  auto promise_ptr = bv_factory_.FromHandle(promise_handle);
+  if (!promise_ptr) {
+    return bv_factory_.New("Bad handle: promise", type_value_exception)
+        ->GetHandle();
+  }
+
+  return isolate_manager_
+      .RunAndAwait(
+          [this, promise_ptr, callback, cb_data](v8::Isolate* isolate) {
+            return promise_attacher_.AttachPromiseThen(
+                isolate, promise_ptr.get(), callback, cb_data);
+          })
+      ->GetHandle();
 }
 
-auto Context::GetOwnPropertyNames(BinaryValue* bv_ptr) -> BinaryValue::Ptr {
-  return isolate_manager_.RunAndAwait([bv_ptr, this](v8::Isolate* isolate) {
-    const v8::HandleScope handle_scope(isolate);
-    return object_manipulator_.GetOwnPropertyNames(
-        isolate, bv_factory_.GetPersistentHandle(isolate, bv_ptr));
-  });
+auto Context::GetIdentityHash(BinaryValueHandle* obj_handle)
+    -> BinaryValueHandle* {
+  auto obj_ptr = bv_factory_.FromHandle(obj_handle);
+  if (!obj_ptr) {
+    return bv_factory_.New("Bad handle: obj", type_value_exception)
+        ->GetHandle();
+  }
+
+  return isolate_manager_
+      .RunAndAwait([this, obj_ptr](v8::Isolate* isolate) {
+        return object_manipulator_.GetIdentityHash(isolate, obj_ptr.get());
+      })
+      ->GetHandle();
 }
 
-auto Context::GetObjectItem(BinaryValue* bv_ptr,
-                            BinaryValue* key) -> BinaryValue::Ptr {
-  return isolate_manager_.RunAndAwait(
-      [bv_ptr, this, &key](v8::Isolate* isolate) mutable {
-        const v8::HandleScope handle_scope(isolate);
-        return object_manipulator_.Get(
-            isolate, bv_factory_.GetPersistentHandle(isolate, bv_ptr), key);
-      });
+auto Context::GetOwnPropertyNames(BinaryValueHandle* obj_handle)
+    -> BinaryValueHandle* {
+  auto obj_ptr = bv_factory_.FromHandle(obj_handle);
+  if (!obj_ptr) {
+    return bv_factory_.New("Bad handle: obj", type_value_exception)
+        ->GetHandle();
+  }
+
+  return isolate_manager_
+      .RunAndAwait([this, obj_ptr](v8::Isolate* isolate) {
+        return object_manipulator_.GetOwnPropertyNames(isolate, obj_ptr.get());
+      })
+      ->GetHandle();
 }
 
-void Context::SetObjectItem(BinaryValue* bv_ptr,
-                            BinaryValue* key,
-                            BinaryValue* val) {
-  isolate_manager_.RunAndAwait([bv_ptr, this, &key,
-                                val](v8::Isolate* isolate) mutable {
-    const v8::HandleScope handle_scope(isolate);
-    object_manipulator_.Set(
-        isolate, bv_factory_.GetPersistentHandle(isolate, bv_ptr), key, val);
-  });
+auto Context::GetObjectItem(BinaryValueHandle* obj_handle,
+                            BinaryValueHandle* key_handle)
+    -> BinaryValueHandle* {
+  auto obj_ptr = bv_factory_.FromHandle(obj_handle);
+  if (!obj_ptr) {
+    return bv_factory_.New("Bad handle: obj", type_value_exception)
+        ->GetHandle();
+  }
+
+  auto key_ptr = bv_factory_.FromHandle(key_handle);
+  if (!key_ptr) {
+    return bv_factory_.New("Bad handle: key", type_value_exception)
+        ->GetHandle();
+  }
+
+  return isolate_manager_
+      .RunAndAwait([this, obj_ptr, key_ptr](v8::Isolate* isolate) mutable {
+        return object_manipulator_.Get(isolate, obj_ptr.get(), key_ptr.get());
+      })
+      ->GetHandle();
 }
 
-auto Context::DelObjectItem(BinaryValue* bv_ptr, BinaryValue* key) -> bool {
-  return isolate_manager_.RunAndAwait(
-      [bv_ptr, this, &key](v8::Isolate* isolate) mutable {
-        const v8::HandleScope handle_scope(isolate);
-        return object_manipulator_.Del(
-            isolate, bv_factory_.GetPersistentHandle(isolate, bv_ptr), key);
-      });
+auto Context::SetObjectItem(BinaryValueHandle* obj_handle,
+                            BinaryValueHandle* key_handle,
+                            BinaryValueHandle* val_handle)
+    -> BinaryValueHandle* {
+  auto obj_ptr = bv_factory_.FromHandle(obj_handle);
+  if (!obj_ptr) {
+    return bv_factory_.New("Bad handle: obj", type_value_exception)
+        ->GetHandle();
+  }
+
+  auto key_ptr = bv_factory_.FromHandle(key_handle);
+  if (!key_ptr) {
+    return bv_factory_.New("Bad handle: key", type_value_exception)
+        ->GetHandle();
+  }
+
+  auto val_ptr = bv_factory_.FromHandle(val_handle);
+  if (!val_ptr) {
+    return bv_factory_.New("Bad handle: val", type_value_exception)
+        ->GetHandle();
+  }
+
+  return isolate_manager_
+      .RunAndAwait(
+          [this, obj_ptr, key_ptr, val_ptr](v8::Isolate* isolate) mutable {
+            return object_manipulator_.Set(isolate, obj_ptr.get(),
+                                           key_ptr.get(), val_ptr.get());
+          })
+      ->GetHandle();
 }
 
-auto Context::SpliceArray(BinaryValue* bv_ptr,
+auto Context::DelObjectItem(BinaryValueHandle* obj_handle,
+                            BinaryValueHandle* key_handle)
+    -> BinaryValueHandle* {
+  auto obj_ptr = bv_factory_.FromHandle(obj_handle);
+  if (!obj_ptr) {
+    return bv_factory_.New("Bad handle: obj", type_value_exception)
+        ->GetHandle();
+  }
+
+  auto key_ptr = bv_factory_.FromHandle(key_handle);
+  if (!key_ptr) {
+    return bv_factory_.New("Bad handle: key", type_value_exception)
+        ->GetHandle();
+  }
+
+  return isolate_manager_
+      .RunAndAwait([this, obj_ptr, key_ptr](v8::Isolate* isolate) mutable {
+        return object_manipulator_.Del(isolate, obj_ptr.get(), key_ptr.get());
+      })
+      ->GetHandle();
+}
+
+auto Context::SpliceArray(BinaryValueHandle* obj_handle,
                           int32_t start,
                           int32_t delete_count,
-                          BinaryValue* new_val) -> BinaryValue::Ptr {
-  return isolate_manager_.RunAndAwait(
-      [bv_ptr, this, start, delete_count, new_val](v8::Isolate* isolate) {
-        const v8::HandleScope handle_scope(isolate);
-        return object_manipulator_.Splice(
-            isolate, bv_factory_.GetPersistentHandle(isolate, bv_ptr), start,
-            delete_count, new_val);
-      });
+                          BinaryValueHandle* new_val_handle)
+    -> BinaryValueHandle* {
+  auto obj_ptr = bv_factory_.FromHandle(obj_handle);
+  if (!obj_ptr) {
+    return bv_factory_.New("Bad handle: obj", type_value_exception)
+        ->GetHandle();
+  }
+
+  BinaryValue::Ptr new_val_ptr;
+  if (new_val_handle != nullptr) {
+    new_val_ptr = bv_factory_.FromHandle(new_val_handle);
+    if (!new_val_ptr) {
+      return bv_factory_.New("Bad handle: new_val", type_value_exception)
+          ->GetHandle();
+    }
+  }
+
+  return isolate_manager_
+      .RunAndAwait([this, obj_ptr, start, delete_count,
+                    new_val_ptr](v8::Isolate* isolate) {
+        return object_manipulator_.Splice(isolate, obj_ptr.get(), start,
+                                          delete_count, new_val_ptr.get());
+      })
+      ->GetHandle();
 }
 
-void Context::FreeBinaryValue(gsl::owner<BinaryValue*> val) {
+void Context::FreeBinaryValue(BinaryValueHandle* val) {
   bv_factory_.Free(val);
 }
 
-auto Context::CallFunction(BinaryValue* func_ptr,
-                           BinaryValue* this_ptr,
-                           BinaryValue* argv,
+auto Context::CallFunction(BinaryValueHandle* func_handle,
+                           BinaryValueHandle* this_handle,
+                           BinaryValueHandle* argv_handle,
                            Callback callback,
                            void* cb_data)
     -> std::unique_ptr<CancelableTaskHandle> {
+  auto func_ptr = bv_factory_.FromHandle(func_handle);
+  if (!func_ptr) {
+    auto err = bv_factory_.New("Bad handle: func", type_value_exception);
+    return RunTask([err](v8::Isolate* /*isolate*/) { return err; }, callback,
+                   cb_data);
+  }
+
+  auto this_ptr = bv_factory_.FromHandle(this_handle);
+  if (!this_ptr) {
+    auto err = bv_factory_.New("Bad handle: this", type_value_exception);
+    return RunTask([err](v8::Isolate* /*isolate*/) { return err; }, callback,
+                   cb_data);
+  }
+
+  auto argv_ptr = bv_factory_.FromHandle(argv_handle);
+  if (!argv_ptr) {
+    auto err = bv_factory_.New("Bad handle: argv", type_value_exception);
+    return RunTask([err](v8::Isolate* /*isolate*/) { return err; }, callback,
+                   cb_data);
+  }
+
   return RunTask(
-      [func_ptr, this, this_ptr, argv](v8::Isolate* isolate) {
-        const v8::HandleScope handle_scope(isolate);
-        return object_manipulator_.Call(
-            isolate, bv_factory_.GetPersistentHandle(isolate, func_ptr),
-            this_ptr, argv);
+      [this, func_ptr, this_ptr, argv_ptr](v8::Isolate* isolate) {
+        return object_manipulator_.Call(isolate, func_ptr.get(), this_ptr.get(),
+                                        argv_ptr.get());
       },
       callback, cb_data);
+}
+
+auto Context::BinaryValueCount() -> size_t {
+  return bv_factory_.Count();
 }
 
 }  // end namespace MiniRacer

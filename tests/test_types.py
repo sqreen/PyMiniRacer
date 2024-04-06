@@ -1,6 +1,7 @@
 """ Basic JS types tests """
 
 from datetime import datetime, timezone
+from gc import collect
 from json import dumps
 from time import time
 
@@ -36,6 +37,9 @@ class Validator:
         if self.round_trip:
             _test_round_trip(self.mr, py_val)
 
+        collect()
+        assert self.mr.value_count() == 0
+
 
 def test_undefined():
     mr = MiniRacer()
@@ -44,6 +48,10 @@ def test_undefined():
     assert undef == JSUndefined
     assert not undef
     _test_round_trip(mr, undef)
+
+    del undef
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_str():
@@ -59,6 +67,9 @@ def test_unicode():
     res = mr.eval("'" + ustr + "'")
     assert ustr == res
     _test_round_trip(mr, ustr)
+
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_numbers():
@@ -115,6 +126,10 @@ def test_object():
     assert res.__hash__() is not None
     _test_round_trip(mr, res)
 
+    del res
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_timestamp():
     val = int(time())
@@ -122,6 +137,9 @@ def test_timestamp():
     res = mr.eval("var a = new Date(%d); a" % (val * 1000))
     assert res == datetime.fromtimestamp(val, timezone.utc)
     _test_round_trip(mr, res)
+
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_symbol():
@@ -131,6 +149,10 @@ def test_symbol():
     assert res.__hash__() is not None
     _test_round_trip(mr, res)
 
+    del res
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_function():
     mr = MiniRacer()
@@ -139,12 +161,20 @@ def test_function():
     assert res.__hash__() is not None
     _test_round_trip(mr, res)
 
+    del res
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_date():
     mr = MiniRacer()
     res = mr.eval("var a = new Date(Date.UTC(2014, 0, 2, 3, 4, 5)); a")
     assert res == datetime(2014, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
     _test_round_trip(mr, res)
+
+    del res
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_exception():
@@ -162,6 +192,10 @@ def test_exception():
 
     assert "error: 42" in exc_info.value.args[0]
 
+    del exc_info
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_array_buffer():
     js_source = """
@@ -175,6 +209,10 @@ def test_array_buffer():
     assert len(ret) == 1024
     assert ret[0:1].tobytes() == b"\x42"
 
+    del ret
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_array_buffer_view():
     js_source = """
@@ -187,6 +225,10 @@ def test_array_buffer_view():
     ret = mr.eval(js_source)
     assert len(ret) == 1
     assert ret.tobytes() == b"\x42"
+
+    del ret
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_shared_array_buffer():
@@ -202,3 +244,7 @@ def test_shared_array_buffer():
     assert ret[0:1].tobytes() == b"\x42"
     ret[1:2] = b"\xFF"
     assert mr.eval("v[1]") == 0xFF
+
+    del ret
+    collect()
+    assert mr.value_count() == 0

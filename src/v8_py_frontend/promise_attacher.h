@@ -7,20 +7,20 @@
 #include <v8-persistent-handle.h>
 #include "binary_value.h"
 #include "callback.h"
-#include "isolate_manager.h"
 
 namespace MiniRacer {
 
 class PromiseAttacher {
  public:
-  PromiseAttacher(IsolateManager* isolate_manager,
-                  v8::Persistent<v8::Context>* context,
+  PromiseAttacher(v8::Persistent<v8::Context>* context,
                   BinaryValueFactory* bv_factory);
 
-  void AttachPromiseThen(BinaryValue* bv_ptr, Callback callback, void* cb_data);
+  auto AttachPromiseThen(v8::Isolate* isolate,
+                         BinaryValue* promise_ptr,
+                         Callback callback,
+                         void* cb_data) -> BinaryValue::Ptr;
 
  private:
-  IsolateManager* isolate_manager_;
   v8::Persistent<v8::Context>* context_;
   BinaryValueFactory* bv_factory_;
 };

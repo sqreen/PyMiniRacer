@@ -5,7 +5,7 @@
 
 namespace MiniRacer {
 
-using Callback = void (*)(void*, BinaryValue*);
+using Callback = void (*)(void*, BinaryValueHandle*);
 
 }  // end namespace MiniRacer
 

@@ -1,5 +1,6 @@
 """Test executing a WASM module."""
 
+from gc import collect
 from os.path import abspath, dirname, getsize
 from os.path import join as pathjoin
 
@@ -43,3 +44,7 @@ def test_add():
 
     # 5. Execute a WASM function
     assert mr.eval("res.exports.addTwo(1, 2)") == 3
+
+    del module_raw
+    collect()
+    assert mr.value_count() == 0

@@ -1,6 +1,7 @@
 """ Basic JS call functions """
 
 from datetime import datetime, timezone
+from gc import collect
 from json import JSONEncoder
 
 from py_mini_racer import MiniRacer
@@ -18,6 +19,9 @@ def test_call_js():
     assert mr.call("f", *list(range(5))) == 5
     assert mr.call("f", *list(range(10))) == 10
     assert mr.call("f", *list(range(20))) == 20
+
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_call_custom_encoder():
@@ -37,3 +41,6 @@ def test_call_custom_encoder():
     mr.eval(js_func)
 
     assert mr.call("f", now, encoder=CustomEncoder) == now.isoformat()
+
+    collect()
+    assert mr.value_count() == 0

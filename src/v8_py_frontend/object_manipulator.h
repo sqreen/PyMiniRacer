@@ -4,40 +4,43 @@
 #include <v8-context.h>
 #include <v8-isolate.h>
 #include <v8-persistent-handle.h>
-#include <v8-value.h>
 #include <cstdint>
 #include "binary_value.h"
 
 namespace MiniRacer {
 
 /** Manipulates v8::Object attributes, exposing APIs reachable from C (through
- * the MiniRacer::Context). */
+ * the MiniRacer::Context).
+ *
+ * All methods in this function assume that the caller holds the Isolate lock
+ * (i.e., is operating from the isolate message pump), and memory management of
+ * the BinaryValue pointers is done by the caller. */
 class ObjectManipulator {
  public:
   ObjectManipulator(v8::Persistent<v8::Context>* context,
                     BinaryValueFactory* bv_factory);
 
-  static auto GetIdentityHash(v8::Isolate* isolate,
-                              v8::Local<v8::Value> object) -> int;
-  auto GetOwnPropertyNames(v8::Isolate* isolate, v8::Local<v8::Value> object)
-      const -> BinaryValue::Ptr;
+  auto GetIdentityHash(v8::Isolate* isolate,
+                       BinaryValue* obj_ptr) -> BinaryValue::Ptr;
+  auto GetOwnPropertyNames(v8::Isolate* isolate,
+                           BinaryValue* obj_ptr) const -> BinaryValue::Ptr;
   auto Get(v8::Isolate* isolate,
-           v8::Local<v8::Value> object,
-           BinaryValue* key) -> BinaryValue::Ptr;
-  void Set(v8::Isolate* isolate,
-           v8::Local<v8::Value> object,
-           BinaryValue* key,
-           BinaryValue* val);
+           BinaryValue* obj_ptr,
+           BinaryValue* key_ptr) -> BinaryValue::Ptr;
+  auto Set(v8::Isolate* isolate,
+           BinaryValue* obj_ptr,
+           BinaryValue* key_ptr,
+           BinaryValue* val_ptr) -> BinaryValue::Ptr;
   auto Del(v8::Isolate* isolate,
-           v8::Local<v8::Value> object,
-           BinaryValue* key) -> bool;
+           BinaryValue* obj_ptr,
+           BinaryValue* key_ptr) -> BinaryValue::Ptr;
   auto Splice(v8::Isolate* isolate,
-              v8::Local<v8::Value> object,
+              BinaryValue* obj_ptr,
               int32_t start,
               int32_t delete_count,
-              BinaryValue* new_val) -> BinaryValue::Ptr;
+              BinaryValue* new_val_ptr) -> BinaryValue::Ptr;
   auto Call(v8::Isolate* isolate,
-            v8::Local<v8::Value> func,
+            BinaryValue* func_ptr,
             BinaryValue* this_ptr,
             BinaryValue* argv_ptr) -> BinaryValue::Ptr;
 

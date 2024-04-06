@@ -12,7 +12,6 @@
 #include "code_evaluator.h"
 #include "context_holder.h"
 #include "count_down_latch.h"
-#include "gsl_stub.h"
 #include "heap_reporter.h"
 #include "isolate_manager.h"
 #include "isolate_memory_monitor.h"
@@ -32,7 +31,9 @@ class Context {
   [[nodiscard]] auto IsHardMemoryLimitReached() const -> bool;
   void ApplyLowMemoryNotification();
 
-  void FreeBinaryValue(gsl::owner<BinaryValue*> val);
+  void FreeBinaryValue(BinaryValueHandle* val);
+  template <typename... Params>
+  auto AllocBinaryValue(Params&&... params) -> BinaryValueHandle*;
   auto HeapSnapshot(Callback callback,
                     void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
   auto HeapStats(Callback callback,
@@ -40,21 +41,28 @@ class Context {
   auto Eval(const std::string& code,
             Callback callback,
             void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
-  void AttachPromiseThen(BinaryValue* bv_ptr, Callback callback, void* cb_data);
-  auto GetIdentityHash(BinaryValue* bv_ptr) -> int;
-  auto GetOwnPropertyNames(BinaryValue* bv_ptr) -> BinaryValue::Ptr;
-  auto GetObjectItem(BinaryValue* bv_ptr, BinaryValue* key) -> BinaryValue::Ptr;
-  void SetObjectItem(BinaryValue* bv_ptr, BinaryValue* key, BinaryValue* val);
-  auto DelObjectItem(BinaryValue* bv_ptr, BinaryValue* key) -> bool;
-  auto SpliceArray(BinaryValue* bv_ptr,
+  auto AttachPromiseThen(BinaryValueHandle* promise_handle,
+                         Callback callback,
+                         void* cb_data) -> BinaryValueHandle*;
+  auto GetIdentityHash(BinaryValueHandle* obj_handle) -> BinaryValueHandle*;
+  auto GetOwnPropertyNames(BinaryValueHandle* obj_handle) -> BinaryValueHandle*;
+  auto GetObjectItem(BinaryValueHandle* obj_handle,
+                     BinaryValueHandle* key_handle) -> BinaryValueHandle*;
+  auto SetObjectItem(BinaryValueHandle* obj_handle,
+                     BinaryValueHandle* key_handle,
+                     BinaryValueHandle* val_handle) -> BinaryValueHandle*;
+  auto DelObjectItem(BinaryValueHandle* obj_handle,
+                     BinaryValueHandle* key_handle) -> BinaryValueHandle*;
+  auto SpliceArray(BinaryValueHandle* obj_handle,
                    int32_t start,
                    int32_t delete_count,
-                   BinaryValue* new_val) -> BinaryValue::Ptr;
-  auto CallFunction(BinaryValue* func_ptr,
-                    BinaryValue* this_ptr,
-                    BinaryValue* argv,
+                   BinaryValueHandle* new_val_handle) -> BinaryValueHandle*;
+  auto CallFunction(BinaryValueHandle* func_handle,
+                    BinaryValueHandle* this_handle,
+                    BinaryValueHandle* argv_handle,
                     Callback callback,
                     void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
+  auto BinaryValueCount() -> size_t;
 
  private:
   template <typename Runnable>
@@ -100,10 +108,10 @@ inline void Context::ApplyLowMemoryNotification() {
   isolate_memory_monitor_.ApplyLowMemoryNotification();
 }
 
-inline void Context::AttachPromiseThen(BinaryValue* bv_ptr,
-                                       MiniRacer::Callback callback,
-                                       void* cb_data) {
-  promise_attacher_.AttachPromiseThen(bv_ptr, callback, cb_data);
+template <typename... Params>
+inline auto Context::AllocBinaryValue(Params&&... params)
+    -> BinaryValueHandle* {
+  return bv_factory_.New(std::forward<Params>(params)...)->GetHandle();
 }
 
 }  // namespace MiniRacer

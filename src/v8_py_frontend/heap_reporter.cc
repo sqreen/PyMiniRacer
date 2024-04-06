@@ -59,10 +59,9 @@ auto HeapReporter::HeapStats(v8::Isolate* isolate) -> BinaryValue::Ptr {
   v8::Local<v8::String> output;
   if (!v8::JSON::Stringify(context, stats_obj).ToLocal(&output) ||
       output.IsEmpty()) {
-    return bv_factory_->FromString("error stringifying heap output",
-                                   type_str_utf8);
+    return bv_factory_->New("error stringifying heap output", type_str_utf8);
   }
-  return bv_factory_->FromValue(context, output);
+  return bv_factory_->New(context, output);
 }
 
 namespace {
@@ -89,7 +88,7 @@ auto HeapReporter::HeapSnapshot(v8::Isolate* isolate) -> BinaryValue::Ptr {
   const auto* snap = isolate->GetHeapProfiler()->TakeHeapSnapshot();
   StringOutputStream sos;
   snap->Serialize(&sos);
-  return bv_factory_->FromString(sos.result(), type_str_utf8);
+  return bv_factory_->New(sos.result(), type_str_utf8);
 }
 
 }  // end namespace MiniRacer

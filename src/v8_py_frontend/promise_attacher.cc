@@ -4,7 +4,6 @@
 #include <v8-function-callback.h>
 #include <v8-function.h>
 #include <v8-local-handle.h>
-#include <v8-locker.h>
 #include <v8-message.h>
 #include <v8-microtask-queue.h>
 #include <v8-persistent-handle.h>
@@ -13,48 +12,47 @@
 #include "binary_value.h"
 #include "callback.h"
 #include "gsl_stub.h"
-#include "isolate_manager.h"
 
 namespace MiniRacer {
 
-PromiseAttacher::PromiseAttacher(IsolateManager* isolate_manager,
-                                 v8::Persistent<v8::Context>* context,
+PromiseAttacher::PromiseAttacher(v8::Persistent<v8::Context>* context,
                                  BinaryValueFactory* bv_factory)
-    : isolate_manager_(isolate_manager),
-      context_(context),
-      bv_factory_(bv_factory) {}
+    : context_(context), bv_factory_(bv_factory) {}
 
-void PromiseAttacher::AttachPromiseThen(BinaryValue* bv_ptr,
+auto PromiseAttacher::AttachPromiseThen(v8::Isolate* isolate,
+                                        BinaryValue* promise_ptr,
                                         Callback callback,
-                                        void* cb_data) {
-  isolate_manager_->RunAndAwait([bv_ptr, callback, cb_data,
-                                 this](v8::Isolate* isolate) {
-    const v8::Locker lock(isolate);
-    const v8::HandleScope scope(isolate);
+                                        void* cb_data) -> BinaryValue::Ptr {
+  const v8::Isolate::Scope isolate_scope(isolate);
+  const v8::HandleScope handle_scope(isolate);
+  const v8::Local<v8::Context> local_context = context_->Get(isolate);
+  const v8::Context::Scope context_scope(local_context);
 
-    const v8::Local<v8::Value> value =
-        bv_factory_->GetPersistentHandle(isolate, bv_ptr);
-    const v8::Local<v8::Promise> promise = value.As<v8::Promise>();
+  const v8::Local<v8::Value> local_promise_val =
+      promise_ptr->ToValue(local_context);
+  const v8::Local<v8::Promise> local_promise =
+      local_promise_val.As<v8::Promise>();
 
-    // Note that completion_handler will be deleted by whichever callback is
-    // called. (If we use auto here we can't mark gsl::owner, so disable this
-    // lint check.) NOLINTNEXTLINE(hicpp-use-auto,modernize-use-auto)
-    gsl::owner<PromiseCompletionHandler*> completion_handler =
-        new PromiseCompletionHandler(bv_factory_, callback, cb_data);
-    const v8::Local<v8::External> edata =
-        v8::External::New(isolate, completion_handler);
+  // Note that completion_handler will be deleted by whichever callback is
+  // called. (If we use auto here we can't mark gsl::owner, so disable this
+  // lint check:) NOLINTNEXTLINE(hicpp-use-auto,modernize-use-auto)
+  gsl::owner<PromiseCompletionHandler*> completion_handler =
+      new PromiseCompletionHandler(bv_factory_, callback, cb_data);
+  const v8::Local<v8::External> edata =
+      v8::External::New(isolate, completion_handler);
 
-    const v8::Local<v8::Context> context = context_->Get(isolate);
-    promise
-        ->Then(context,
-               v8::Function::New(
-                   context, &PromiseCompletionHandler::OnFulfilledStatic, edata)
-                   .ToLocalChecked(),
-               v8::Function::New(
-                   context, &PromiseCompletionHandler::OnRejectedStatic, edata)
-                   .ToLocalChecked())
-        .ToLocalChecked();
-  });
+  local_promise
+      ->Then(
+          local_context,
+          v8::Function::New(local_context,
+                            &PromiseCompletionHandler::OnFulfilledStatic, edata)
+              .ToLocalChecked(),
+          v8::Function::New(local_context,
+                            &PromiseCompletionHandler::OnRejectedStatic, edata)
+              .ToLocalChecked())
+      .ToLocalChecked();
+
+  return bv_factory_->New(true);
 }
 
 PromiseCompletionHandler::PromiseCompletionHandler(
@@ -87,9 +85,9 @@ void PromiseCompletionHandler::OnFulfilled(v8::Isolate* isolate,
   const v8::Local<v8::Context> context = isolate->GetCurrentContext();
   const v8::Context::Scope context_scope(context);
 
-  BinaryValue::Ptr val = bv_factory_->FromValue(context, value);
+  const BinaryValue::Ptr val = bv_factory_->New(context, value);
 
-  callback_(cb_data_, val.release());
+  callback_(cb_data_, val->GetHandle());
 }
 
 void PromiseCompletionHandler::OnRejected(v8::Isolate* isolate,
@@ -98,10 +96,10 @@ void PromiseCompletionHandler::OnRejected(v8::Isolate* isolate,
   const v8::Local<v8::Context> context = isolate->GetCurrentContext();
   const v8::Context::Scope context_scope(context);
 
-  BinaryValue::Ptr val = bv_factory_->FromExceptionMessage(
+  const BinaryValue::Ptr val = bv_factory_->New(
       context, v8::Local<v8::Message>(), exc, type_execute_exception);
 
-  callback_(cb_data_, val.release());
+  callback_(cb_data_, val->GetHandle());
 }
 
 }  // end namespace MiniRacer

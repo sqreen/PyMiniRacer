@@ -1,5 +1,6 @@
 """ Tests JSFunctions """
 
+from gc import collect
 
 import pytest
 from py_mini_racer import (
@@ -32,6 +33,10 @@ new Thing('start');
     stuff = thing["stuff"]
     assert stuff("end", this=thing) == "startend"
 
+    del func, arr, thing, stuff
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_exceptions():
     mr = MiniRacer()
@@ -59,6 +64,10 @@ Error: asdf
 """
     )
 
+    del func, exc_info
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_timeout():
     mr = MiniRacer()
@@ -67,3 +76,7 @@ def test_timeout():
         func(timeout_sec=1)
 
     assert exc_info.value.args[0] == "JavaScript was terminated by timeout"
+
+    del func, exc_info
+    collect()
+    assert mr.value_count() == 0

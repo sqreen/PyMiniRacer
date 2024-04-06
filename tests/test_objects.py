@@ -1,3 +1,5 @@
+from gc import collect
+
 import pytest
 from py_mini_racer import (
     JSArray,
@@ -67,6 +69,10 @@ a
     )
     assert not obj3
 
+    del obj, obj2, obj3
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_object_mutation():
     mr = MiniRacer()
@@ -111,6 +117,10 @@ b
     obj["inner"] = inner_obj
     assert len(obj) == 3
     assert obj["inner"]["k"] == "v"
+
+    del obj, inner_obj
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_object_prototype():
@@ -169,6 +179,10 @@ a
     )
     assert not obj2
 
+    del obj, obj2
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_array_mutation():
     mr = MiniRacer()
@@ -207,6 +221,10 @@ b
     assert len(obj) == 3
     assert obj[-1]["k"] == "v"
 
+    del obj, inner_obj
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_function():
     mr = MiniRacer()
@@ -220,6 +238,10 @@ foo
     assert isinstance(obj, JSFunction)
     assert obj.__hash__()
     assert obj.keys() == ()
+
+    del obj
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_symbol():
@@ -235,19 +257,27 @@ sym
     assert obj.__hash__()
     assert obj.keys() == ()
 
+    del obj
+    collect()
+    assert mr.value_count() == 0
+
 
 def test_promise():
     mr = MiniRacer()
-    obj = mr.eval(
+    promise = mr.eval(
         """\
 var p = Promise.resolve(42);
 p
 """
     )
 
-    assert isinstance(obj, JSPromise)
-    assert obj.__hash__()
-    assert obj.keys() == ()
+    assert isinstance(promise, JSPromise)
+    assert promise.__hash__()
+    assert promise.keys() == ()
+
+    del promise
+    collect()
+    assert mr.value_count() == 0
 
 
 def test_nested_object():
@@ -284,3 +314,7 @@ a
     assert obj["some_obj"]["a"] == 12
     assert isinstance(obj["some_promise"], JSPromise)
     assert isinstance(obj["some_symbol"], JSSymbol)
+
+    del obj
+    collect()
+    assert mr.value_count() == 0

@@ -11,9 +11,9 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
-#include <string>
+#include <string_view>
 #include <unordered_map>
-#include <unordered_set>
+#include <vector>
 #include "gsl_stub.h"
 #include "isolate_manager.h"
 
@@ -43,19 +43,8 @@ enum BinaryTypes : uint8_t {
   type_oom_exception = 202,
   type_timeout_exception = 203,
   type_terminated_exception = 204,
-};
-
-struct BinaryValue;
-class BinaryValueFactory;
-
-class BinaryValueDeleter {
- public:
-  BinaryValueDeleter() : factory_(nullptr) {}
-  explicit BinaryValueDeleter(BinaryValueFactory* factory);
-  void operator()(gsl::owner<BinaryValue*> val) const;
-
- private:
-  BinaryValueFactory* factory_;
+  type_value_exception = 205,
+  type_key_exception = 206,
 };
 
 // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
@@ -63,80 +52,125 @@ class BinaryValueDeleter {
 // NOLINTBEGIN(cppcoreguidelines-pro-type-member-init)
 // NOLINTBEGIN(hicpp-member-init)
 /** A simplified structure designed for sharing data with non-C++ code over a C
- * foreign function API (e.g., Python ctypes). */
-struct BinaryValue {
+ * foreign function API (e.g., Python ctypes). This object directly provides
+ * values for some simple types (e.g., numbers and strings), and also acts as a
+ * handle for the non-C++ code to manage opaque data via our APIs. */
+struct BinaryValueHandle {
   union {
-    char* backing_store_ptr;
-    gsl::owner<char*> bytes;
+    char* bytes;
     int64_t int_val;
     double double_val;
   };
   size_t len;
   BinaryTypes type = type_invalid;
-
-  BinaryValue() = default;
-
-  BinaryValue(const std::string& str, BinaryTypes type);
-
-  using Ptr = std::unique_ptr<BinaryValue, BinaryValueDeleter>;
 } __attribute__((packed));
 // NOLINTEND(hicpp-member-init)
 // NOLINTEND(cppcoreguidelines-pro-type-member-init)
 // NOLINTEND(cppcoreguidelines-owning-memory)
 // NOLINTEND(misc-non-private-member-variables-in-classes)
 
+class IsolateObjectDeleter {
+ public:
+  IsolateObjectDeleter();
+  explicit IsolateObjectDeleter(IsolateManager* isolate_manager);
+
+  template <typename T>
+  void operator()(T* handle) const;
+
+ private:
+  IsolateManager* isolate_manager_;
+};
+
+class BinaryValue {
+ public:
+  BinaryValue(IsolateObjectDeleter isolate_object_deleter,
+              std::string_view val,
+              BinaryTypes result_type);
+  BinaryValue(IsolateObjectDeleter isolate_object_deleter, bool val);
+  BinaryValue(IsolateObjectDeleter isolate_object_deleter,
+              int64_t val,
+              BinaryTypes result_type);
+  BinaryValue(IsolateObjectDeleter isolate_object_deleter,
+              double val,
+              BinaryTypes result_type);
+  BinaryValue(IsolateObjectDeleter isolate_object_deleter,
+              v8::Local<v8::Context> context,
+              v8::Local<v8::Value> value);
+  BinaryValue(IsolateObjectDeleter isolate_object_deleter,
+              v8::Local<v8::Context> context,
+              v8::Local<v8::Message> message,
+              v8::Local<v8::Value> exception_obj,
+              BinaryTypes result_type);
+
+  using Ptr = std::shared_ptr<BinaryValue>;
+
+  auto ToValue(v8::Local<v8::Context> context) -> v8::Local<v8::Value>;
+  auto GetHandle() -> BinaryValueHandle*;
+
+ private:
+  void SavePersistentHandle(v8::Isolate* isolate, v8::Local<v8::Value> value);
+  void CreateBackingStoreRef(v8::Local<v8::Value> value);
+
+  IsolateObjectDeleter isolate_object_deleter_;
+  BinaryValueHandle handle_;
+  std::vector<char> msg_;
+  std::unique_ptr<v8::Persistent<v8::Value>, IsolateObjectDeleter>
+      persistent_handle_;
+  std::unique_ptr<std::shared_ptr<v8::BackingStore>, IsolateObjectDeleter>
+      backing_store_;
+};
+
 class BinaryValueFactory {
  public:
   explicit BinaryValueFactory(IsolateManager* isolate_manager);
-  ~BinaryValueFactory();
 
-  BinaryValueFactory(const BinaryValueFactory&) = delete;
-  auto operator=(const BinaryValueFactory&) -> BinaryValueFactory& = delete;
-  BinaryValueFactory(BinaryValueFactory&&) = delete;
-  auto operator=(BinaryValueFactory&& other) -> BinaryValueFactory& = delete;
+  auto FromHandle(BinaryValueHandle* handle) -> BinaryValue::Ptr;
+  void Free(BinaryValueHandle* handle);
+  auto Count() -> size_t;
 
-  auto FromString(std::string str, BinaryTypes result_type) -> BinaryValue::Ptr;
-  auto FromValue(v8::Local<v8::Context> context,
-                 v8::Local<v8::Value> value) -> BinaryValue::Ptr;
-  auto FromExceptionMessage(v8::Local<v8::Context> context,
-                            v8::Local<v8::Message> message,
-                            v8::Local<v8::Value> exception_obj,
-                            BinaryTypes result_type) -> BinaryValue::Ptr;
-  auto ToValue(v8::Local<v8::Context> context,
-               BinaryValue* bv_ptr) -> v8::Local<v8::Value>;
-
-  // Only for use if the pointer is not wrapped in Ptr (see below), which uses
-  // BinaryValueDeleter which calls this automatically:
-  void Free(gsl::owner<BinaryValue*> val);
-  auto GetPersistentHandle(v8::Isolate* isolate,
-                           BinaryValue* bv_ptr) -> v8::Local<v8::Value>;
+  template <typename... Params>
+  auto New(Params&&... params) -> BinaryValue::Ptr;
 
  private:
-  auto New() -> BinaryValue::Ptr;
-  void SavePersistentHandle(v8::Isolate* isolate,
-                            BinaryValue* bv_ptr,
-                            v8::Local<v8::Value> value);
-  void DeletePersistentHandle(BinaryValue* bv_ptr);
-  void CreateBackingStoreRef(v8::Local<v8::Value> value, BinaryValue* bv_ptr);
-  void DeleteBackingStoreRef(BinaryValue* bv_ptr);
-  void DoFree(gsl::owner<BinaryValue*> val);
-
   IsolateManager* isolate_manager_;
-  std::mutex binary_values_mutex_;
-  std::unordered_set<BinaryValue*> binary_values_;
-  std::mutex backing_stores_mutex_;
-  std::unordered_map<BinaryValue*, std::shared_ptr<v8::BackingStore>>
-      backing_stores_;
-  std::mutex persistent_handles_mutex_;
-  std::unordered_map<BinaryValue*, std::unique_ptr<v8::Persistent<v8::Value>>>
-      persistent_handles_;
+  std::mutex mutex_;
+  std::unordered_map<BinaryValueHandle*, std::shared_ptr<BinaryValue>> values_;
 };
 
-inline BinaryValueDeleter::BinaryValueDeleter(BinaryValueFactory* factory)
-    : factory_(factory) {}
+template <typename T>
+void IsolateObjectDeleter::operator()(gsl::owner<T*> handle) const {
+  // We don't generally own the isolate lock (i.e., aren't running from the
+  // IsolateManager's message loop) here. From the V8 documentation, it's not
+  // clear if we can safely free v8 objects like a v8::Persistent handle or
+  // decrement the ref count of a std::shared_ptr<v8::BackingStore> (which may
+  // free the BackingStore) without the lock. As a rule, messing with
+  // Isolate-owned objects without holding the Isolate lock is not safe, and
+  // there is no documentation indicating methods like
+  // v8::Persistent::~Persistent are exempt from this rule. So let's have the
+  // message loop handle the deletion.
 
-inline void BinaryValueDeleter::operator()(gsl::owner<BinaryValue*> val) const {
-  factory_->Free(val);
+  // Note also that we don't wait on the deletion here. This method may be
+  // called by Python, as a result of callbacks from the C++ side of MiniRacer.
+  // Those callbacks originate from the IsolateManager message loop itself. If
+  // we were to wait on this *new* task we're adding to the message loop, we
+  // would deadlock.
+  isolate_manager_->Run(
+      [handle](v8::Isolate* /*isolate*/) mutable { delete handle; });
+}
+
+template <typename... Params>
+inline auto BinaryValueFactory::New(Params&&... params) -> BinaryValue::Ptr {
+  auto ptr = std::make_shared<BinaryValue>(
+      IsolateObjectDeleter(isolate_manager_), std::forward<Params>(params)...);
+
+  {
+    // Track all created binary values to relieve Python of the duty of garbage
+    // collecting them in the correct order relative to the MiniRacer::Context:
+    const std::lock_guard<std::mutex> lock(mutex_);
+    values_[ptr->GetHandle()] = ptr;
+  }
+
+  return ptr;
 }
 
 }  // namespace MiniRacer
