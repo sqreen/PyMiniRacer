@@ -36,7 +36,7 @@ ReferenceError: invalid is not defined
 
     del exc_info
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_eval():
@@ -44,7 +44,7 @@ def test_eval():
     assert mr.eval("42") == 42
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_blank():
@@ -54,7 +54,7 @@ def test_blank():
     assert mr.eval("\t") is JSUndefined
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_global():
@@ -63,7 +63,7 @@ def test_global():
     assert mr.eval("xabc") == 22
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_fun():
@@ -75,7 +75,7 @@ def test_fun():
     assert mr.eval("x(100)") == 101
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_multiple_ctx():
@@ -91,9 +91,9 @@ def test_multiple_ctx():
     assert c3.eval("(x)") == 3
 
     collect()
-    assert c1.value_count() == 0
-    assert c2.value_count() == 0
-    assert c3.value_count() == 0
+    assert c1._ctx.value_count() == 0  # noqa: SLF001
+    assert c2._ctx.value_count() == 0  # noqa: SLF001
+    assert c3._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_exception_thrown():
@@ -121,7 +121,7 @@ Error: blah
 
     del exc_info
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_string_thrown():
@@ -147,7 +147,7 @@ var f = function() {throw 'blah'};
 
     del exc_info
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_cannot_parse():
@@ -170,7 +170,7 @@ SyntaxError: Unexpected end of input
 
     del exc_info
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_null_byte():
@@ -184,7 +184,7 @@ def test_null_byte():
     assert result == s
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_timeout():
@@ -204,7 +204,7 @@ def test_timeout():
 
     del exc_info
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_timeout_ms():
@@ -225,7 +225,7 @@ def test_timeout_ms():
 
     del exc_info
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_max_memory_soft():
@@ -253,7 +253,7 @@ while(true) {
 
     del exc_info
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_max_memory_hard():
@@ -279,7 +279,7 @@ while(true) {
 
     del exc_info
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_max_memory_hard_eval_arg():
@@ -306,7 +306,7 @@ while(true) {
 
     del exc_info
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_symbol():
@@ -316,7 +316,7 @@ def test_symbol():
 
     del res
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_microtask():
@@ -342,7 +342,7 @@ done
     assert mr.eval("done")
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_polling():
@@ -363,7 +363,7 @@ done
     assert mr.eval("done")
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_settimeout():
@@ -389,7 +389,7 @@ clearTimeout(b)
     assert mr.eval("results[2]") == "d"
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_promise_sync():
@@ -409,7 +409,7 @@ new Promise((res, rej) => setTimeout(() => res(42), 1000)); // 1 s timeout
 
     del promise
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 @pytest.mark.asyncio
@@ -431,7 +431,7 @@ new Promise((res, rej) => setTimeout(() => res(42), 1000)); // 1 s timeout
 
     del promise
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_resolved_promise_sync():
@@ -440,7 +440,7 @@ def test_resolved_promise_sync():
     assert val == 42
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 @pytest.mark.asyncio
@@ -450,4 +450,4 @@ async def test_resolved_promise_async():
     assert val == 42
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001

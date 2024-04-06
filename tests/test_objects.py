@@ -71,7 +71,7 @@ a
 
     del obj, obj2, obj3
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_object_mutation():
@@ -120,7 +120,7 @@ b
 
     del obj, inner_obj
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_object_prototype():
@@ -181,7 +181,7 @@ a
 
     del obj, obj2
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_array_mutation():
@@ -223,7 +223,7 @@ b
 
     del obj, inner_obj
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_function():
@@ -241,7 +241,7 @@ foo
 
     del obj
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_symbol():
@@ -259,7 +259,7 @@ sym
 
     del obj
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_promise():
@@ -277,7 +277,7 @@ p
 
     del promise
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_nested_object():
@@ -317,4 +317,4 @@ a
 
     del obj
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001

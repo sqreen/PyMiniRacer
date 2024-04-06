@@ -35,7 +35,7 @@ new Thing('start');
 
     del func, arr, thing, stuff
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_exceptions():
@@ -66,7 +66,7 @@ Error: asdf
 
     del func, exc_info
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_timeout():
@@ -79,4 +79,4 @@ def test_timeout():
 
     del func, exc_info
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001

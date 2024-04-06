@@ -27,4 +27,4 @@ def test_babel():
     assert mr.eval("babel.eval(((x) => x * x)(8))") == 64
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001

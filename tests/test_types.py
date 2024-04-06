@@ -38,7 +38,7 @@ class Validator:
             _test_round_trip(self.mr, py_val)
 
         collect()
-        assert self.mr.value_count() == 0
+        assert self.mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_undefined():
@@ -51,7 +51,7 @@ def test_undefined():
 
     del undef
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_str():
@@ -69,7 +69,7 @@ def test_unicode():
     _test_round_trip(mr, ustr)
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_numbers():
@@ -128,7 +128,7 @@ def test_object():
 
     del res
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_timestamp():
@@ -139,7 +139,7 @@ def test_timestamp():
     _test_round_trip(mr, res)
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_symbol():
@@ -151,7 +151,7 @@ def test_symbol():
 
     del res
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_function():
@@ -163,7 +163,7 @@ def test_function():
 
     del res
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_date():
@@ -174,7 +174,7 @@ def test_date():
 
     del res
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_exception():
@@ -194,7 +194,7 @@ def test_exception():
 
     del exc_info
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_array_buffer():
@@ -211,7 +211,7 @@ def test_array_buffer():
 
     del ret
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_array_buffer_view():
@@ -228,7 +228,7 @@ def test_array_buffer_view():
 
     del ret
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_shared_array_buffer():
@@ -247,4 +247,4 @@ def test_shared_array_buffer():
 
     del ret
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001

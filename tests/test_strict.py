@@ -10,7 +10,7 @@ def test_basic_int():
     assert mr.execute("42") == 42
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_basic_string():
@@ -18,7 +18,7 @@ def test_basic_string():
     assert mr.execute('"42"') == "42"
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_basic_hash():
@@ -26,7 +26,7 @@ def test_basic_hash():
     assert mr.execute("{}") == {}
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_basic_array():
@@ -34,7 +34,7 @@ def test_basic_array():
     assert mr.execute("[1, 2, 3]") == [1, 2, 3]
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_call():
@@ -48,7 +48,7 @@ def test_call():
     assert mr.call("f", list(range(5))) == 5
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_message():
@@ -58,4 +58,4 @@ def test_message():
 
     clear_frames(exc_info.tb)
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001

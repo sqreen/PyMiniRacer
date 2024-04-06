@@ -225,32 +225,10 @@ class JSPromise(JSMappedObject):
                 This is deprecated; use timeout_sec instead.
         """
 
-        return self._to_sync_future().get(timeout=timeout)
+        return self._ctx.promise_to_sync_future(self).get(timeout=timeout)
 
     def __await__(self):
-        return self._to_async_future().__await__()
-
-    def _attach_callbacks(self, callback_id):
-        self._ctx._wrap_raw_handle(  # noqa: SLF001
-            self._ctx._dll.mr_attach_promise_then(  # noqa: SLF001
-                self._ctx.ctx,
-                self._handle.raw,
-                self._ctx._mr_callback,  # noqa: SLF001
-                callback_id,
-            )
-        ).to_python()
-
-    def _to_sync_future(self):
-        """Create and attach a Python _SyncFuture to this JS Promise."""
-        callback_id, future = self._ctx._set_up_callback_into_sync_future()  # noqa: SLF001
-        self._attach_callbacks(callback_id)
-        return future
-
-    def _to_async_future(self):
-        """Create and attach a Python asyncio.Future to this JS Promise."""
-        callback_id, future = self._ctx._set_up_callback_into_async_future()  # noqa: SLF001
-        self._attach_callbacks(callback_id)
-        return future
+        return self._ctx.promise_to_async_future(self).__await__()
 
 
 def _get_lib_filename(name):
@@ -308,7 +286,7 @@ class _ValueHandle:
         self.raw: _RawValueHandle = raw
 
     def __del__(self):
-        self.ctx._free(self.raw)  # noqa: SLF001
+        self.ctx.free(self.raw)
 
     def to_python(self) -> Any:
         """Convert a binary value handle from the C++ side into a Python object."""
@@ -340,27 +318,27 @@ class _ValueHandle:
 
             raise klass(msg)
 
-        if typ == MiniRacerTypes.null:
+        if typ == _MiniRacerTypes.null:
             return None
-        if typ == MiniRacerTypes.undefined:
+        if typ == _MiniRacerTypes.undefined:
             return JSUndefined
-        if typ == MiniRacerTypes.bool:
+        if typ == _MiniRacerTypes.bool:
             return val.int_val == 1
-        if typ == MiniRacerTypes.integer:
+        if typ == _MiniRacerTypes.integer:
             return val.int_val
-        if typ == MiniRacerTypes.double:
+        if typ == _MiniRacerTypes.double:
             return val.double_val
-        if typ == MiniRacerTypes.str_utf8:
+        if typ == _MiniRacerTypes.str_utf8:
             return val.bytes_val[0:length].decode("utf-8")
-        if typ == MiniRacerTypes.function:
+        if typ == _MiniRacerTypes.function:
             return JSFunction(self.ctx, self)
-        if typ == MiniRacerTypes.date:
+        if typ == _MiniRacerTypes.date:
             timestamp = val.double_val
             # JS timestamps are milliseconds. In Python we are in seconds:
             return datetime.fromtimestamp(timestamp / 1000.0, timezone.utc)
-        if typ == MiniRacerTypes.symbol:
+        if typ == _MiniRacerTypes.symbol:
             return JSSymbol(self.ctx, self)
-        if typ in (MiniRacerTypes.shared_array_buffer, MiniRacerTypes.array_buffer):
+        if typ in (_MiniRacerTypes.shared_array_buffer, _MiniRacerTypes.array_buffer):
             buf = ArrayBufferByte * length
             cdata = buf.from_address(val.value_ptr)
             # Save a reference to ourselves to prevent garbage collection of the
@@ -371,13 +349,13 @@ class _ValueHandle:
             # in Python 3.12:
             return result.cast("B")
 
-        if typ == MiniRacerTypes.promise:
+        if typ == _MiniRacerTypes.promise:
             return JSPromise(self.ctx, self)
 
-        if typ == MiniRacerTypes.array:
+        if typ == _MiniRacerTypes.array:
             return JSArray(self.ctx, self)
 
-        if typ == MiniRacerTypes.object:
+        if typ == _MiniRacerTypes.object:
             return JSMappedObject(self.ctx, self)
 
         raise JSConversionException
@@ -698,20 +676,12 @@ class _Callbacks:
     on_rejected: Callable
 
 
-class MiniRacer:
-    """
-    MiniRacer evaluates JavaScript code using a V8 isolate.
-
-    Attributes:
-        json_impl: JSON module used by helper methods default is
-            [json](https://docs.python.org/3/library/json.html)
-    """
-
-    json_impl: ClassVar[object] = json
+class _Context:
+    """Wrapper for all operations involving the DLL and C++ MiniRacer::Context."""
 
     def __init__(self):
         self._dll: ctypes.CDLL = init_mini_racer(ignore_duplicate_init=True)
-        self.ctx = self._dll.mr_init_context()
+        self._ctx = self._dll.mr_init_context()
         self._active_callbacks: dict[int, _Callbacks] = {}
 
         # define an all-purpose callback for _SyncFuture:
@@ -729,12 +699,371 @@ class MiniRacer:
         self._mr_callback = mr_callback
         self._next_callback_id = count()
 
+    def v8_version(self) -> str:
+        return self._dll.mr_v8_version().decode("utf-8")
+
+    def evaluate(
+        self,
+        code: str,
+        timeout_sec: Numeric | None = None,
+    ) -> Any:
+        if isinstance(code, str):
+            code = code.encode("utf-8")
+
+        with self._run_mr_task(self._dll.mr_eval, self._ctx, code, len(code)) as future:
+            return future.get(timeout=timeout_sec)
+
+    def promise_to_sync_future(self, promise):
+        """Create and attach a Python _SyncFuture to a JS Promise."""
+        callback_id, future = self._set_up_callback_into_sync_future()
+        self._attach_callbacks_to_promise(promise, callback_id)
+        return future
+
+    def promise_to_async_future(self, promise):
+        """Create and attach a Python asyncio.Future to a JS Promise."""
+        callback_id, future = self._set_up_callback_into_async_future()
+        self._attach_callbacks_to_promise(promise, callback_id)
+        return future
+
+    def _attach_callbacks_to_promise(self, promise, callback_id):
+        promise_handle = self._python_to_value_handle(promise)
+
+        self._wrap_raw_handle(
+            self._dll.mr_attach_promise_then(
+                self._ctx,
+                promise_handle.raw,
+                self._mr_callback,
+                callback_id,
+            )
+        ).to_python()
+
+    def get_identity_hash(self, obj) -> int:
+        obj_handle = self._python_to_value_handle(obj)
+
+        return self._wrap_raw_handle(
+            self._dll.mr_get_identity_hash(self._ctx, obj_handle.raw)
+        ).to_python()
+
+    def get_own_property_names(self, obj) -> int:
+        obj_handle = self._python_to_value_handle(obj)
+
+        names = self._wrap_raw_handle(
+            self._dll.mr_get_own_property_names(self._ctx, obj_handle.raw)
+        ).to_python()
+        if not isinstance(names, JSArray):
+            raise TypeError
+        return tuple(names)
+
+    def get_object_item(self, obj, key: Any):
+        obj_handle = self._python_to_value_handle(obj)
+        key_handle = self._python_to_value_handle(key)
+
+        return self._wrap_raw_handle(
+            self._dll.mr_get_object_item(
+                self._ctx,
+                obj_handle.raw,
+                key_handle.raw,
+            )
+        ).to_python()
+
+    def set_object_item(self, obj, key: Any, val: Any):
+        obj_handle = self._python_to_value_handle(obj)
+        key_handle = self._python_to_value_handle(key)
+        val_handle = self._python_to_value_handle(val)
+
+        # Convert the value just to convert any exceptions (and GC the result)
+        self._wrap_raw_handle(
+            self._dll.mr_set_object_item(
+                self._ctx,
+                obj_handle.raw,
+                key_handle.raw,
+                val_handle.raw,
+            )
+        ).to_python()
+
+    def del_object_item(self, obj, key: Any):
+        obj_handle = self._python_to_value_handle(obj)
+        key_handle = self._python_to_value_handle(key)
+
+        # Convert the value just to convert any exceptions (and GC the result)
+        self._wrap_raw_handle(
+            self._dll.mr_del_object_item(
+                self._ctx,
+                obj_handle.raw,
+                key_handle.raw,
+            )
+        ).to_python()
+
+    def del_from_array(self, obj, index: int):
+        obj_handle = self._python_to_value_handle(obj)
+
+        # Convert the value just to convert any exceptions (and GC the result)
+        self._wrap_raw_handle(
+            self._dll.mr_splice_array(self._ctx, obj_handle.raw, index, 1, None)
+        ).to_python()
+
+    def array_insert(self, arr, index: int, new_val: Any):
+        arr_handle = self._python_to_value_handle(arr)
+        new_val_handle = self._python_to_value_handle(new_val)
+
+        # Convert the value just to convert any exceptions (and GC the result)
+        self._wrap_raw_handle(
+            self._dll.mr_splice_array(
+                self._ctx,
+                arr_handle.raw,
+                index,
+                0,
+                new_val_handle.raw,
+            )
+        ).to_python()
+
+    def call_function(
+        self,
+        func,
+        *args,
+        this=None,
+        timeout_sec: Numeric | None = None,
+    ):
+        argv = self.evaluate("[]")
+        for arg in args:
+            argv.append(arg)
+
+        func_handle = self._python_to_value_handle(func)
+        this_handle = self._python_to_value_handle(this)
+        argv_handle = self._python_to_value_handle(argv)
+
+        with self._run_mr_task(
+            self._dll.mr_call_function,
+            self._ctx,
+            func_handle.raw,
+            this_handle.raw,
+            argv_handle.raw,
+        ) as future:
+            return future.get(timeout=timeout_sec)
+
+    def set_hard_memory_limit(self, limit: int) -> None:
+        self._dll.mr_set_hard_memory_limit(self._ctx, limit)
+
+    def set_soft_memory_limit(self, limit: int) -> None:
+        self._dll.mr_set_soft_memory_limit(self._ctx, limit)
+
+    def was_hard_memory_limit_reached(self) -> bool:
+        return self._dll.mr_hard_memory_limit_reached(self._ctx)
+
+    def was_soft_memory_limit_reached(self) -> bool:
+        return self._dll.mr_soft_memory_limit_reached(self._ctx)
+
+    def low_memory_notification(self) -> None:
+        self._dll.mr_low_memory_notification(self._ctx)
+
+    def heap_stats(self) -> str:
+        with self._run_mr_task(self._dll.mr_heap_stats, self._ctx) as future:
+            return future.get()
+
+    def heap_snapshot(self) -> str:
+        """Return a snapshot of the V8 isolate heap."""
+
+        with self._run_mr_task(self._dll.mr_heap_snapshot, self._ctx) as future:
+            return future.get()
+
+    def value_count(self):
+        """For tests only: how many value handles are still allocated?"""
+
+        return self._dll.mr_value_count(self._ctx)
+
+    def _set_up_callback_into_sync_future(self):
+        """Create a _SyncFuture, and register a Python-side callback (and corresponding
+        callback ID) which activates it."""
+
+        future = _SyncFuture()
+
+        def on_resolved(value):
+            future.set_result(value)
+
+        def on_rejected(exc):
+            future.set_exception(exc)
+
+        callback_id = next(self._next_callback_id)
+        self._active_callbacks[callback_id] = _Callbacks(on_resolved, on_rejected)
+
+        return callback_id, future
+
+    def _set_up_callback_into_async_future(self):
+        """Create an asyncio.Future, and register a Python-side callback (and
+        corresponding callback ID) which activates it."""
+
+        future = Future()
+        loop = future.get_loop()
+
+        def on_resolved(value):
+            loop.call_soon_threadsafe(future.set_result, value)
+
+        def on_rejected(exc):
+            loop.call_soon_threadsafe(future.set_exception, exc)
+
+        callback_id = next(self._next_callback_id)
+        self._active_callbacks[callback_id] = _Callbacks(on_resolved, on_rejected)
+
+        return callback_id, future
+
+    def _wrap_raw_handle(self, raw):
+        return _ValueHandle(self, raw)
+
+    def _python_to_value_handle(self, obj) -> _RawValue:
+        if isinstance(obj, JSObject):
+            # JSObjects originate from the V8 side. We can just send back the handle
+            # we originally got. (This also covers derived types JSFunction, JSSymbol,
+            # JSPromise, and JSArray.)
+            return obj._handle  # noqa: SLF001
+
+        if obj is None:
+            return self._wrap_raw_handle(
+                self._dll.mr_alloc_int_val(
+                    self._ctx,
+                    0,
+                    _MiniRacerTypes.null,
+                )
+            )
+        if obj is JSUndefined:
+            return self._wrap_raw_handle(
+                self._dll.mr_alloc_int_val(
+                    self._ctx,
+                    0,
+                    _MiniRacerTypes.undefined,
+                )
+            )
+        if isinstance(obj, bool):
+            return self._wrap_raw_handle(
+                self._dll.mr_alloc_int_val(
+                    self._ctx,
+                    1 if obj else 0,
+                    _MiniRacerTypes.bool,
+                )
+            )
+        if isinstance(obj, int):
+            if obj - 2**31 <= obj < 2**31:
+                return self._wrap_raw_handle(
+                    self._dll.mr_alloc_int_val(
+                        self._ctx,
+                        obj,
+                        _MiniRacerTypes.integer,
+                    )
+                )
+
+            # We transmit ints as int32, so "upgrade" to double upon overflow.
+            # (ECMAScript numeric is double anyway, but V8 does internally distinguish
+            # int types, so we try and preserve integer-ness for round-tripping
+            # purposes.)
+            # JS BigInt would be a closer representation of Python int, but upgrading
+            # to BigInt would probably be surprising for most applications, so for now,
+            # we approximate with double:
+            return self._wrap_raw_handle(
+                self._dll.mr_alloc_double_val(
+                    self._ctx,
+                    obj,
+                    _MiniRacerTypes.double,
+                )
+            )
+        if isinstance(obj, float):
+            return self._wrap_raw_handle(
+                self._dll.mr_alloc_double_val(
+                    self._ctx,
+                    obj,
+                    _MiniRacerTypes.double,
+                )
+            )
+        if isinstance(obj, str):
+            b = obj.encode("utf-8")
+            return self._wrap_raw_handle(
+                self._dll.mr_alloc_string_val(
+                    self._ctx,
+                    b,
+                    len(b),
+                    _MiniRacerTypes.str_utf8,
+                )
+            )
+        if isinstance(obj, datetime):
+            # JS timestamps are milliseconds. In Python we are in seconds:
+            return self._wrap_raw_handle(
+                self._dll.mr_alloc_double_val(
+                    self._ctx,
+                    obj.timestamp() * 1000.0,
+                    _MiniRacerTypes.date,
+                )
+            )
+
+        # Note: we skip shared array buffers, so for now at least, handles to shared
+        # array buffers can only be transmitted from JS to Python.
+
+        raise JSConversionException
+
+    def free(self, res: _RawValue) -> None:
+        if self._dll and self._ctx:
+            self._dll.mr_free_value(self._ctx, res)
+
+    @contextmanager
+    def _run_mr_task(self, dll_method, *args):
+        """Manages those tasks which generate callbacks from the MiniRacer DLL.
+
+        Several MiniRacer functions (JS evaluation and 2 heap stats calls) are
+        asynchronous. They take a function callback and callback data parameter, and
+        they return a task handle.
+
+        In this method, we create a future for each callback to get the right data to
+        the right caller, and we manage the lifecycle of the task and task handle.
+        """
+
+        callback_id, future = self._set_up_callback_into_sync_future()
+
+        # Start the task:
+        task_handle = dll_method(*args, self._mr_callback, callback_id)
+        try:
+            # Let the caller handle waiting on the result:
+            yield future
+        finally:
+            # Free the task handle.
+            # Note this also cancels the task if it hasn't completed yet.
+            self._dll.mr_free_task_handle(task_handle)
+
+            # If the caller gives up on waiting, let's at least await the
+            # cancelation error for GC purposes:
+            with suppress(Exception):
+                future.get()
+
+    def __del__(self):
+        if self._dll and self._ctx:
+            # Because finalizers aren't necessarily called in any consistent order,
+            # it's possible for this _Context.__del__() method to be called before
+            # _ValueHandle.__del__() which calls _Context.free() on
+            # this same object.
+            # To prevent further attempted use of the context, remove the variable.
+            # (Note that the C++ MiniRacer object tracks all _RawValue
+            # instances and frees them upon its own destruction, so there is no memory
+            # leak in practice when belated calls to _Context.free() are ignored.)
+            ctx, self._ctx = self._ctx, None
+            self._dll.mr_free_context(ctx)
+
+
+class MiniRacer:
+    """
+    MiniRacer evaluates JavaScript code using a V8 isolate.
+
+    Attributes:
+        json_impl: JSON module used by helper methods default is
+            [json](https://docs.python.org/3/library/json.html)
+    """
+
+    json_impl: ClassVar[object] = json
+
+    def __init__(self):
+        self._ctx = _Context()
+
         self.eval(_INSTALL_SET_TIMEOUT)
 
     @property
     def v8_version(self) -> str:
         """Return the V8 version string."""
-        return str(self._dll.mr_v8_version())
+        return self._ctx.v8_version()
 
     def eval(  # noqa: A003
         self,
@@ -775,11 +1104,7 @@ class MiniRacer:
             # Système international d'unités use seconds.
             timeout_sec = timeout / 1000
 
-        if isinstance(code, str):
-            code = code.encode("utf-8")
-
-        with self._run_mr_task(self._dll.mr_eval, self.ctx, code, len(code)) as future:
-            return future.get(timeout=timeout_sec)
+        return self._ctx.evaluate(code=code, timeout_sec=timeout_sec)
 
     def execute(
         self,
@@ -850,110 +1175,6 @@ class MiniRacer:
         js = f"{expr}.apply(this, {json_args})"
         return self.execute(js, timeout_sec=timeout_sec, max_memory=max_memory)
 
-    def get_identity_hash(self, obj) -> int:
-        obj_handle = self._python_to_value_handle(obj)
-
-        return self._wrap_raw_handle(
-            self._dll.mr_get_identity_hash(self.ctx, obj_handle.raw)
-        ).to_python()
-
-    def get_own_property_names(self, obj) -> int:
-        obj_handle = self._python_to_value_handle(obj)
-
-        names = self._wrap_raw_handle(
-            self._dll.mr_get_own_property_names(self.ctx, obj_handle.raw)
-        ).to_python()
-        if not isinstance(names, JSArray):
-            raise TypeError
-        return tuple(names)
-
-    def get_object_item(self, obj, key: Any):
-        obj_handle = self._python_to_value_handle(obj)
-        key_handle = self._python_to_value_handle(key)
-
-        return self._wrap_raw_handle(
-            self._dll.mr_get_object_item(
-                self.ctx,
-                obj_handle.raw,
-                key_handle.raw,
-            )
-        ).to_python()
-
-    def set_object_item(self, obj, key: Any, val: Any):
-        obj_handle = self._python_to_value_handle(obj)
-        key_handle = self._python_to_value_handle(key)
-        val_handle = self._python_to_value_handle(val)
-
-        # Convert the value just to convert any exceptions (and GC the result)
-        self._wrap_raw_handle(
-            self._dll.mr_set_object_item(
-                self.ctx,
-                obj_handle.raw,
-                key_handle.raw,
-                val_handle.raw,
-            )
-        ).to_python()
-
-    def del_object_item(self, obj, key: Any):
-        obj_handle = self._python_to_value_handle(obj)
-        key_handle = self._python_to_value_handle(key)
-
-        # Convert the value just to convert any exceptions (and GC the result)
-        self._wrap_raw_handle(
-            self._dll.mr_del_object_item(
-                self.ctx,
-                obj_handle.raw,
-                key_handle.raw,
-            )
-        ).to_python()
-
-    def del_from_array(self, obj, index: int):
-        obj_handle = self._python_to_value_handle(obj)
-
-        # Convert the value just to convert any exceptions (and GC the result)
-        self._wrap_raw_handle(
-            self._dll.mr_splice_array(self.ctx, obj_handle.raw, index, 1, None)
-        ).to_python()
-
-    def array_insert(self, arr, index: int, new_val: Any):
-        arr_handle = self._python_to_value_handle(arr)
-        new_val_handle = self._python_to_value_handle(new_val)
-
-        # Convert the value just to convert any exceptions (and GC the result)
-        self._wrap_raw_handle(
-            self._dll.mr_splice_array(
-                self.ctx,
-                arr_handle.raw,
-                index,
-                0,
-                new_val_handle.raw,
-            )
-        ).to_python()
-
-    def call_function(
-        self,
-        func,
-        *args,
-        this=None,
-        timeout_sec: Numeric | None = None,
-    ):
-        argv = self.eval("[]")
-        for arg in args:
-            argv.append(arg)
-
-        func_handle = self._python_to_value_handle(func)
-        this_handle = self._python_to_value_handle(this)
-        argv_handle = self._python_to_value_handle(argv)
-
-        with self._run_mr_task(
-            self._dll.mr_call_function,
-            self.ctx,
-            func_handle.raw,
-            this_handle.raw,
-            argv_handle.raw,
-        ) as future:
-            return future.get(timeout=timeout_sec)
-
     def set_hard_memory_limit(self, limit: int) -> None:
         """Set a hard memory limit on this V8 isolate.
 
@@ -961,7 +1182,7 @@ class MiniRacer:
 
         :param int limit: memory limit in bytes or 0 to reset the limit
         """
-        self._dll.mr_set_hard_memory_limit(self.ctx, limit)
+        self._ctx.set_hard_memory_limit(limit)
 
     def set_soft_memory_limit(self, limit: int) -> None:
         """Set a soft memory limit on this V8 isolate.
@@ -971,217 +1192,31 @@ class MiniRacer:
 
         :param int limit: memory limit in bytes or 0 to reset the limit
         """
-        self._dll.mr_set_soft_memory_limit(self.ctx, limit)
+        self._ctx.set_soft_memory_limit(limit)
 
     def was_hard_memory_limit_reached(self) -> bool:
         """Return true if the hard memory limit was reached on the V8 isolate."""
-        return self._dll.mr_hard_memory_limit_reached(self.ctx)
+        return self._ctx.was_hard_memory_limit_reached()
 
     def was_soft_memory_limit_reached(self) -> bool:
         """Return true if the soft memory limit was reached on the V8 isolate."""
-        return self._dll.mr_soft_memory_limit_reached(self.ctx)
+        return self._ctx.was_soft_memory_limit_reached()
 
     def low_memory_notification(self) -> None:
         """Ask the V8 isolate to collect memory more aggressively."""
-        self._dll.mr_low_memory_notification(self.ctx)
+        self._ctx.low_memory_notification()
 
     def heap_stats(self) -> dict:
         """Return the V8 isolate heap statistics."""
 
-        with self._run_mr_task(self._dll.mr_heap_stats, self.ctx) as future:
-            res = future.get()
-
-        return self.json_impl.loads(res)
-
-    def heap_snapshot(self) -> dict:
-        """Return a snapshot of the V8 isolate heap."""
-
-        with self._run_mr_task(self._dll.mr_heap_snapshot, self.ctx) as future:
-            return future.get()
-
-    def value_count(self):
-        """For tests only: how many value handles are still allocated?"""
-
-        return self._dll.mr_value_count(self.ctx)
-
-    def _set_up_callback_into_sync_future(self):
-        """Create a _SyncFuture, and register a Python-side callback (and corresponding
-        callback ID) which activates it."""
-
-        future = _SyncFuture()
-
-        def on_resolved(value):
-            future.set_result(value)
-
-        def on_rejected(exc):
-            future.set_exception(exc)
-
-        callback_id = next(self._next_callback_id)
-        self._active_callbacks[callback_id] = _Callbacks(on_resolved, on_rejected)
-
-        return callback_id, future
-
-    def _set_up_callback_into_async_future(self):
-        """Create an asyncio.Future, and register a Python-side callback (and
-        corresponding callback ID) which activates it."""
-
-        future = Future()
-        loop = future.get_loop()
-
-        def on_resolved(value):
-            loop.call_soon_threadsafe(future.set_result, value)
-
-        def on_rejected(exc):
-            loop.call_soon_threadsafe(future.set_exception, exc)
-
-        callback_id = next(self._next_callback_id)
-        self._active_callbacks[callback_id] = _Callbacks(on_resolved, on_rejected)
-
-        return callback_id, future
-
-    def _wrap_raw_handle(self, raw):
-        return _ValueHandle(self, raw)
-
-    def _python_to_value_handle(self, obj) -> _RawValue:
-        if isinstance(obj, JSObject):
-            # JSObjects originate from the V8 side. We can just send back the handle
-            # we originally got. (This also covers derived types JSFunction, JSSymbol,
-            # JSPromise, and JSArray.)
-            return obj._handle  # noqa: SLF001
-
-        if obj is None:
-            return self._wrap_raw_handle(
-                self._dll.mr_alloc_int_val(
-                    self.ctx,
-                    0,
-                    MiniRacerTypes.null,
-                )
-            )
-        if obj is JSUndefined:
-            return self._wrap_raw_handle(
-                self._dll.mr_alloc_int_val(
-                    self.ctx,
-                    0,
-                    MiniRacerTypes.undefined,
-                )
-            )
-        if isinstance(obj, bool):
-            return self._wrap_raw_handle(
-                self._dll.mr_alloc_int_val(
-                    self.ctx,
-                    1 if obj else 0,
-                    MiniRacerTypes.bool,
-                )
-            )
-        if isinstance(obj, int):
-            if obj - 2**31 <= obj < 2**31:
-                return self._wrap_raw_handle(
-                    self._dll.mr_alloc_int_val(
-                        self.ctx,
-                        obj,
-                        MiniRacerTypes.integer,
-                    )
-                )
-
-            # We transmit ints as int32, so "upgrade" to double upon overflow.
-            # (ECMAScript numeric is double anyway, but V8 does internally distinguish
-            # int types, so we try and preserve integer-ness for round-tripping
-            # purposes.)
-            # JS BigInt would be a closer representation of Python int, but upgrading
-            # to BigInt would probably be surprising for most applications, so for now,
-            # we approximate with double:
-            return self._wrap_raw_handle(
-                self._dll.mr_alloc_double_val(
-                    self.ctx,
-                    obj,
-                    MiniRacerTypes.double,
-                )
-            )
-        if isinstance(obj, float):
-            return self._wrap_raw_handle(
-                self._dll.mr_alloc_double_val(
-                    self.ctx,
-                    obj,
-                    MiniRacerTypes.double,
-                )
-            )
-        if isinstance(obj, str):
-            b = obj.encode("utf-8")
-            return self._wrap_raw_handle(
-                self._dll.mr_alloc_string_val(
-                    self.ctx,
-                    b,
-                    len(b),
-                    MiniRacerTypes.str_utf8,
-                )
-            )
-        if isinstance(obj, datetime):
-            # JS timestamps are milliseconds. In Python we are in seconds:
-            return self._wrap_raw_handle(
-                self._dll.mr_alloc_double_val(
-                    self.ctx,
-                    obj.timestamp() * 1000.0,
-                    MiniRacerTypes.date,
-                )
-            )
-
-        # Note: we skip shared array buffers, so for now at least, handles to shared
-        # array buffers can only be transmitted from JS to Python.
-
-        raise JSConversionException
-
-    def _free(self, res: _RawValue) -> None:
-        if self._dll and self.ctx:
-            self._dll.mr_free_value(self.ctx, res)
-
-    @contextmanager
-    def _run_mr_task(self, dll_method, *args):
-        """Manages those tasks which generate callbacks from the MiniRacer DLL.
-
-        Several MiniRacer functions (JS evaluation and 2 heap stats calls) are
-        asynchronous. They take a function callback and callback data parameter, and
-        they return a task handle.
-
-        In this method, we create a future for each callback to get the right data to
-        the right caller, and we manage the lifecycle of the task and task handle.
-        """
-
-        callback_id, future = self._set_up_callback_into_sync_future()
-
-        # Start the task:
-        task_handle = dll_method(*args, self._mr_callback, callback_id)
-        try:
-            # Let the caller handle waiting on the result:
-            yield future
-        finally:
-            # Free the task handle.
-            # Note this also cancels the task if it hasn't completed yet.
-            self._dll.mr_free_task_handle(task_handle)
-
-            # If the caller gives up on waiting, let's at least await the
-            # cancelation error for GC purposes:
-            with suppress(Exception):
-                future.get()
-
-    def __del__(self):
-        if self._dll and self.ctx:
-            # Because finalizers aren't necessarily called in any consistent order,
-            # it's possible for this MiniRacer.__del__() method to be called before
-            # _ValueHandle.__del__() which calls MiniRacer._free() on
-            # this same object.
-            # To prevent further attempted use of the context, remove the variable.
-            # (Note that the C++ MiniRacer object tracks all _RawValue
-            # instances and frees them upon its own destruction, so there is no memory
-            # leak in practice when belated calls to MiniRacer._free() are ignored.)
-            ctx, self.ctx = self.ctx, None
-            self._dll.mr_free_context(ctx)
+        return self.json_impl.loads(self._ctx.heap_stats())
 
 
 # Compatibility with versions 0.4 & 0.5
 StrictMiniRacer = MiniRacer
 
 
-class MiniRacerTypes:
+class _MiniRacerTypes:
     """MiniRacer types identifier
 
     Note: it needs to be coherent with mini_racer.cc.
@@ -1216,24 +1251,24 @@ class MiniRacerTypes:
 
 
 _ERRORS = {
-    MiniRacerTypes.parse_exception: (
+    _MiniRacerTypes.parse_exception: (
         JSParseException,
         "Unknown JavaScript error during parse",
     ),
-    MiniRacerTypes.execute_exception: (
+    _MiniRacerTypes.execute_exception: (
         JSEvalException,
         "Uknown JavaScript error during execution",
     ),
-    MiniRacerTypes.oom_exception: (JSOOMException, "JavaScript memory limit reached"),
-    MiniRacerTypes.terminated_exception: (
+    _MiniRacerTypes.oom_exception: (JSOOMException, "JavaScript memory limit reached"),
+    _MiniRacerTypes.terminated_exception: (
         JSTerminatedException,
         "JavaScript was terminated",
     ),
-    MiniRacerTypes.key_exception: (
+    _MiniRacerTypes.key_exception: (
         JSKeyError,
         "No such key found in object",
     ),
-    MiniRacerTypes.value_exception: (
+    _MiniRacerTypes.value_exception: (
         JSValueError,
         "Bad value passed to JavaScript engine",
     ),

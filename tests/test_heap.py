@@ -10,4 +10,4 @@ def test_heap_stats():
     assert mr.heap_stats()["total_heap_size"] > 0
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001

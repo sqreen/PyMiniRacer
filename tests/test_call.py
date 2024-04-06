@@ -21,7 +21,7 @@ def test_call_js():
     assert mr.call("f", *list(range(20))) == 20
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
 def test_call_custom_encoder():
@@ -43,4 +43,4 @@ def test_call_custom_encoder():
     assert mr.call("f", now, encoder=CustomEncoder) == now.isoformat()
 
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001

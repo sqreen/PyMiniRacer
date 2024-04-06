@@ -47,4 +47,4 @@ def test_add():
 
     del module_raw
     collect()
-    assert mr.value_count() == 0
+    assert mr._ctx.value_count() == 0  # noqa: SLF001

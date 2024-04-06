@@ -1,5 +1,7 @@
+from re import match
+
 import pytest
-from py_mini_racer import LibAlreadyInitializedError, init_mini_racer
+from py_mini_racer import LibAlreadyInitializedError, MiniRacer, init_mini_racer
 
 
 def test_init():
@@ -21,3 +23,8 @@ def test_init():
 #     mr = MiniRacer()
 #     # this would normally fail in strict JS mode because foo is not declared:
 #     mr.eval('foo = 4')
+
+
+def test_version():
+    mr = MiniRacer()
+    assert match(r"^\d+\.\d+\.\d+\.\d+$", mr.v8_version) is not None
