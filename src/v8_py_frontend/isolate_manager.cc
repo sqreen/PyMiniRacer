@@ -24,6 +24,7 @@ void IsolateManager::PumpMessages() {
   // By the design of PyMiniRacer, only this, the message pump thread, is ever
   // allowed to touch the isolate, so go ahead and lock it:
   const v8::Locker lock(isolate_holder_.Get());
+  const v8::Isolate::Scope scope(isolate_holder_.Get());
 
   const v8::SealHandleScope shs(isolate_holder_.Get());
   while (!shutdown_) {

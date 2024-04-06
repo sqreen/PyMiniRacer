@@ -345,6 +345,32 @@ done
     assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 
+def test_longer_microtask():
+    # Verifies a bug fix wherein failure to set a v8::Isolate::Scope on the message
+    # pump thread would otherwise result in a segmentation fault:
+    mr = MiniRacer()
+    mr.eval(
+        """
+var done = false;
+async function foo() {
+    await new Promise((res, rej) => setTimeout(res, 1000));
+    for (let i = 0; i < 10000000; i++) { }
+    done = true;
+}
+foo();
+"""
+    )
+
+    assert not mr.eval("done")
+    start = time()
+    while time() - start < 10 and not mr.eval("done"):
+        sleep(0.1)
+    assert mr.eval("done")
+
+    collect()
+    assert mr._ctx.value_count() == 0  # noqa: SLF001
+
+
 def test_polling():
     mr = MiniRacer()
     assert not mr.eval(
