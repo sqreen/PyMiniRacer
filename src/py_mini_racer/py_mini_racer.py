@@ -265,7 +265,7 @@ class _RawValue(ctypes.Structure):
 _RawValueHandle = ctypes.POINTER(_RawValue)
 
 
-class ArrayBufferByte(ctypes.Structure):
+class _ArrayBufferByte(ctypes.Structure):
     # Cannot use c_ubyte directly because it uses <B
     # as an internal type but we need B for memoryview.
     _fields_: ClassVar[tuple[str, object]] = [
@@ -339,7 +339,7 @@ class _ValueHandle:
         if typ == _MiniRacerTypes.symbol:
             return JSSymbol(self.ctx, self)
         if typ in (_MiniRacerTypes.shared_array_buffer, _MiniRacerTypes.array_buffer):
-            buf = ArrayBufferByte * length
+            buf = _ArrayBufferByte * length
             cdata = buf.from_address(val.value_ptr)
             # Save a reference to ourselves to prevent garbage collection of the
             # backing store:
