@@ -19,8 +19,10 @@ LIB_EXPORT auto mr_eval(MiniRacer::Context* mr_context,
                         char* str,
                         uint64_t len,
                         MiniRacer::Callback callback,
-                        void* cb_data) -> MiniRacer::CancelableTaskHandle* {
-  return mr_context->Eval(std::string(str, len), callback, cb_data).release();
+                        uint64_t callback_id)
+    -> MiniRacer::CancelableTaskHandle* {
+  return mr_context->Eval(std::string(str, len), callback, callback_id)
+      .release();
 }
 
 LIB_EXPORT void mr_init_v8(const char* v8_flags,
@@ -71,9 +73,9 @@ LIB_EXPORT void mr_free_task_handle(
 
 LIB_EXPORT auto mr_heap_stats(MiniRacer::Context* mr_context,
                               MiniRacer::Callback callback,
-                              void* cb_data)
+                              uint64_t callback_id)
     -> MiniRacer::CancelableTaskHandle* {
-  return mr_context->HeapStats(callback, cb_data).release();
+  return mr_context->HeapStats(callback, callback_id).release();
 }
 
 LIB_EXPORT void mr_set_hard_memory_limit(MiniRacer::Context* mr_context,
@@ -108,8 +110,8 @@ LIB_EXPORT void mr_attach_promise_then(
     MiniRacer::Context* mr_context,
     MiniRacer::BinaryValueHandle* promise_handle,
     MiniRacer::Callback callback,
-    void* cb_data) {
-  mr_context->AttachPromiseThen(promise_handle, callback, cb_data);
+    uint64_t callback_id) {
+  mr_context->AttachPromiseThen(promise_handle, callback, callback_id);
 }
 
 LIB_EXPORT auto mr_get_identity_hash(MiniRacer::Context* mr_context,
@@ -161,19 +163,20 @@ LIB_EXPORT auto mr_call_function(MiniRacer::Context* mr_context,
                                  MiniRacer::BinaryValueHandle* this_handle,
                                  MiniRacer::BinaryValueHandle* argv_handle,
                                  MiniRacer::Callback callback,
-                                 void* cb_data)
+                                 uint64_t callback_id)
     -> MiniRacer::CancelableTaskHandle* {
   return mr_context
-      ->CallFunction(func_handle, this_handle, argv_handle, callback, cb_data)
+      ->CallFunction(func_handle, this_handle, argv_handle, callback,
+                     callback_id)
       .release();
 }
 
 // FOR DEBUGGING ONLY
 LIB_EXPORT auto mr_heap_snapshot(MiniRacer::Context* mr_context,
                                  MiniRacer::Callback callback,
-                                 void* cb_data)
+                                 uint64_t callback_id)
     -> MiniRacer::CancelableTaskHandle* {
-  return mr_context->HeapSnapshot(callback, cb_data).release();
+  return mr_context->HeapSnapshot(callback, callback_id).release();
 }
 
 LIB_EXPORT auto mr_value_count(MiniRacer::Context* mr_context) -> size_t {

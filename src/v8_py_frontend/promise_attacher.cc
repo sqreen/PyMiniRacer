@@ -8,6 +8,7 @@
 #include <v8-microtask-queue.h>
 #include <v8-persistent-handle.h>
 #include <v8-promise.h>
+#include <cstdint>
 #include <memory>
 #include "binary_value.h"
 #include "callback.h"
@@ -22,7 +23,8 @@ PromiseAttacher::PromiseAttacher(v8::Persistent<v8::Context>* context,
 auto PromiseAttacher::AttachPromiseThen(v8::Isolate* isolate,
                                         BinaryValue* promise_ptr,
                                         Callback callback,
-                                        void* cb_data) -> BinaryValue::Ptr {
+                                        uint64_t callback_id)
+    -> BinaryValue::Ptr {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
   const v8::Local<v8::Context> local_context = context_->Get(isolate);
@@ -37,7 +39,7 @@ auto PromiseAttacher::AttachPromiseThen(v8::Isolate* isolate,
   // called. (If we use auto here we can't mark gsl::owner, so disable this
   // lint check:) NOLINTNEXTLINE(hicpp-use-auto,modernize-use-auto)
   gsl::owner<PromiseCompletionHandler*> completion_handler =
-      new PromiseCompletionHandler(bv_factory_, callback, cb_data);
+      new PromiseCompletionHandler(bv_factory_, callback, callback_id);
   const v8::Local<v8::External> edata =
       v8::External::New(isolate, completion_handler);
 
@@ -58,8 +60,8 @@ auto PromiseAttacher::AttachPromiseThen(v8::Isolate* isolate,
 PromiseCompletionHandler::PromiseCompletionHandler(
     BinaryValueFactory* bv_factory,
     Callback callback,
-    void* cb_data)
-    : bv_factory_(bv_factory), callback_(callback), cb_data_(cb_data) {}
+    uint64_t callback_id)
+    : bv_factory_(bv_factory), callback_(callback), callback_id_(callback_id) {}
 
 void PromiseCompletionHandler::OnFulfilledStatic(
     const v8::FunctionCallbackInfo<v8::Value>& info) {
@@ -87,7 +89,7 @@ void PromiseCompletionHandler::OnFulfilled(v8::Isolate* isolate,
 
   const BinaryValue::Ptr val = bv_factory_->New(context, value);
 
-  callback_(cb_data_, val->GetHandle());
+  callback_(callback_id_, val->GetHandle());
 }
 
 void PromiseCompletionHandler::OnRejected(v8::Isolate* isolate,
@@ -99,7 +101,7 @@ void PromiseCompletionHandler::OnRejected(v8::Isolate* isolate,
   const BinaryValue::Ptr val = bv_factory_->New(
       context, v8::Local<v8::Message>(), exc, type_execute_exception);
 
-  callback_(cb_data_, val->GetHandle());
+  callback_(callback_id_, val->GetHandle());
 }
 
 }  // end namespace MiniRacer

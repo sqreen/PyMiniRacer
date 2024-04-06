@@ -6,15 +6,17 @@ import sys
 from asyncio import Future
 from collections.abc import MutableMapping, MutableSequence
 from contextlib import ExitStack, contextmanager, suppress
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib import resources
+from itertools import count
 from json import JSONEncoder
 from operator import index as op_index
 from os.path import exists
 from os.path import join as pathjoin
 from sys import platform, version_info
 from threading import Condition, Lock
-from typing import Any, ClassVar, Iterable, Iterator, Union
+from typing import Any, Callable, ClassVar, Iterable, Iterator, Union
 
 Numeric = Union[int, float]
 
@@ -201,18 +203,19 @@ class JSSymbol(JSMappedObject):
 
 
 class JSPromise(JSMappedObject):
-    """JavaScript promise."""
+    """JavaScript Promise.
+
+    To get a value, call `promise.get()` to block, or `await promise` from within an
+    `async` coroutine. Either will raise a Python exception if the JavaScript Promise
+    is rejected.
+    """
 
     def __init__(
         self,
         ctx,
         handle,
-        to_sync_future,
-        to_async_future,
     ):
         super().__init__(ctx, handle)
-        self._to_sync_future = to_sync_future
-        self._to_async_future = to_async_future
 
     def get(self, *, timeout: Numeric | None = None):
         """Get the value, or raise an exception. This call blocks.
@@ -226,6 +229,28 @@ class JSPromise(JSMappedObject):
 
     def __await__(self):
         return self._to_async_future().__await__()
+
+    def _attach_callbacks(self, callback_id):
+        self._ctx._wrap_raw_handle(  # noqa: SLF001
+            self._ctx._dll.mr_attach_promise_then(  # noqa: SLF001
+                self._ctx.ctx,
+                self._handle.raw,
+                self._ctx._mr_callback,  # noqa: SLF001
+                callback_id,
+            )
+        ).to_python()
+
+    def _to_sync_future(self):
+        """Create and attach a Python _SyncFuture to this JS Promise."""
+        callback_id, future = self._ctx._set_up_callback_into_sync_future()  # noqa: SLF001
+        self._attach_callbacks(callback_id)
+        return future
+
+    def _to_async_future(self):
+        """Create and attach a Python asyncio.Future to this JS Promise."""
+        callback_id, future = self._ctx._set_up_callback_into_async_future()  # noqa: SLF001
+        self._attach_callbacks(callback_id)
+        return future
 
 
 def _get_lib_filename(name):
@@ -271,7 +296,7 @@ class ArrayBufferByte(ctypes.Structure):
     _pack_ = 1
 
 
-_MR_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.py_object, _RawValueHandle)
+_MR_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_uint64, _RawValueHandle)
 
 
 class _ValueHandle:
@@ -347,32 +372,7 @@ class _ValueHandle:
             return result.cast("B")
 
         if typ == MiniRacerTypes.promise:
-
-            def attach_future(future, callback):
-                self.ctx._wrap_raw_handle(  # noqa: SLF001
-                    self.ctx._dll.mr_attach_promise_then(  # noqa: SLF001
-                        self.ctx.ctx,
-                        self.raw,
-                        callback,
-                        future,
-                    )
-                ).to_python()
-
-                return future
-
-            def to_sync_future():
-                return attach_future(
-                    self.ctx._make_sync_future(),  # noqa: SLF001
-                    self.ctx._mr_sync_callback,  # noqa: SLF001
-                )
-
-            def to_async_future():
-                return attach_future(
-                    self.ctx._make_async_future(),  # noqa: SLF001
-                    self.ctx._mr_async_callback,  # noqa: SLF001
-                )
-
-            return JSPromise(self.ctx, self, to_sync_future, to_async_future)
+            return JSPromise(self.ctx, self)
 
         if typ == MiniRacerTypes.array:
             return JSArray(self.ctx, self)
@@ -396,7 +396,7 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
         ctypes.c_char_p,
         ctypes.c_uint64,
         _MR_CALLBACK,
-        ctypes.py_object,
+        ctypes.c_uint64,
     ]
     handle.mr_eval.restype = ctypes.c_void_p
 
@@ -427,7 +427,7 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
     handle.mr_heap_stats.argtypes = [
         ctypes.c_void_p,
         _MR_CALLBACK,
-        ctypes.py_object,
+        ctypes.c_uint64,
     ]
     handle.mr_heap_stats.restype = ctypes.c_void_p
 
@@ -437,14 +437,14 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
         ctypes.c_void_p,
         _RawValueHandle,
         _MR_CALLBACK,
-        ctypes.py_object,
+        ctypes.c_uint64,
     ]
     handle.mr_attach_promise_then.restype = _RawValueHandle
 
     handle.mr_heap_snapshot.argtypes = [
         ctypes.c_void_p,
         _MR_CALLBACK,
-        ctypes.py_object,
+        ctypes.c_uint64,
     ]
     handle.mr_heap_snapshot.restype = ctypes.c_void_p
 
@@ -497,7 +497,7 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
         _RawValueHandle,
         _RawValueHandle,
         _MR_CALLBACK,
-        ctypes.py_object,
+        ctypes.c_uint64,
     ]
     handle.mr_call_function.restype = ctypes.c_void_p
 
@@ -692,6 +692,12 @@ var clearTimeout = (...arguments) => __timer_manager.clearTimeout(...arguments);
 """
 
 
+@dataclass
+class _Callbacks:
+    on_resolved: Callable
+    on_rejected: Callable
+
+
 class MiniRacer:
     """
     MiniRacer evaluates JavaScript code using a V8 isolate.
@@ -706,38 +712,24 @@ class MiniRacer:
     def __init__(self):
         self._dll: ctypes.CDLL = init_mini_racer(ignore_duplicate_init=True)
         self.ctx = self._dll.mr_init_context()
-        self._active_callbacks = {}
+        self._active_callbacks: dict[int, _Callbacks] = {}
 
         # define an all-purpose callback for _SyncFuture:
         @_MR_CALLBACK
-        def mr_sync_callback(future, raw_val_handle):
+        def mr_callback(callback_id, raw_val_handle):
             val_handle = self._wrap_raw_handle(raw_val_handle)
 
-            self._active_callbacks.pop(future)
+            callbacks = self._active_callbacks.pop(callback_id)
             try:
                 val = val_handle.to_python()
-                future.set_result(val)
+                callbacks.on_resolved(val)
             except Exception as exc:  # noqa: BLE001
-                future.set_exception(exc)
+                callbacks.on_rejected(exc)
 
-        self._mr_sync_callback = mr_sync_callback
+        self._mr_callback = mr_callback
+        self._next_callback_id = count()
 
         self.eval(_INSTALL_SET_TIMEOUT)
-
-        # define an all-purpose callback for asyncio.Future:
-        @_MR_CALLBACK
-        def mr_async_callback(future, raw_val_handle):
-            val_handle = self._wrap_raw_handle(raw_val_handle)
-
-            self._active_callbacks.pop(future)
-            loop = future.get_loop()
-            try:
-                val = val_handle.to_python()
-                loop.call_soon_threadsafe(future.set_result, val)
-            except Exception as exc:  # noqa: BLE001
-                loop.call_soon_threadsafe(future.set_exception, exc)
-
-        self._mr_async_callback = mr_async_callback
 
     @property
     def v8_version(self) -> str:
@@ -786,9 +778,7 @@ class MiniRacer:
         if isinstance(code, str):
             code = code.encode("utf-8")
 
-        with self._run_mr_async_task(
-            self._dll.mr_eval, self.ctx, code, len(code)
-        ) as future:
+        with self._run_mr_task(self._dll.mr_eval, self.ctx, code, len(code)) as future:
             return future.get(timeout=timeout_sec)
 
     def execute(
@@ -955,7 +945,7 @@ class MiniRacer:
         this_handle = self._python_to_value_handle(this)
         argv_handle = self._python_to_value_handle(argv)
 
-        with self._run_mr_async_task(
+        with self._run_mr_task(
             self._dll.mr_call_function,
             self.ctx,
             func_handle.raw,
@@ -998,7 +988,7 @@ class MiniRacer:
     def heap_stats(self) -> dict:
         """Return the V8 isolate heap statistics."""
 
-        with self._run_mr_async_task(self._dll.mr_heap_stats, self.ctx) as future:
+        with self._run_mr_task(self._dll.mr_heap_stats, self.ctx) as future:
             res = future.get()
 
         return self.json_impl.loads(res)
@@ -1006,7 +996,7 @@ class MiniRacer:
     def heap_snapshot(self) -> dict:
         """Return a snapshot of the V8 isolate heap."""
 
-        with self._run_mr_async_task(self._dll.mr_heap_snapshot, self.ctx) as future:
+        with self._run_mr_task(self._dll.mr_heap_snapshot, self.ctx) as future:
             return future.get()
 
     def value_count(self):
@@ -1014,27 +1004,40 @@ class MiniRacer:
 
         return self._dll.mr_value_count(self.ctx)
 
-    def _make_sync_future(self, hold=None):
+    def _set_up_callback_into_sync_future(self):
+        """Create a _SyncFuture, and register a Python-side callback (and corresponding
+        callback ID) which activates it."""
+
         future = _SyncFuture()
 
-        # Keep track of this future until we are called back.
-        # This helps ensure Python doesn't garbage collect the future before the C++
-        # side of things is done with it.
-        # The items in "hold" are the things we passed into the C++ call, likewise
-        # here to avoid garbage collection until the callback completes.
-        self._active_callbacks[future] = hold
+        def on_resolved(value):
+            future.set_result(value)
 
-        return future
+        def on_rejected(exc):
+            future.set_exception(exc)
 
-    def _make_async_future(self, hold=None):
+        callback_id = next(self._next_callback_id)
+        self._active_callbacks[callback_id] = _Callbacks(on_resolved, on_rejected)
+
+        return callback_id, future
+
+    def _set_up_callback_into_async_future(self):
+        """Create an asyncio.Future, and register a Python-side callback (and
+        corresponding callback ID) which activates it."""
+
         future = Future()
+        loop = future.get_loop()
 
-        # Keep track of this future until we are called back.
-        # This helps ensure Python doesn't garbage collect the future before the C++
-        # side of things is done with it.
-        self._active_callbacks[future] = hold
+        def on_resolved(value):
+            loop.call_soon_threadsafe(future.set_result, value)
 
-        return future
+        def on_rejected(exc):
+            loop.call_soon_threadsafe(future.set_exception, exc)
+
+        callback_id = next(self._next_callback_id)
+        self._active_callbacks[callback_id] = _Callbacks(on_resolved, on_rejected)
+
+        return callback_id, future
 
     def _wrap_raw_handle(self, raw):
         return _ValueHandle(self, raw)
@@ -1132,7 +1135,7 @@ class MiniRacer:
             self._dll.mr_free_value(self.ctx, res)
 
     @contextmanager
-    def _run_mr_async_task(self, dll_method, *args):
+    def _run_mr_task(self, dll_method, *args):
         """Manages those tasks which generate callbacks from the MiniRacer DLL.
 
         Several MiniRacer functions (JS evaluation and 2 heap stats calls) are
@@ -1143,12 +1146,10 @@ class MiniRacer:
         the right caller, and we manage the lifecycle of the task and task handle.
         """
 
-        # Stuff the args into a map along with the future, so they aren't GC'd until
-        # the task completes:
-        future = self._make_sync_future(hold=args)
+        callback_id, future = self._set_up_callback_into_sync_future()
 
         # Start the task:
-        task_handle = dll_method(*args, self._mr_sync_callback, future)
+        task_handle = dll_method(*args, self._mr_callback, callback_id)
         try:
             # Let the caller handle waiting on the result:
             yield future

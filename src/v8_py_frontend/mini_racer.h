@@ -34,16 +34,16 @@ class Context {
   void FreeBinaryValue(BinaryValueHandle* val);
   template <typename... Params>
   auto AllocBinaryValue(Params&&... params) -> BinaryValueHandle*;
-  auto HeapSnapshot(Callback callback,
-                    void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
+  auto HeapSnapshot(Callback callback, uint64_t callback_id)
+      -> std::unique_ptr<CancelableTaskHandle>;
   auto HeapStats(Callback callback,
-                 void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
+                 uint64_t callback_id) -> std::unique_ptr<CancelableTaskHandle>;
   auto Eval(const std::string& code,
             Callback callback,
-            void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
+            uint64_t callback_id) -> std::unique_ptr<CancelableTaskHandle>;
   auto AttachPromiseThen(BinaryValueHandle* promise_handle,
                          Callback callback,
-                         void* cb_data) -> BinaryValueHandle*;
+                         uint64_t callback_id) -> BinaryValueHandle*;
   auto GetIdentityHash(BinaryValueHandle* obj_handle) -> BinaryValueHandle*;
   auto GetOwnPropertyNames(BinaryValueHandle* obj_handle) -> BinaryValueHandle*;
   auto GetObjectItem(BinaryValueHandle* obj_handle,
@@ -61,14 +61,15 @@ class Context {
                     BinaryValueHandle* this_handle,
                     BinaryValueHandle* argv_handle,
                     Callback callback,
-                    void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
+                    uint64_t callback_id)
+      -> std::unique_ptr<CancelableTaskHandle>;
   auto BinaryValueCount() -> size_t;
 
  private:
   template <typename Runnable>
   auto RunTask(Runnable runnable,
                Callback callback,
-               void* cb_data) -> std::unique_ptr<CancelableTaskHandle>;
+               uint64_t callback_id) -> std::unique_ptr<CancelableTaskHandle>;
 
   IsolateManager isolate_manager_;
   IsolateManagerStopper isolate_manager_stopper_;

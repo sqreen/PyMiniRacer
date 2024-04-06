@@ -5,6 +5,7 @@
 #include <v8-function-callback.h>
 #include <v8-isolate.h>
 #include <v8-persistent-handle.h>
+#include <cstdint>
 #include "binary_value.h"
 #include "callback.h"
 
@@ -18,7 +19,7 @@ class PromiseAttacher {
   auto AttachPromiseThen(v8::Isolate* isolate,
                          BinaryValue* promise_ptr,
                          Callback callback,
-                         void* cb_data) -> BinaryValue::Ptr;
+                         uint64_t callback_id) -> BinaryValue::Ptr;
 
  private:
   v8::Persistent<v8::Context>* context_;
@@ -29,7 +30,7 @@ class PromiseCompletionHandler {
  public:
   PromiseCompletionHandler(BinaryValueFactory* bv_factory,
                            Callback callback_,
-                           void* cb_data);
+                           uint64_t callback_id);
 
   static void OnFulfilledStatic(
       const v8::FunctionCallbackInfo<v8::Value>& info);
@@ -41,7 +42,7 @@ class PromiseCompletionHandler {
 
   BinaryValueFactory* bv_factory_;
   Callback callback_;
-  void* cb_data_;
+  uint64_t callback_id_;
 };
 
 }  // namespace MiniRacer

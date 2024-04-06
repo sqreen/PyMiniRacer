@@ -63,7 +63,8 @@ Context::Context()
 template <typename Runnable>
 auto Context::RunTask(Runnable runnable,
                       Callback callback,
-                      void* cb_data) -> std::unique_ptr<CancelableTaskHandle> {
+                      uint64_t callback_id)
+    -> std::unique_ptr<CancelableTaskHandle> {
   // Start an async task!
 
   // To make sure we perform an orderly exit, we track this async work, and
@@ -74,12 +75,12 @@ auto Context::RunTask(Runnable runnable,
       /*runnable=*/
       std::move(runnable),
       /*on_completed=*/
-      [callback, cb_data, this](const BinaryValue::Ptr& val) {
+      [callback, callback_id, this](const BinaryValue::Ptr& val) {
         pending_task_counter_.Decrement();
-        callback(cb_data, val->GetHandle());
+        callback(callback_id, val->GetHandle());
       },
       /*on_canceled=*/
-      [callback, cb_data, this](const BinaryValue::Ptr& val) {
+      [callback, callback_id, this](const BinaryValue::Ptr& val) {
         if (val) {
           // Ignore the produced value, if any:
           bv_factory_.Free(val->GetHandle());
@@ -88,41 +89,42 @@ auto Context::RunTask(Runnable runnable,
         auto err =
             bv_factory_.New("execution terminated", type_terminated_exception);
         pending_task_counter_.Decrement();
-        callback(cb_data, err->GetHandle());
+        callback(callback_id, err->GetHandle());
       });
 }
 
 auto Context::Eval(const std::string& code,
                    Callback callback,
-                   void* cb_data) -> std::unique_ptr<CancelableTaskHandle> {
+                   uint64_t callback_id)
+    -> std::unique_ptr<CancelableTaskHandle> {
   return RunTask(
       [code, this](v8::Isolate* isolate) {
         return code_evaluator_.Eval(isolate, code);
       },
-      callback, cb_data);
+      callback, callback_id);
 }
 
-auto Context::HeapSnapshot(Callback callback, void* cb_data)
+auto Context::HeapSnapshot(Callback callback, uint64_t callback_id)
     -> std::unique_ptr<CancelableTaskHandle> {
   return RunTask(
       [this](v8::Isolate* isolate) {
         return heap_reporter_.HeapSnapshot(isolate);
       },
-      callback, cb_data);
+      callback, callback_id);
 }
 
-auto Context::HeapStats(Callback callback, void* cb_data)
+auto Context::HeapStats(Callback callback, uint64_t callback_id)
     -> std::unique_ptr<CancelableTaskHandle> {
   return RunTask(
       [this](v8::Isolate* isolate) {
         return heap_reporter_.HeapStats(isolate);
       },
-      callback, cb_data);
+      callback, callback_id);
 }
 
 auto Context::AttachPromiseThen(BinaryValueHandle* promise_handle,
                                 MiniRacer::Callback callback,
-                                void* cb_data) -> BinaryValueHandle* {
+                                uint64_t callback_id) -> BinaryValueHandle* {
   auto promise_ptr = bv_factory_.FromHandle(promise_handle);
   if (!promise_ptr) {
     return bv_factory_.New("Bad handle: promise", type_value_exception)
@@ -131,9 +133,9 @@ auto Context::AttachPromiseThen(BinaryValueHandle* promise_handle,
 
   return isolate_manager_
       .RunAndAwait(
-          [this, promise_ptr, callback, cb_data](v8::Isolate* isolate) {
+          [this, promise_ptr, callback, callback_id](v8::Isolate* isolate) {
             return promise_attacher_.AttachPromiseThen(
-                isolate, promise_ptr.get(), callback, cb_data);
+                isolate, promise_ptr.get(), callback, callback_id);
           })
       ->GetHandle();
 }
@@ -280,27 +282,27 @@ auto Context::CallFunction(BinaryValueHandle* func_handle,
                            BinaryValueHandle* this_handle,
                            BinaryValueHandle* argv_handle,
                            Callback callback,
-                           void* cb_data)
+                           uint64_t callback_id)
     -> std::unique_ptr<CancelableTaskHandle> {
   auto func_ptr = bv_factory_.FromHandle(func_handle);
   if (!func_ptr) {
     auto err = bv_factory_.New("Bad handle: func", type_value_exception);
     return RunTask([err](v8::Isolate* /*isolate*/) { return err; }, callback,
-                   cb_data);
+                   callback_id);
   }
 
   auto this_ptr = bv_factory_.FromHandle(this_handle);
   if (!this_ptr) {
     auto err = bv_factory_.New("Bad handle: this", type_value_exception);
     return RunTask([err](v8::Isolate* /*isolate*/) { return err; }, callback,
-                   cb_data);
+                   callback_id);
   }
 
   auto argv_ptr = bv_factory_.FromHandle(argv_handle);
   if (!argv_ptr) {
     auto err = bv_factory_.New("Bad handle: argv", type_value_exception);
     return RunTask([err](v8::Isolate* /*isolate*/) { return err; }, callback,
-                   cb_data);
+                   callback_id);
   }
 
   return RunTask(
@@ -308,7 +310,7 @@ auto Context::CallFunction(BinaryValueHandle* func_handle,
         return object_manipulator_.Call(isolate, func_ptr.get(), this_ptr.get(),
                                         argv_ptr.get());
       },
-      callback, cb_data);
+      callback, callback_id);
 }
 
 auto Context::BinaryValueCount() -> size_t {
