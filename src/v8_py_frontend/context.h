@@ -4,7 +4,6 @@
 #include <v8-platform.h>
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <string>
 #include "binary_value.h"
 #include "callback.h"
@@ -34,13 +33,12 @@ class Context {
   void FreeBinaryValue(BinaryValueHandle* val);
   template <typename... Params>
   auto AllocBinaryValue(Params&&... params) -> BinaryValueHandle*;
-  auto HeapSnapshot(Callback callback, uint64_t callback_id)
-      -> std::unique_ptr<CancelableTaskHandle>;
-  auto HeapStats(Callback callback,
-                 uint64_t callback_id) -> std::unique_ptr<CancelableTaskHandle>;
+  void CancelTask(uint64_t task_id);
+  auto HeapSnapshot(Callback callback, uint64_t callback_id) -> uint64_t;
+  auto HeapStats(Callback callback, uint64_t callback_id) -> uint64_t;
   auto Eval(const std::string& code,
             Callback callback,
-            uint64_t callback_id) -> std::unique_ptr<CancelableTaskHandle>;
+            uint64_t callback_id) -> uint64_t;
   auto AttachPromiseThen(BinaryValueHandle* promise_handle,
                          Callback callback,
                          uint64_t callback_id) -> BinaryValueHandle*;
@@ -61,15 +59,14 @@ class Context {
                     BinaryValueHandle* this_handle,
                     BinaryValueHandle* argv_handle,
                     Callback callback,
-                    uint64_t callback_id)
-      -> std::unique_ptr<CancelableTaskHandle>;
+                    uint64_t callback_id) -> uint64_t;
   auto BinaryValueCount() -> size_t;
 
  private:
   template <typename Runnable>
   auto RunTask(Runnable runnable,
                Callback callback,
-               uint64_t callback_id) -> std::unique_ptr<CancelableTaskHandle>;
+               uint64_t callback_id) -> uint64_t;
 
   IsolateManager isolate_manager_;
   IsolateManagerStopper isolate_manager_stopper_;

@@ -376,9 +376,9 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
         _MR_CALLBACK,
         ctypes.c_uint64,
     ]
-    handle.mr_eval.restype = ctypes.c_void_p
+    handle.mr_eval.restype = ctypes.c_uint64
 
-    handle.mr_free_value.argtypes = [ctypes.c_uint64, ctypes.c_void_p]
+    handle.mr_free_value.argtypes = [ctypes.c_uint64, _RawValueHandle]
 
     handle.mr_alloc_int_val.argtypes = [ctypes.c_uint64, ctypes.c_int64, ctypes.c_uint8]
     handle.mr_alloc_int_val.restype = _RawValueHandle
@@ -403,14 +403,14 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
     handle.mr_context_count.argtypes = []
     handle.mr_context_count.restype = ctypes.c_size_t
 
-    handle.mr_free_task_handle.argtypes = [ctypes.c_void_p]
+    handle.mr_cancel_task.argtypes = [ctypes.c_uint64, ctypes.c_uint64]
 
     handle.mr_heap_stats.argtypes = [
         ctypes.c_uint64,
         _MR_CALLBACK,
         ctypes.c_uint64,
     ]
-    handle.mr_heap_stats.restype = ctypes.c_void_p
+    handle.mr_heap_stats.restype = ctypes.c_uint64
 
     handle.mr_low_memory_notification.argtypes = [ctypes.c_uint64]
 
@@ -427,7 +427,7 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
         _MR_CALLBACK,
         ctypes.c_uint64,
     ]
-    handle.mr_heap_snapshot.restype = ctypes.c_void_p
+    handle.mr_heap_snapshot.restype = ctypes.c_uint64
 
     handle.mr_get_identity_hash.argtypes = [
         ctypes.c_uint64,
@@ -480,7 +480,7 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
         _MR_CALLBACK,
         ctypes.c_uint64,
     ]
-    handle.mr_call_function.restype = ctypes.c_void_p
+    handle.mr_call_function.restype = ctypes.c_uint64
 
     handle.mr_set_hard_memory_limit.argtypes = [ctypes.c_uint64, ctypes.c_size_t]
 
@@ -1035,14 +1035,14 @@ class _Context:
         callback_id, future = self._set_up_callback_into_sync_future()
 
         # Start the task:
-        task_handle = dll_method(*args, self._mr_callback, callback_id)
+        task_id = dll_method(*args, self._mr_callback, callback_id)
         try:
             # Let the caller handle waiting on the result:
             yield future
         finally:
-            # Free the task handle.
-            # Note this also cancels the task if it hasn't completed yet.
-            self._dll.mr_free_task_handle(task_handle)
+            # Cancel the task if it's not already done (this call is ignored if it's
+            # already done)
+            self._dll.mr_cancel_task(self._ctx, task_id)
 
             # If the caller gives up on waiting, let's at least await the
             # cancelation error for GC purposes:

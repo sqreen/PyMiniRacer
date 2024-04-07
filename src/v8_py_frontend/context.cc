@@ -34,8 +34,7 @@ Context::Context(v8::Platform* platform)
 template <typename Runnable>
 auto Context::RunTask(Runnable runnable,
                       Callback callback,
-                      uint64_t callback_id)
-    -> std::unique_ptr<CancelableTaskHandle> {
+                      uint64_t callback_id) -> uint64_t {
   // Start an async task!
 
   // To make sure we perform an orderly exit, we track this async work, and
@@ -66,8 +65,7 @@ auto Context::RunTask(Runnable runnable,
 
 auto Context::Eval(const std::string& code,
                    Callback callback,
-                   uint64_t callback_id)
-    -> std::unique_ptr<CancelableTaskHandle> {
+                   uint64_t callback_id) -> uint64_t {
   return RunTask(
       [code, this](v8::Isolate* isolate) {
         return code_evaluator_.Eval(isolate, code);
@@ -75,8 +73,12 @@ auto Context::Eval(const std::string& code,
       callback, callback_id);
 }
 
-auto Context::HeapSnapshot(Callback callback, uint64_t callback_id)
-    -> std::unique_ptr<CancelableTaskHandle> {
+void Context::CancelTask(uint64_t task_id) {
+  cancelable_task_runner_.Cancel(task_id);
+}
+
+auto Context::HeapSnapshot(Callback callback,
+                           uint64_t callback_id) -> uint64_t {
   return RunTask(
       [this](v8::Isolate* isolate) {
         return heap_reporter_.HeapSnapshot(isolate);
@@ -84,8 +86,7 @@ auto Context::HeapSnapshot(Callback callback, uint64_t callback_id)
       callback, callback_id);
 }
 
-auto Context::HeapStats(Callback callback, uint64_t callback_id)
-    -> std::unique_ptr<CancelableTaskHandle> {
+auto Context::HeapStats(Callback callback, uint64_t callback_id) -> uint64_t {
   return RunTask(
       [this](v8::Isolate* isolate) {
         return heap_reporter_.HeapStats(isolate);
@@ -253,8 +254,7 @@ auto Context::CallFunction(BinaryValueHandle* func_handle,
                            BinaryValueHandle* this_handle,
                            BinaryValueHandle* argv_handle,
                            Callback callback,
-                           uint64_t callback_id)
-    -> std::unique_ptr<CancelableTaskHandle> {
+                           uint64_t callback_id) -> uint64_t {
   auto func_ptr = bv_factory_.FromHandle(func_handle);
   if (!func_ptr) {
     auto err = bv_factory_.New("Bad handle: func", type_value_exception);

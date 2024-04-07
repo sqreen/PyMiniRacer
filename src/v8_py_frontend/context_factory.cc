@@ -73,7 +73,7 @@ auto ContextFactory::Count() -> size_t {
 ContextFactory::ContextFactory(const std::string& v8_flags,
                                const std::filesystem::path& icu_path,
                                const std::filesystem::path& snapshot_path)
-    : next_context_id_(0) {
+    : next_context_id_(1) {
   v8::V8::InitializeICU(icu_path.string().c_str());
   v8::V8::InitializeExternalStartupDataFromFile(snapshot_path.string().c_str());
 
