@@ -1,7 +1,10 @@
+from gc import collect
 from re import match
+from time import sleep
 
 import pytest
 from py_mini_racer import LibAlreadyInitializedError, MiniRacer, init_mini_racer
+from py_mini_racer.py_mini_racer import _context_count
 
 
 def test_init():
@@ -33,3 +36,13 @@ def test_version():
 def test_sandbox():
     mr = MiniRacer()
     assert mr._ctx.v8_is_using_sandbox()  # noqa: SLF001
+
+
+def test_del():
+    collect()
+    count_before = _context_count()
+    mr = MiniRacer()
+    del mr
+    sleep(0.1)
+    collect()
+    assert _context_count() == count_before

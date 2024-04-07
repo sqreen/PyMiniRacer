@@ -367,10 +367,10 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
     handle.mr_init_v8.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
 
     handle.mr_init_context.argtypes = []
-    handle.mr_init_context.restype = ctypes.c_void_p
+    handle.mr_init_context.restype = ctypes.c_uint64
 
     handle.mr_eval.argtypes = [
-        ctypes.c_void_p,
+        ctypes.c_uint64,
         ctypes.c_char_p,
         ctypes.c_uint64,
         _MR_CALLBACK,
@@ -378,41 +378,44 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
     ]
     handle.mr_eval.restype = ctypes.c_void_p
 
-    handle.mr_free_value.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    handle.mr_free_value.argtypes = [ctypes.c_uint64, ctypes.c_void_p]
 
-    handle.mr_alloc_int_val.argtypes = [ctypes.c_void_p, ctypes.c_int64, ctypes.c_uint8]
+    handle.mr_alloc_int_val.argtypes = [ctypes.c_uint64, ctypes.c_int64, ctypes.c_uint8]
     handle.mr_alloc_int_val.restype = _RawValueHandle
 
     handle.mr_alloc_double_val.argtypes = [
-        ctypes.c_void_p,
+        ctypes.c_uint64,
         ctypes.c_double,
         ctypes.c_uint8,
     ]
     handle.mr_alloc_double_val.restype = _RawValueHandle
 
     handle.mr_alloc_string_val.argtypes = [
-        ctypes.c_void_p,
+        ctypes.c_uint64,
         ctypes.c_char_p,
         ctypes.c_uint64,
         ctypes.c_uint8,
     ]
     handle.mr_alloc_string_val.restype = _RawValueHandle
 
-    handle.mr_free_context.argtypes = [ctypes.c_void_p]
+    handle.mr_free_context.argtypes = [ctypes.c_uint64]
+
+    handle.mr_context_count.argtypes = []
+    handle.mr_context_count.restype = ctypes.c_size_t
 
     handle.mr_free_task_handle.argtypes = [ctypes.c_void_p]
 
     handle.mr_heap_stats.argtypes = [
-        ctypes.c_void_p,
+        ctypes.c_uint64,
         _MR_CALLBACK,
         ctypes.c_uint64,
     ]
     handle.mr_heap_stats.restype = ctypes.c_void_p
 
-    handle.mr_low_memory_notification.argtypes = [ctypes.c_void_p]
+    handle.mr_low_memory_notification.argtypes = [ctypes.c_uint64]
 
     handle.mr_attach_promise_then.argtypes = [
-        ctypes.c_void_p,
+        ctypes.c_uint64,
         _RawValueHandle,
         _MR_CALLBACK,
         ctypes.c_uint64,
@@ -420,33 +423,33 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
     handle.mr_attach_promise_then.restype = _RawValueHandle
 
     handle.mr_heap_snapshot.argtypes = [
-        ctypes.c_void_p,
+        ctypes.c_uint64,
         _MR_CALLBACK,
         ctypes.c_uint64,
     ]
     handle.mr_heap_snapshot.restype = ctypes.c_void_p
 
     handle.mr_get_identity_hash.argtypes = [
-        ctypes.c_void_p,
+        ctypes.c_uint64,
         _RawValueHandle,
     ]
     handle.mr_get_identity_hash.restype = _RawValueHandle
 
     handle.mr_get_own_property_names.argtypes = [
-        ctypes.c_void_p,
+        ctypes.c_uint64,
         _RawValueHandle,
     ]
     handle.mr_get_own_property_names.restype = _RawValueHandle
 
     handle.mr_get_object_item.argtypes = [
-        ctypes.c_void_p,
+        ctypes.c_uint64,
         _RawValueHandle,
         _RawValueHandle,
     ]
     handle.mr_get_object_item.restype = _RawValueHandle
 
     handle.mr_set_object_item.argtypes = [
-        ctypes.c_void_p,
+        ctypes.c_uint64,
         _RawValueHandle,
         _RawValueHandle,
         _RawValueHandle,
@@ -454,14 +457,14 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
     handle.mr_set_object_item.restype = _RawValueHandle
 
     handle.mr_del_object_item.argtypes = [
-        ctypes.c_void_p,
+        ctypes.c_uint64,
         _RawValueHandle,
         _RawValueHandle,
     ]
     handle.mr_del_object_item.restype = _RawValueHandle
 
     handle.mr_splice_array.argtypes = [
-        ctypes.c_void_p,
+        ctypes.c_uint64,
         _RawValueHandle,
         ctypes.c_int32,
         ctypes.c_int32,
@@ -470,7 +473,7 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
     handle.mr_splice_array.restype = _RawValueHandle
 
     handle.mr_call_function.argtypes = [
-        ctypes.c_void_p,
+        ctypes.c_uint64,
         _RawValueHandle,
         _RawValueHandle,
         _RawValueHandle,
@@ -479,22 +482,24 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
     ]
     handle.mr_call_function.restype = ctypes.c_void_p
 
-    handle.mr_set_hard_memory_limit.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+    handle.mr_set_hard_memory_limit.argtypes = [ctypes.c_uint64, ctypes.c_size_t]
 
-    handle.mr_set_soft_memory_limit.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+    handle.mr_set_soft_memory_limit.argtypes = [ctypes.c_uint64, ctypes.c_size_t]
     handle.mr_set_soft_memory_limit.restype = None
 
-    handle.mr_hard_memory_limit_reached.argtypes = [ctypes.c_void_p]
+    handle.mr_hard_memory_limit_reached.argtypes = [ctypes.c_uint64]
     handle.mr_hard_memory_limit_reached.restype = ctypes.c_bool
 
-    handle.mr_soft_memory_limit_reached.argtypes = [ctypes.c_void_p]
+    handle.mr_soft_memory_limit_reached.argtypes = [ctypes.c_uint64]
     handle.mr_soft_memory_limit_reached.restype = ctypes.c_bool
 
+    handle.mr_v8_version.argtypes = []
     handle.mr_v8_version.restype = ctypes.c_char_p
 
+    handle.mr_v8_is_using_sandbox.argtypes = []
     handle.mr_v8_is_using_sandbox.restype = ctypes.c_bool
 
-    handle.mr_value_count.argtypes = [ctypes.c_void_p]
+    handle.mr_value_count.argtypes = [ctypes.c_uint64]
     handle.mr_value_count.restype = ctypes.c_size_t
 
     return handle
@@ -676,6 +681,13 @@ var clearTimeout = (...arguments) => __timer_manager.clearTimeout(...arguments);
 class _Callbacks:
     on_resolved: Callable
     on_rejected: Callable
+
+
+def _context_count():
+    """For tests only: how many context handles are still allocated?"""
+
+    dll = init_mini_racer(ignore_duplicate_init=True)
+    return dll.mr_context_count()
 
 
 class _Context:
@@ -1005,7 +1017,7 @@ class _Context:
         raise JSConversionException
 
     def free(self, res: _RawValue) -> None:
-        if self._dll and self._ctx:
+        if self._dll:
             self._dll.mr_free_value(self._ctx, res)
 
     @contextmanager
@@ -1038,17 +1050,8 @@ class _Context:
                 future.get()
 
     def __del__(self):
-        if self._dll and self._ctx:
-            # Because finalizers aren't necessarily called in any consistent order,
-            # it's possible for this _Context.__del__() method to be called before
-            # _ValueHandle.__del__() which calls _Context.free() on
-            # this same object.
-            # To prevent further attempted use of the context, remove the variable.
-            # (Note that the C++ MiniRacer object tracks all _RawValue
-            # instances and frees them upon its own destruction, so there is no memory
-            # leak in practice when belated calls to _Context.free() are ignored.)
-            ctx, self._ctx = self._ctx, None
-            self._dll.mr_free_context(ctx)
+        if self._dll:
+            self._dll.mr_free_context(self._ctx)
 
 
 class MiniRacer:

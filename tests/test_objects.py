@@ -1,5 +1,3 @@
-from gc import collect
-
 import pytest
 from py_mini_racer import (
     JSArray,
@@ -12,7 +10,7 @@ from py_mini_racer import (
 )
 
 
-def test_object_read():
+def test_object_read(gc_check):
     mr = MiniRacer()
     obj = mr.eval(
         """\
@@ -70,11 +68,10 @@ a
     assert not obj3
 
     del obj, obj2, obj3
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_object_mutation():
+def test_object_mutation(gc_check):
     mr = MiniRacer()
     obj = mr.eval(
         """\
@@ -119,11 +116,10 @@ b
     assert obj["inner"]["k"] == "v"
 
     del obj, inner_obj
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_object_prototype():
+def test_object_prototype(gc_check):
     mr = MiniRacer()
     obj = mr.eval(
         """\
@@ -139,8 +135,11 @@ a
         ("key_is_string", 42),
     ]
 
+    del obj
+    gc_check.check(mr)
 
-def test_array():
+
+def test_array(gc_check):
     mr = MiniRacer()
     obj = mr.eval(
         """\
@@ -180,11 +179,10 @@ a
     assert not obj2
 
     del obj, obj2
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_array_mutation():
+def test_array_mutation(gc_check):
     mr = MiniRacer()
     obj = mr.eval(
         """\
@@ -222,11 +220,10 @@ b
     assert obj[-1]["k"] == "v"
 
     del obj, inner_obj
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_function():
+def test_function(gc_check):
     mr = MiniRacer()
     obj = mr.eval(
         """\
@@ -240,11 +237,10 @@ foo
     assert obj.keys() == ()
 
     del obj
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_symbol():
+def test_symbol(gc_check):
     mr = MiniRacer()
     obj = mr.eval(
         """\
@@ -258,11 +254,10 @@ sym
     assert obj.keys() == ()
 
     del obj
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_promise():
+def test_promise(gc_check):
     mr = MiniRacer()
     promise = mr.eval(
         """\
@@ -276,11 +271,10 @@ p
     assert promise.keys() == ()
 
     del promise
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_nested_object():
+def test_nested_object(gc_check):
     mr = MiniRacer()
     obj = mr.eval(
         """\
@@ -316,5 +310,4 @@ a
     assert isinstance(obj["some_symbol"], JSSymbol)
 
     del obj
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)

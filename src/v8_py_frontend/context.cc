@@ -1,5 +1,4 @@
-#include "mini_racer.h"
-#include <libplatform/libplatform.h>
+#include "context.h"
 #include <v8-initialization.h>
 #include <v8-local-handle.h>
 #include <v8-locker.h>
@@ -7,7 +6,6 @@
 #include <v8-platform.h>
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
 #include <memory>
 #include <string>
 #include <utility>
@@ -18,35 +16,8 @@
 
 namespace MiniRacer {
 
-namespace {
-// V8 inherently needs a singleton, so disable associated linter errors:
-// NOLINTBEGIN(cppcoreguidelines-avoid-non-const-global-variables)
-// NOLINTBEGIN(fuchsia-statically-constructed-objects)
-std::unique_ptr<v8::Platform> current_platform = nullptr;
-// NOLINTEND(fuchsia-statically-constructed-objects)
-// NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)
-}  // end anonymous namespace
-
-void init_v8(const std::string& v8_flags,
-             const std::filesystem::path& icu_path,
-             const std::filesystem::path& snapshot_path) {
-  v8::V8::InitializeICU(icu_path.string().c_str());
-  v8::V8::InitializeExternalStartupDataFromFile(snapshot_path.string().c_str());
-
-  if (!v8_flags.empty()) {
-    v8::V8::SetFlagsFromString(v8_flags.c_str());
-  }
-  if (v8_flags.find("--single-threaded") != std::string::npos) {
-    current_platform = v8::platform::NewSingleThreadedDefaultPlatform();
-  } else {
-    current_platform = v8::platform::NewDefaultPlatform();
-  }
-  v8::V8::InitializePlatform(current_platform.get());
-  v8::V8::Initialize();
-}
-
-Context::Context()
-    : isolate_manager_(current_platform.get()),
+Context::Context(v8::Platform* platform)
+    : isolate_manager_(platform),
       isolate_manager_stopper_(&isolate_manager_),
       isolate_memory_monitor_(&isolate_manager_),
       bv_factory_(&isolate_manager_),

@@ -1,7 +1,5 @@
 """ Tests JSFunctions """
 
-from gc import collect
-
 import pytest
 from py_mini_racer import (
     JSEvalException,
@@ -10,7 +8,7 @@ from py_mini_racer import (
 )
 
 
-def test_function():
+def test_function(gc_check):
     mr = MiniRacer()
     func = mr.eval("(a) => a")
     assert func(42) == 42
@@ -34,11 +32,10 @@ new Thing('start');
     assert stuff("end", this=thing) == "startend"
 
     del func, arr, thing, stuff
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_exceptions():
+def test_exceptions(gc_check):
     mr = MiniRacer()
     func = mr.eval(
         """\
@@ -65,11 +62,10 @@ Error: asdf
     )
 
     del func, exc_info
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_timeout():
+def test_timeout(gc_check):
     mr = MiniRacer()
     func = mr.eval("() => { while(1) { } }")
     with pytest.raises(JSTimeoutException) as exc_info:
@@ -78,5 +74,4 @@ def test_timeout():
     assert exc_info.value.args[0] == "JavaScript was terminated by timeout"
 
     del func, exc_info
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)

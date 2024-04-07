@@ -1,6 +1,5 @@
 """ Test .eval() method """
 
-from gc import collect
 from time import sleep, time
 
 import pytest
@@ -16,7 +15,7 @@ from py_mini_racer import (
 )
 
 
-def test_invalid():
+def test_invalid(gc_check):
     mr = MiniRacer()
 
     with pytest.raises(JSEvalException) as exc_info:
@@ -35,38 +34,34 @@ ReferenceError: invalid is not defined
     )
 
     del exc_info
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_eval():
+def test_eval(gc_check):
     mr = MiniRacer()
     assert mr.eval("42") == 42
 
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_blank():
+def test_blank(gc_check):
     mr = MiniRacer()
     assert mr.eval("") is JSUndefined
     assert mr.eval(" ") is JSUndefined
     assert mr.eval("\t") is JSUndefined
 
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_global():
+def test_global(gc_check):
     mr = MiniRacer()
     mr.eval("var xabc = 22;")
     assert mr.eval("xabc") == 22
 
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_fun():
+def test_fun(gc_check):
     mr = MiniRacer()
     mr.eval("var x = function(y) {return y+1;}")
 
@@ -74,11 +69,10 @@ def test_fun():
     assert mr.eval("x(10)") == 11
     assert mr.eval("x(100)") == 101
 
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_multiple_ctx():
+def test_multiple_ctx(gc_check):
     c1 = MiniRacer()
     c2 = MiniRacer()
     c3 = MiniRacer()
@@ -90,13 +84,12 @@ def test_multiple_ctx():
     assert c2.eval("(x)") == 2
     assert c3.eval("(x)") == 3
 
-    collect()
-    assert c1._ctx.value_count() == 0  # noqa: SLF001
-    assert c2._ctx.value_count() == 0  # noqa: SLF001
-    assert c3._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(c1)
+    gc_check.check(c2)
+    gc_check.check(c3)
 
 
-def test_exception_thrown():
+def test_exception_thrown(gc_check):
     mr = MiniRacer()
 
     js_source = "var f = function() {throw new Error('blah')};"
@@ -120,11 +113,10 @@ Error: blah
     )
 
     del exc_info
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_string_thrown():
+def test_string_thrown(gc_check):
     mr = MiniRacer()
 
     js_source = "var f = function() {throw 'blah'};"
@@ -146,11 +138,10 @@ var f = function() {throw 'blah'};
     )
 
     del exc_info
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_cannot_parse():
+def test_cannot_parse(gc_check):
     mr = MiniRacer()
     js_source = "var f = function("
 
@@ -169,11 +160,10 @@ SyntaxError: Unexpected end of input
     )
 
     del exc_info
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_null_byte():
+def test_null_byte(gc_check):
     mr = MiniRacer()
 
     s = "\x00 my string!"
@@ -183,11 +173,10 @@ def test_null_byte():
     result = mr.eval(in_val)
     assert result == s
 
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_timeout():
+def test_timeout(gc_check):
     timeout = 0.1
     start_time = time()
 
@@ -203,11 +192,10 @@ def test_timeout():
     assert exc_info.value.args[0] == "JavaScript was terminated by timeout"
 
     del exc_info
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_timeout_ms():
+def test_timeout_ms(gc_check):
     # Same as above but with the deprecated timeout millisecond argument
     timeout = 0.1
     start_time = time()
@@ -224,11 +212,10 @@ def test_timeout_ms():
     assert exc_info.value.args[0] == "JavaScript was terminated by timeout"
 
     del exc_info
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_max_memory_soft():
+def test_max_memory_soft(gc_check):
     mr = MiniRacer()
     mr.set_soft_memory_limit(100000000)
     mr.set_hard_memory_limit(100000000)
@@ -252,11 +239,10 @@ while(true) {
     assert exc_info.value.args[0] == "JavaScript memory limit reached"
 
     del exc_info
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_max_memory_hard():
+def test_max_memory_hard(gc_check):
     mr = MiniRacer()
     mr.set_hard_memory_limit(100000000)
     with pytest.raises(JSOOMException) as exc_info:
@@ -278,11 +264,10 @@ while(true) {
     assert exc_info.value.args[0] == "JavaScript memory limit reached"
 
     del exc_info
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_max_memory_hard_eval_arg():
+def test_max_memory_hard_eval_arg(gc_check):
     # Same as above but passing the argument into the eval method (which is a
     # deprecated thing to do because the parameter is really affine to the
     # MiniRacer object)
@@ -305,21 +290,19 @@ while(true) {
     assert exc_info.value.args[0] == "JavaScript memory limit reached"
 
     del exc_info
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_symbol():
+def test_symbol(gc_check):
     mr = MiniRacer()
     res = mr.eval("Symbol.toPrimitive")
     assert isinstance(res, JSSymbol)
 
     del res
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_microtask():
+def test_microtask(gc_check):
     # PyMiniRacer uses V8 microtasks (things, like certain promise callbacks, which run
     # immediately after an evaluation ends).
     # By default, V8 runs any microtasks before it returns control to PyMiniRacer.
@@ -341,11 +324,10 @@ done
     )
     assert mr.eval("done")
 
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_longer_microtask():
+def test_longer_microtask(gc_check):
     # Verifies a bug fix wherein failure to set a v8::Isolate::Scope on the message
     # pump thread would otherwise result in a segmentation fault:
     mr = MiniRacer()
@@ -367,11 +349,10 @@ foo();
         sleep(0.1)
     assert mr.eval("done")
 
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_polling():
+def test_polling(gc_check):
     mr = MiniRacer()
     assert not mr.eval(
         """
@@ -388,11 +369,10 @@ done
         sleep(0.1)
     assert mr.eval("done")
 
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_settimeout():
+def test_settimeout(gc_check):
     mr = MiniRacer()
     mr.eval(
         """
@@ -414,11 +394,10 @@ clearTimeout(b)
     assert mr.eval("results[1]") == "a"
     assert mr.eval("results[2]") == "d"
 
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_promise_sync():
+def test_promise_sync(gc_check):
     mr = MiniRacer()
     promise = mr.eval(
         """
@@ -434,12 +413,11 @@ new Promise((res, rej) => setTimeout(() => res(42), 1000)); // 1 s timeout
     assert result == 42
 
     del promise
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
 @pytest.mark.asyncio
-async def test_promise_async():
+async def test_promise_async(gc_check):
     mr = MiniRacer()
     promise = mr.eval(
         """
@@ -456,24 +434,21 @@ new Promise((res, rej) => setTimeout(() => res(42), 1000)); // 1 s timeout
     assert result == 42
 
     del promise
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_resolved_promise_sync():
+def test_resolved_promise_sync(gc_check):
     mr = MiniRacer()
     val = mr.eval("Promise.resolve(6*7)").get()
     assert val == 42
 
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
 @pytest.mark.asyncio
-async def test_resolved_promise_async():
+async def test_resolved_promise_async(gc_check):
     mr = MiniRacer()
     val = await mr.eval("Promise.resolve(6*7)")
     assert val == 42
 
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)

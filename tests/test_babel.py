@@ -1,13 +1,12 @@
 """ Test loading and executing babel.js """
 
-from gc import collect
 from os.path import dirname
 from os.path import join as pathjoin
 
 from py_mini_racer import MiniRacer
 
 
-def test_babel():
+def test_babel(gc_check):
     mr = MiniRacer()
 
     path = pathjoin(dirname(__file__), "fixtures/babel.js")
@@ -26,5 +25,4 @@ def test_babel():
     mr.eval(source)
     assert mr.eval("babel.eval(((x) => x * x)(8))") == 64
 
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)

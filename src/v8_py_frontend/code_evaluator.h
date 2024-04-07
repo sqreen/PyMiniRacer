@@ -12,7 +12,7 @@
 
 namespace MiniRacer {
 
-/** Parse and run arbitrary scripts within an isolate */
+/** Parse and run arbitrary scripts within an isolate. */
 class CodeEvaluator {
  public:
   CodeEvaluator(v8::Persistent<v8::Context>* context,

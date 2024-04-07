@@ -1,13 +1,12 @@
 """ Basic JS call functions """
 
 from datetime import datetime, timezone
-from gc import collect
 from json import JSONEncoder
 
 from py_mini_racer import MiniRacer
 
 
-def test_call_js():
+def test_call_js(gc_check):
     js_func = """var f = function() {
         return arguments.length;
     }"""
@@ -20,11 +19,10 @@ def test_call_js():
     assert mr.call("f", *list(range(10))) == 10
     assert mr.call("f", *list(range(20))) == 20
 
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_call_custom_encoder():
+def test_call_custom_encoder(gc_check):
     # Custom encoder for dates
     class CustomEncoder(JSONEncoder):
         def default(self, obj):
@@ -42,5 +40,4 @@ def test_call_custom_encoder():
 
     assert mr.call("f", now, encoder=CustomEncoder) == now.isoformat()
 
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)

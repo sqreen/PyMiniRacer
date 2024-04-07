@@ -1,9 +1,9 @@
-#ifndef MINI_RACER_H
-#define MINI_RACER_H
+#ifndef INCLUDE_MINI_RACER_CONTEXT_H
+#define INCLUDE_MINI_RACER_CONTEXT_H
 
+#include <v8-platform.h>
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
 #include <memory>
 #include <string>
 #include "binary_value.h"
@@ -22,7 +22,7 @@ namespace MiniRacer {
 
 class Context {
  public:
-  Context();
+  explicit Context(v8::Platform* platform);
 
   void SetHardMemoryLimit(size_t limit);
   void SetSoftMemoryLimit(size_t limit);
@@ -85,10 +85,6 @@ class Context {
   CountDownLatchWaiter pending_task_waiter_;
 };
 
-void init_v8(const std::string& v8_flags,
-             const std::filesystem::path& icu_path,
-             const std::filesystem::path& snapshot_path);
-
 inline void Context::SetHardMemoryLimit(size_t limit) {
   isolate_memory_monitor_.SetHardMemoryLimit(limit);
 }
@@ -117,4 +113,4 @@ inline auto Context::AllocBinaryValue(Params&&... params)
 
 }  // namespace MiniRacer
 
-#endif  // MINI_RACER_H
+#endif  // INCLUDE_MINI_RACER_CONTEXT_H

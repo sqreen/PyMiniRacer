@@ -1,6 +1,5 @@
 """Test executing a WASM module."""
 
-from gc import collect
 from os.path import abspath, dirname, getsize
 from os.path import join as pathjoin
 
@@ -9,7 +8,7 @@ from py_mini_racer import MiniRacer
 test_dir = dirname(abspath(__file__))
 
 
-def test_add():
+def test_add(gc_check):
     fn = pathjoin(test_dir, "add.wasm")
     mr = MiniRacer()
 
@@ -46,5 +45,4 @@ def test_add():
     assert mr.eval("res.exports.addTwo(1, 2)") == 3
 
     del module_raw
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)

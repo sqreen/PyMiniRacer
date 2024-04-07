@@ -1,7 +1,6 @@
 """ Basic JS types tests """
 
 from datetime import datetime, timezone
-from gc import collect
 from json import dumps
 from time import time
 
@@ -23,7 +22,8 @@ def _test_round_trip(mr, val):
 
 
 class Validator:
-    def __init__(self, *, round_trip=True):
+    def __init__(self, gc_check, *, round_trip=True):
+        self.gc_check = gc_check
         self.mr = MiniRacer()
         self.round_trip = round_trip
 
@@ -37,11 +37,10 @@ class Validator:
         if self.round_trip:
             _test_round_trip(self.mr, py_val)
 
-        collect()
-        assert self.mr._ctx.value_count() == 0  # noqa: SLF001
+        self.gc_check.check(self.mr)
 
 
-def test_undefined():
+def test_undefined(gc_check):
     mr = MiniRacer()
     undef = mr.eval("undefined")
     assert undef is JSUndefined
@@ -50,30 +49,28 @@ def test_undefined():
     _test_round_trip(mr, undef)
 
     del undef
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_str():
-    v = Validator()
+def test_str(gc_check):
+    v = Validator(gc_check)
     v.validate("'a string'")
     v.validate("'a ' + 'string'")
     v.validate("string with null \0 byte")
 
 
-def test_unicode():
+def test_unicode(gc_check):
     ustr = "\N{GREEK CAPITAL LETTER DELTA}"
     mr = MiniRacer()
     res = mr.eval("'" + ustr + "'")
     assert ustr == res
     _test_round_trip(mr, ustr)
 
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_numbers():
-    v = Validator()
+def test_numbers(gc_check):
+    v = Validator(gc_check)
     v.validate(1)
     v.validate(1.0)
     v.validate(2**16)
@@ -82,8 +79,8 @@ def test_numbers():
     v.validate(2**33)
 
 
-def test_arrays():
-    v = Validator(round_trip=False)
+def test_arrays(gc_check):
+    v = Validator(gc_check, round_trip=False)
     v.validate([1])
     v.validate([])
     v.validate([1, 2, 3])
@@ -91,21 +88,21 @@ def test_arrays():
     v.validate([1, 2, ["a", 1]])
 
 
-def test_none():
-    v = Validator()
+def test_none(gc_check):
+    v = Validator(gc_check)
     v.validate(None)
 
 
-def test_hash():
-    v = Validator(round_trip=False)
+def test_hash(gc_check):
+    v = Validator(gc_check, round_trip=False)
     v.validate({})
     v.validate("{}")
     v.validate({"a": 1})
     v.validate({" ": {"z": "www"}})
 
 
-def test_complex():
-    v = Validator(round_trip=False)
+def test_complex(gc_check):
+    v = Validator(gc_check, round_trip=False)
     v.validate(
         {
             "1": [
@@ -119,7 +116,7 @@ def test_complex():
     )
 
 
-def test_object():
+def test_object(gc_check):
     mr = MiniRacer()
     res = mr.eval("var a = {}; a")
     assert isinstance(res, JSObject)
@@ -127,22 +124,20 @@ def test_object():
     _test_round_trip(mr, res)
 
     del res
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_timestamp():
+def test_timestamp(gc_check):
     val = int(time())
     mr = MiniRacer()
     res = mr.eval("var a = new Date(%d); a" % (val * 1000))
     assert res == datetime.fromtimestamp(val, timezone.utc)
     _test_round_trip(mr, res)
 
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_symbol():
+def test_symbol(gc_check):
     mr = MiniRacer()
     res = mr.eval('Symbol("my_symbol")')
     assert isinstance(res, JSSymbol)
@@ -150,11 +145,10 @@ def test_symbol():
     _test_round_trip(mr, res)
 
     del res
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_function():
+def test_function(gc_check):
     mr = MiniRacer()
     res = mr.eval("function func() {}; func")
     assert isinstance(res, JSFunction)
@@ -162,22 +156,20 @@ def test_function():
     _test_round_trip(mr, res)
 
     del res
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_date():
+def test_date(gc_check):
     mr = MiniRacer()
     res = mr.eval("var a = new Date(Date.UTC(2014, 0, 2, 3, 4, 5)); a")
     assert res == datetime(2014, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
     _test_round_trip(mr, res)
 
     del res
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_exception():
+def test_exception(gc_check):
     js_source = """
     var f = function(arg) {
         throw 'error: '+arg
@@ -193,11 +185,10 @@ def test_exception():
     assert "error: 42" in exc_info.value.args[0]
 
     del exc_info
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_array_buffer():
+def test_array_buffer(gc_check):
     js_source = """
     var b = new ArrayBuffer(1024);
     var v = new Uint8Array(b);
@@ -210,11 +201,10 @@ def test_array_buffer():
     assert ret[0:1].tobytes() == b"\x42"
 
     del ret
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_array_buffer_view():
+def test_array_buffer_view(gc_check):
     js_source = """
     var b = new ArrayBuffer(1024);
     var v = new Uint8Array(b, 1, 1);
@@ -227,11 +217,10 @@ def test_array_buffer_view():
     assert ret.tobytes() == b"\x42"
 
     del ret
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
 
 
-def test_shared_array_buffer():
+def test_shared_array_buffer(gc_check):
     js_source = """
     var b = new SharedArrayBuffer(1024);
     var v = new Uint8Array(b);
@@ -246,5 +235,4 @@ def test_shared_array_buffer():
     assert mr.eval("v[1]") == 0xFF
 
     del ret
-    collect()
-    assert mr._ctx.value_count() == 0  # noqa: SLF001
+    gc_check.check(mr)
