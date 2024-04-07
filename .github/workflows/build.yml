@@ -290,7 +290,7 @@ jobs:
               # Due to https://github.com/indygreg/python-build-standalone/issues/86
               # Hatch's matrix testing doesn't work on Alpine. Just run pytest directly
               # on the system Python version:
-              python3 -m pip install --upgrade pytest
+              python3 -m pip install --upgrade pytest pytest-asyncio
               python3 -m pip install /wheels/*.whl
               pytest tests
               ;;
