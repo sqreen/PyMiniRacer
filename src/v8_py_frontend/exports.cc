@@ -34,15 +34,14 @@ extern "C" {
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
 
 LIB_EXPORT auto mr_eval(uint64_t context_id,
-                        char* str,
-                        uint64_t len,
+                        MiniRacer::BinaryValueHandle* code_handle,
                         MiniRacer::Callback callback,
                         uint64_t callback_id) -> uint64_t {
   auto context = GetContext(context_id);
   if (!context) {
     return 0;
   }
-  return context->Eval(std::string(str, len), callback, callback_id);
+  return context->Eval(code_handle, callback, callback_id);
 }
 
 LIB_EXPORT void mr_init_v8(const char* v8_flags,

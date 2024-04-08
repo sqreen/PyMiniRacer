@@ -6,7 +6,6 @@
 #include <v8-isolate.h>
 #include <v8-local-handle.h>
 #include <v8-persistent-handle.h>
-#include <string>
 #include "binary_value.h"
 #include "isolate_memory_monitor.h"
 
@@ -19,7 +18,7 @@ class CodeEvaluator {
                 BinaryValueFactory* bv_factory,
                 IsolateMemoryMonitor* memory_monitor);
 
-  auto Eval(v8::Isolate* isolate, const std::string& code) -> BinaryValue::Ptr;
+  auto Eval(v8::Isolate* isolate, BinaryValue* code_ptr) -> BinaryValue::Ptr;
 
  private:
   v8::Persistent<v8::Context>* context_;

@@ -371,8 +371,7 @@ def _build_dll_handle(dll_path) -> ctypes.CDLL:
 
     handle.mr_eval.argtypes = [
         ctypes.c_uint64,
-        ctypes.c_char_p,
-        ctypes.c_uint64,
+        _RawValueHandle,
         _MR_CALLBACK,
         ctypes.c_uint64,
     ]
@@ -726,10 +725,9 @@ class _Context:
         code: str,
         timeout_sec: Numeric | None = None,
     ) -> Any:
-        if isinstance(code, str):
-            code = code.encode("utf-8")
+        code_handle = self._python_to_value_handle(code)
 
-        with self._run_mr_task(self._dll.mr_eval, self._ctx, code, len(code)) as future:
+        with self._run_mr_task(self._dll.mr_eval, self._ctx, code_handle.raw) as future:
             return future.get(timeout=timeout_sec)
 
     def promise_to_sync_future(self, promise):

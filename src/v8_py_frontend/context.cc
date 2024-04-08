@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <utility>
 #include "binary_value.h"
 #include "callback.h"
@@ -63,12 +62,19 @@ auto Context::RunTask(Runnable runnable,
       });
 }
 
-auto Context::Eval(const std::string& code,
+auto Context::Eval(BinaryValueHandle* code_handle,
                    Callback callback,
                    uint64_t callback_id) -> uint64_t {
+  auto code_ptr = bv_factory_.FromHandle(code_handle);
+  if (!code_ptr) {
+    auto err = bv_factory_.New("Bad handle: code", type_value_exception);
+    return RunTask([err](v8::Isolate* /*isolate*/) { return err; }, callback,
+                   callback_id);
+  }
+
   return RunTask(
-      [code, this](v8::Isolate* isolate) {
-        return code_evaluator_.Eval(isolate, code);
+      [code_ptr, this](v8::Isolate* isolate) {
+        return code_evaluator_.Eval(isolate, code_ptr.get());
       },
       callback, callback_id);
 }

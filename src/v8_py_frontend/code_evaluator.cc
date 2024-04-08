@@ -9,7 +9,6 @@
 #include <v8-primitive.h>
 #include <v8-script.h>
 #include <v8-value.h>
-#include <string>
 #include "binary_value.h"
 #include "isolate_memory_monitor.h"
 
@@ -23,7 +22,7 @@ CodeEvaluator::CodeEvaluator(v8::Persistent<v8::Context>* context,
       memory_monitor_(memory_monitor) {}
 
 auto CodeEvaluator::Eval(v8::Isolate* isolate,
-                         const std::string& code) -> BinaryValue::Ptr {
+                         BinaryValue* code_ptr) -> BinaryValue::Ptr {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
   const v8::Local<v8::Context> context = context_->Get(isolate);
@@ -31,22 +30,20 @@ auto CodeEvaluator::Eval(v8::Isolate* isolate,
 
   const v8::TryCatch trycatch(isolate);
 
-  v8::MaybeLocal<v8::String> maybe_string =
-      v8::String::NewFromUtf8(isolate, code.data(), v8::NewStringType::kNormal,
-                              static_cast<int>(code.size()));
+  const v8::Local<v8::Value> local_code_val = code_ptr->ToValue(context);
 
-  if (maybe_string.IsEmpty()) {
-    // Implies we couldn't convert from utf-8 bytes, which would be odd.
-    return bv_factory_->New("invalid code string", type_parse_exception);
+  if (!local_code_val->IsString()) {
+    return bv_factory_->New("code is not a string", type_execute_exception);
   }
+
+  const v8::Local<v8::String> local_code_str = local_code_val.As<v8::String>();
 
   // Provide a name just for exception messages:
   v8::ScriptOrigin script_origin(
       v8::String::NewFromUtf8Literal(isolate, "<anonymous>"));
 
   v8::Local<v8::Script> script;
-  if (!v8::Script::Compile(context, maybe_string.ToLocalChecked(),
-                           &script_origin)
+  if (!v8::Script::Compile(context, local_code_str, &script_origin)
            .ToLocal(&script) ||
       script.IsEmpty()) {
     return bv_factory_->New(context, trycatch.Message(), trycatch.Exception(),

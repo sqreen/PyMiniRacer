@@ -4,7 +4,6 @@
 #include <v8-platform.h>
 #include <cstddef>
 #include <cstdint>
-#include <string>
 #include "binary_value.h"
 #include "callback.h"
 #include "cancelable_task_runner.h"
@@ -36,7 +35,7 @@ class Context {
   void CancelTask(uint64_t task_id);
   auto HeapSnapshot(Callback callback, uint64_t callback_id) -> uint64_t;
   auto HeapStats(Callback callback, uint64_t callback_id) -> uint64_t;
-  auto Eval(const std::string& code,
+  auto Eval(BinaryValueHandle* code_handle,
             Callback callback,
             uint64_t callback_id) -> uint64_t;
   auto AttachPromiseThen(BinaryValueHandle* promise_handle,
