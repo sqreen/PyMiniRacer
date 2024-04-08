@@ -16,7 +16,8 @@ class CancelableTaskRegistry;
 /** Grafts a concept of cancelable tasks on top of an IsolateManager. */
 class CancelableTaskRunner {
  public:
-  explicit CancelableTaskRunner(IsolateManager* isolate_manager);
+  explicit CancelableTaskRunner(
+      const std::shared_ptr<IsolateManager>& isolate_manager);
 
   /**
    * Schedule the given runnable.
@@ -39,7 +40,7 @@ class CancelableTaskRunner {
   void Cancel(uint64_t task_id);
 
  private:
-  IsolateManager* isolate_manager_;
+  std::shared_ptr<IsolateManager> isolate_manager_;
   std::shared_ptr<CancelableTaskRegistry> task_registry_;
 };
 
@@ -47,14 +48,15 @@ class CancelableTaskState;
 
 class CancelableTaskRegistry {
  public:
-  explicit CancelableTaskRegistry(IsolateManager* isolate_manager);
+  explicit CancelableTaskRegistry(
+      std::shared_ptr<IsolateManager> isolate_manager);
 
   auto Create(std::shared_ptr<CancelableTaskState> task_state) -> uint64_t;
   void Remove(uint64_t task_id);
   void Cancel(uint64_t task_id);
 
  private:
-  IsolateManager* isolate_manager_;
+  std::shared_ptr<IsolateManager> isolate_manager_;
   std::mutex mutex_;
   uint64_t next_task_id_;
   std::unordered_map<uint64_t, std::shared_ptr<CancelableTaskState>> tasks_;

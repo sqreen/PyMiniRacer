@@ -4,12 +4,12 @@
 #include <v8-platform.h>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include "binary_value.h"
 #include "callback.h"
 #include "cancelable_task_runner.h"
 #include "code_evaluator.h"
 #include "context_holder.h"
-#include "count_down_latch.h"
 #include "heap_reporter.h"
 #include "isolate_manager.h"
 #include "isolate_memory_monitor.h"
@@ -67,44 +67,41 @@ class Context {
                Callback callback,
                uint64_t callback_id) -> uint64_t;
 
-  IsolateManager isolate_manager_;
-  IsolateManagerStopper isolate_manager_stopper_;
-  IsolateMemoryMonitor isolate_memory_monitor_;
-  BinaryValueFactory bv_factory_;
-  ContextHolder context_holder_;
-  CodeEvaluator code_evaluator_;
-  HeapReporter heap_reporter_;
-  PromiseAttacher promise_attacher_;
-  ObjectManipulator object_manipulator_;
-  CancelableTaskRunner cancelable_task_runner_;
-  CountDownLatch pending_task_counter_;
-  CountDownLatchWaiter pending_task_waiter_;
+  std::shared_ptr<IsolateManager> isolate_manager_;
+  std::shared_ptr<IsolateMemoryMonitor> isolate_memory_monitor_;
+  std::shared_ptr<BinaryValueFactory> bv_factory_;
+  std::shared_ptr<ContextHolder> context_holder_;
+  std::shared_ptr<CodeEvaluator> code_evaluator_;
+  std::shared_ptr<HeapReporter> heap_reporter_;
+  std::shared_ptr<PromiseAttacher> promise_attacher_;
+  std::shared_ptr<ObjectManipulator> object_manipulator_;
+  std::shared_ptr<CancelableTaskRunner> cancelable_task_runner_;
 };
 
 inline void Context::SetHardMemoryLimit(size_t limit) {
-  isolate_memory_monitor_.SetHardMemoryLimit(limit);
+  isolate_memory_monitor_->SetHardMemoryLimit(limit);
 }
 
 inline void Context::SetSoftMemoryLimit(size_t limit) {
-  isolate_memory_monitor_.SetSoftMemoryLimit(limit);
+  isolate_memory_monitor_->SetSoftMemoryLimit(limit);
 }
 
 inline auto Context::IsSoftMemoryLimitReached() const -> bool {
-  return isolate_memory_monitor_.IsSoftMemoryLimitReached();
+  return isolate_memory_monitor_->IsSoftMemoryLimitReached();
 }
 
 inline auto Context::IsHardMemoryLimitReached() const -> bool {
-  return isolate_memory_monitor_.IsHardMemoryLimitReached();
+  return isolate_memory_monitor_->IsHardMemoryLimitReached();
 }
 
 inline void Context::ApplyLowMemoryNotification() {
-  isolate_memory_monitor_.ApplyLowMemoryNotification();
+  isolate_memory_monitor_->ApplyLowMemoryNotification();
 }
 
 template <typename... Params>
 inline auto Context::AllocBinaryValue(Params&&... params)
     -> BinaryValueHandle* {
-  return bv_factory_.New(std::forward<Params>(params)...)->GetHandle();
+  return bv_factory_->New(std::forward<Params>(params)...)->GetHandle();
 }
 
 }  // namespace MiniRacer

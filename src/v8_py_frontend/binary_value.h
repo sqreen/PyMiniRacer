@@ -72,13 +72,14 @@ struct BinaryValueHandle {
 class IsolateObjectDeleter {
  public:
   IsolateObjectDeleter();
-  explicit IsolateObjectDeleter(IsolateManager* isolate_manager);
+  explicit IsolateObjectDeleter(
+      std::shared_ptr<IsolateManager> isolate_manager);
 
   template <typename T>
   void operator()(T* handle) const;
 
  private:
-  IsolateManager* isolate_manager_;
+  std::shared_ptr<IsolateManager> isolate_manager_;
 };
 
 class BinaryValue {
@@ -122,7 +123,7 @@ class BinaryValue {
 
 class BinaryValueFactory {
  public:
-  explicit BinaryValueFactory(IsolateManager* isolate_manager);
+  explicit BinaryValueFactory(std::shared_ptr<IsolateManager> isolate_manager);
 
   auto FromHandle(BinaryValueHandle* handle) -> BinaryValue::Ptr;
   void Free(BinaryValueHandle* handle);
@@ -132,7 +133,7 @@ class BinaryValueFactory {
   auto New(Params&&... params) -> BinaryValue::Ptr;
 
  private:
-  IsolateManager* isolate_manager_;
+  std::shared_ptr<IsolateManager> isolate_manager_;
   std::mutex mutex_;
   std::unordered_map<BinaryValueHandle*, std::shared_ptr<BinaryValue>> values_;
 };

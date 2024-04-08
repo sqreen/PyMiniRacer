@@ -43,6 +43,6 @@ def test_del():
     count_before = _context_count()
     mr = MiniRacer()
     del mr
-    sleep(0.1)
+    sleep(1)
     collect()
     assert _context_count() == count_before

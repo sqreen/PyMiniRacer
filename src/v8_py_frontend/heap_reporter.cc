@@ -5,14 +5,16 @@
 #include <v8-primitive.h>
 #include <v8-profiler.h>
 #include <v8-statistics.h>
+#include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
 #include "binary_value.h"
 
 namespace MiniRacer {
 
-HeapReporter::HeapReporter(BinaryValueFactory* bv_factory)
-    : bv_factory_(bv_factory) {}
+HeapReporter::HeapReporter(std::shared_ptr<BinaryValueFactory> bv_factory)
+    : bv_factory_(std::move(bv_factory)) {}
 
 auto HeapReporter::HeapStats(v8::Isolate* isolate) -> BinaryValue::Ptr {
   const v8::Isolate::Scope isolatescope(isolate);

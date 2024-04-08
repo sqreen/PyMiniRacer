@@ -3,24 +3,24 @@
 
 #include <v8-isolate.h>
 #include <v8-platform.h>
-#include <atomic>
 #include <future>
 #include <memory>
-#include <thread>
+#include <mutex>
 #include <type_traits>
 #include <utility>
-#include "isolate_holder.h"
 
 namespace MiniRacer {
 
+class IsolateManagerTracker;
+
 /** Owns a v8::Isolate and mediates access to it via a task queue.
  *
- * Instances of v8::Isolate are not thread safe, and yet we need to run an
- * infinite message pump thread, and Python will call in from various threads.
- * One strategy for making an isolate thread-safe is to use a v8::Locker, but
- * this seems hard to get right (especially when the message pump thread blocks
- * indefinitely on work and then dispatches that work, apparently without
- * bothering to grab the lock itself).
+ * Instances of v8::Isolate are not thread safe, and yet we need to run a
+ * continuous message pump thread, and Python will call in from various
+ * threads. One strategy for making an isolate thread-safe is to use a
+ * v8::Locker to gate usage, but this seems hard to get right (especially
+ * when the message pump thread blocks indefinitely on work and then dispatches
+ * that work, apparently without bothering to grab the lock itself).
  * So instead we employ the strategy of "hiding" the isolate pointer within this
  * class, and only expose it via callbacks from the isolate's task queue.
  * Anything which wants to interact with the isolate must "get in line" by
@@ -28,6 +28,12 @@ namespace MiniRacer {
 class IsolateManager {
  public:
   explicit IsolateManager(v8::Platform* platform);
+  ~IsolateManager();
+
+  IsolateManager(const IsolateManager&) = delete;
+  auto operator=(const IsolateManager&) -> IsolateManager& = delete;
+  IsolateManager(IsolateManager&&) = delete;
+  auto operator=(IsolateManager&& other) -> IsolateManager& = delete;
 
   /** Schedules a task to run on the foreground thread, using
    * v8::TaskRunner::PostTask. */
@@ -45,7 +51,7 @@ class IsolateManager {
   void Shutdown();
 
  private:
-  void PumpMessages();
+  static void PumpMessages(std::shared_ptr<IsolateManagerTracker> tracker);
 
   /** Translate from a callback from v8::Isolate::RequestInterrupt into a
    * v8::Task::Run. */
@@ -62,26 +68,29 @@ class IsolateManager {
                                     std::promise<T>& prom);
 
   v8::Platform* platform_;
-  IsolateHolder isolate_holder_;
-  std::shared_ptr<v8::TaskRunner> task_runner_;
-  std::atomic<bool> shutdown_;
-  std::thread thread_;
+  std::shared_ptr<IsolateManagerTracker> tracker_;
+  v8::Isolate* isolate_;
 };
 
-class IsolateManagerStopper {
+/** Exchanges state information between the IsolateManager and the message pump
+ * thread. */
+class IsolateManagerTracker {
  public:
-  explicit IsolateManagerStopper(IsolateManager* isolate_manager);
-  ~IsolateManagerStopper();
+  explicit IsolateManagerTracker(v8::Platform* platform);
 
-  IsolateManagerStopper(const IsolateManagerStopper&) = delete;
-  auto operator=(const IsolateManagerStopper&) -> IsolateManagerStopper& =
-                                                      delete;
-  IsolateManagerStopper(IsolateManagerStopper&&) = delete;
-  auto operator=(IsolateManagerStopper&& other) -> IsolateManagerStopper& =
-                                                       delete;
+  auto GetPlatform() -> v8::Platform*;
+  auto GetIsolate() -> v8::Isolate*;
+  void SetIsolate(v8::Isolate* isolate);
+
+  void ShutDown(IsolateManager* isolate_manager);
+  auto ShouldShutDown() -> bool;
 
  private:
-  IsolateManager* isolate_manager_;
+  v8::Platform* platform_;
+  bool shutdown_flag_;
+  std::promise<v8::Isolate*> isolate_promise_;
+  std::shared_future<v8::Isolate*> isolate_future_;
+  std::mutex mutex_;
 };
 
 /** Just a silly way to run code on the foreground task runner thread. */
@@ -99,13 +108,12 @@ class AdHocTask : public v8::Task {
 
 template <typename Runnable>
 inline void IsolateManager::Run(Runnable runnable, bool interrupt) {
-  auto task = std::make_unique<AdHocTask<Runnable>>(std::move(runnable),
-                                                    isolate_holder_.Get());
+  auto task =
+      std::make_unique<AdHocTask<Runnable>>(std::move(runnable), isolate_);
   if (interrupt) {
-    isolate_holder_.Get()->RequestInterrupt(&IsolateManager::RunInterrupt,
-                                            task.release());
+    isolate_->RequestInterrupt(&IsolateManager::RunInterrupt, task.release());
   } else {
-    task_runner_->PostTask(std::move(task));
+    platform_->GetForegroundTaskRunner(isolate_)->PostTask(std::move(task));
   }
 }
 
@@ -132,7 +140,7 @@ inline auto IsolateManager::RunAndAwait(Runnable runnable, bool interrupt)
   std::promise<std::invoke_result_t<Runnable, v8::Isolate*>> prom;
 
   auto run_and_set_result = [&prom, &runnable](v8::Isolate* isolate) {
-    RunAndSetPromiseValue(isolate, runnable, prom);
+    RunAndSetPromiseValue(isolate, std::move(runnable), prom);
   };
 
   Run(std::move(run_and_set_result), interrupt);

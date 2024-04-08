@@ -44,7 +44,8 @@ auto CancelableTaskState::SetCompleteIfNotCanceled() -> bool {
   return true;
 }
 
-CancelableTaskRunner::CancelableTaskRunner(IsolateManager* isolate_manager)
+CancelableTaskRunner::CancelableTaskRunner(
+    const std::shared_ptr<IsolateManager>& isolate_manager)
     : isolate_manager_(isolate_manager),
       task_registry_(
           std::make_shared<CancelableTaskRegistry>(isolate_manager)) {}
@@ -53,8 +54,9 @@ void CancelableTaskRunner::Cancel(uint64_t task_id) {
   task_registry_->Cancel(task_id);
 }
 
-CancelableTaskRegistry::CancelableTaskRegistry(IsolateManager* isolate_manager)
-    : isolate_manager_(isolate_manager), next_task_id_(1) {}
+CancelableTaskRegistry::CancelableTaskRegistry(
+    std::shared_ptr<IsolateManager> isolate_manager)
+    : isolate_manager_(std::move(isolate_manager)), next_task_id_(1) {}
 
 auto CancelableTaskRegistry::Create(
     std::shared_ptr<CancelableTaskState> task_state) -> uint64_t {
@@ -79,7 +81,7 @@ void CancelableTaskRegistry::Cancel(uint64_t task_id) {
     }
     task_state = iter->second;
   }
-  task_state->Cancel(isolate_manager_);
+  task_state->Cancel(isolate_manager_.get());
 }
 
 CancelableTaskRegistryRemover::CancelableTaskRegistryRemover(
