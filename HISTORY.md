@@ -1,6 +1,6 @@
 # History
 
-## 0.11.1 (2024-04-??)
+## 0.11.1 (2024-04-08)
 
 - Fixed Python crash on long-running microtasks, introduced in v0.8.1 (before which
     long-running microtasks would probably not run at all).
