@@ -234,7 +234,7 @@ foo
 
     assert isinstance(obj, JSFunction)
     assert obj.__hash__()
-    assert obj.keys() == ()
+    assert tuple(obj.keys()) == ()
 
     del obj
     gc_check.check(mr)
@@ -251,7 +251,7 @@ sym
 
     assert isinstance(obj, JSSymbol)
     assert obj.__hash__()
-    assert obj.keys() == ()
+    assert tuple(obj.keys()) == ()
 
     del obj
     gc_check.check(mr)

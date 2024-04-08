@@ -4,7 +4,6 @@ import ctypes
 import json
 import sys
 from asyncio import Future
-from collections.abc import MutableMapping, MutableSequence
 from contextlib import ExitStack, contextmanager, suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -24,6 +23,8 @@ from typing import (
     Generator,
     Iterable,
     Iterator,
+    MutableMapping,
+    MutableSequence,
     Union,
 )
 
@@ -44,7 +45,7 @@ class LibNotFoundError(MiniRacerBaseException):
 class LibAlreadyInitializedError(MiniRacerBaseException):
     """MiniRacer-wrapped V8 build not found."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             "MiniRacer was already initialized before the call to init_mini_racer"
         )
@@ -77,7 +78,7 @@ class JSValueError(JSEvalException, ValueError):
 class JSTimeoutException(JSEvalException):
     """JavaScript execution timed out."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("JavaScript was terminated by timeout")
 
 
@@ -95,7 +96,7 @@ class WrongReturnTypeException(MiniRacerBaseException):
 class JSArrayIndexError(IndexError, MiniRacerBaseException):
     """Invalid index into a JSArray."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("JSArray deletion out of range")
 
 
@@ -105,10 +106,10 @@ class JSUndefinedType:
     Where JavaScript null is represented as None, undefined is represented as this
     type."""
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return False
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "JSUndefined"
 
 
@@ -126,7 +127,7 @@ class JSObject:
         self._ctx = ctx
         self._handle = handle
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return self._ctx.get_identity_hash(self)
 
 
@@ -143,7 +144,10 @@ PythonJSConvertedTypes = Union[
 ]
 
 
-class JSMappedObject(JSObject, MutableMapping):
+class JSMappedObject(
+    JSObject,
+    MutableMapping[str, PythonJSConvertedTypes],
+):
     """A JavaScript object with Pythonic MutableMapping methods (`keys()`,
     `__getitem__()`, etc).
 
@@ -151,28 +155,26 @@ class JSMappedObject(JSObject, MutableMapping):
     object, as if using a for-in statement in JavaScript.
     """
 
-    def keys(self):
-        return self._ctx.get_own_property_names(self)
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._get_own_property_names())
 
-    def __iter__(self):
-        return iter(self.keys())
-
-    def __getitem__(self, key: PythonJSConvertedTypes) -> PythonJSConvertedTypes:
+    def __getitem__(self, key: str) -> PythonJSConvertedTypes:
         return self._ctx.get_object_item(self, key)
 
-    def __setitem__(
-        self, key: PythonJSConvertedTypes, val: PythonJSConvertedTypes
-    ) -> None:
+    def __setitem__(self, key: str, val: PythonJSConvertedTypes) -> None:
         self._ctx.set_object_item(self, key, val)
 
-    def __delitem__(self, key: PythonJSConvertedTypes) -> None:
+    def __delitem__(self, key: str) -> None:
         self._ctx.del_object_item(self, key)
 
     def __len__(self) -> int:
-        return len(self.keys())
+        return len(self._get_own_property_names())
+
+    def _get_own_property_names(self) -> tuple[str, ...]:
+        return self._ctx.get_own_property_names(self)
 
 
-class JSArray(MutableSequence, JSObject):
+class JSArray(MutableSequence[PythonJSConvertedTypes], JSObject):
     """JavaScript array.
 
     Has Pythonic MutableSequence methods (e.g., `insert()`, `__getitem__()`, ...).
@@ -218,7 +220,7 @@ class JSArray(MutableSequence, JSObject):
 
         return self._ctx.del_from_array(self, index)
 
-    def insert(self, index: int, new_obj: PythonJSConvertedTypes):
+    def insert(self, index: int, new_obj: PythonJSConvertedTypes) -> None:
         return self._ctx.array_insert(self, index, new_obj)
 
     def __iter__(self) -> Iterator[PythonJSConvertedTypes]:
@@ -234,7 +236,10 @@ class JSFunction(JSMappedObject):
     """
 
     def __call__(
-        self, *args, this: JSObject | None = None, timeout_sec: Numeric | None = None
+        self,
+        *args: PythonJSConvertedTypes,
+        this: JSObject | None = None,
+        timeout_sec: Numeric | None = None,
     ) -> PythonJSConvertedTypes:
         return self._ctx.call_function(self, *args, this=this, timeout_sec=timeout_sec)
 
@@ -367,13 +372,13 @@ class _ValueHandle:
         if typ == _MiniRacerTypes.undefined:
             return JSUndefined
         if typ == _MiniRacerTypes.bool:
-            return val.int_val == 1
+            return bool(val.int_val == 1)
         if typ == _MiniRacerTypes.integer:
-            return val.int_val
+            return int(val.int_val)
         if typ == _MiniRacerTypes.double:
-            return val.double_val
+            return float(val.double_val)
         if typ == _MiniRacerTypes.str_utf8:
-            return val.bytes_val[0:length].decode("utf-8")
+            return str(val.bytes_val[0:length].decode("utf-8"))
         if typ == _MiniRacerTypes.function:
             return JSFunction(self.ctx, self)
         if typ == _MiniRacerTypes.date:
@@ -571,7 +576,7 @@ def _open_resource_file(filename: str, exit_stack: ExitStack) -> str:
     return str(exit_stack.enter_context(context_manager))
 
 
-def _check_path(path: str):
+def _check_path(path: str) -> None:
     if path is None or not exists(path):
         raise LibNotFoundError(path)
 
@@ -614,7 +619,7 @@ _dll_handle = None
 
 
 def init_mini_racer(
-    *, flags: Iterable[str] = DEFAULT_V8_FLAGS, ignore_duplicate_init=False
+    *, flags: Iterable[str] = DEFAULT_V8_FLAGS, ignore_duplicate_init: bool = False
 ) -> ctypes.CDLL:
     """Initialize py_mini_racer (and V8).
 
@@ -645,11 +650,11 @@ class _SyncFuture:
     concurrent.futures.Future but without an executor.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._cv = Condition()
-        self._settled = False
-        self._res = None
-        self._exc = None
+        self._settled: bool = False
+        self._res: PythonJSConvertedTypes = None
+        self._exc: Exception | None = None
 
     def get(self, *, timeout: Numeric | None = None) -> PythonJSConvertedTypes:
         with self._cv:
@@ -730,20 +735,20 @@ def _context_count() -> int:
     """For tests only: how many context handles are still allocated?"""
 
     dll = init_mini_racer(ignore_duplicate_init=True)
-    return dll.mr_context_count()
+    return int(dll.mr_context_count())
 
 
 class _Context:
     """Wrapper for all operations involving the DLL and C++ MiniRacer::Context."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._dll = init_mini_racer(ignore_duplicate_init=True)
         self._ctx = self._dll.mr_init_context()
-        self._active_callbacks = {}
+        self._active_callbacks: dict[int, _Callbacks] = {}
 
         # define an all-purpose callback for _SyncFuture:
-        @_MR_CALLBACK
-        def mr_callback(callback_id: int, raw_val_handle: _RawValueHandleType):
+        @_MR_CALLBACK  # type: ignore[misc]
+        def mr_callback(callback_id: int, raw_val_handle: _RawValueHandleType) -> None:
             val_handle = self._wrap_raw_handle(raw_val_handle)
 
             callbacks = self._active_callbacks.pop(callback_id)
@@ -757,12 +762,12 @@ class _Context:
         self._next_callback_id = count()
 
     def v8_version(self) -> str:
-        return self._dll.mr_v8_version().decode("utf-8")
+        return str(self._dll.mr_v8_version().decode("utf-8"))
 
     def v8_is_using_sandbox(self) -> bool:
         """Checks for enablement of the V8 Sandbox. See https://v8.dev/blog/sandbox."""
 
-        return self._dll.mr_v8_is_using_sandbox()
+        return bool(self._dll.mr_v8_is_using_sandbox())
 
     def evaluate(
         self,
@@ -780,7 +785,9 @@ class _Context:
         self._attach_callbacks_to_promise(promise, callback_id)
         return future
 
-    def promise_to_async_future(self, promise: JSPromise) -> Future:
+    def promise_to_async_future(
+        self, promise: JSPromise
+    ) -> Future[PythonJSConvertedTypes]:
         """Create and attach a Python asyncio.Future to a JS Promise."""
         callback_id, future = self._set_up_callback_into_async_future()
         self._attach_callbacks_to_promise(promise, callback_id)
@@ -809,7 +816,7 @@ class _Context:
         assert isinstance(ret, int)  # noqa: S101
         return ret
 
-    def get_own_property_names(self, obj: JSObject) -> tuple[str]:
+    def get_own_property_names(self, obj: JSObject) -> tuple[str, ...]:
         obj_handle = self._python_to_value_handle(obj)
 
         names = self._wrap_raw_handle(
@@ -817,7 +824,7 @@ class _Context:
         ).to_python()
         if not isinstance(names, JSArray):
             raise TypeError
-        return tuple(names)
+        return tuple(str(s) for s in names)
 
     def get_object_item(
         self, obj: JSObject, key: PythonJSConvertedTypes
@@ -891,7 +898,7 @@ class _Context:
     def call_function(
         self,
         func: JSFunction,
-        *args: Iterable[PythonJSConvertedTypes],
+        *args: PythonJSConvertedTypes,
         this: JSObject | None = None,
         timeout_sec: Numeric | None = None,
     ) -> PythonJSConvertedTypes:
@@ -920,10 +927,10 @@ class _Context:
         self._dll.mr_set_soft_memory_limit(self._ctx, limit)
 
     def was_hard_memory_limit_reached(self) -> bool:
-        return self._dll.mr_hard_memory_limit_reached(self._ctx)
+        return bool(self._dll.mr_hard_memory_limit_reached(self._ctx))
 
     def was_soft_memory_limit_reached(self) -> bool:
-        return self._dll.mr_soft_memory_limit_reached(self._ctx)
+        return bool(self._dll.mr_soft_memory_limit_reached(self._ctx))
 
     def low_memory_notification(self) -> None:
         self._dll.mr_low_memory_notification(self._ctx)
@@ -945,7 +952,7 @@ class _Context:
     def value_count(self) -> int:
         """For tests only: how many value handles are still allocated?"""
 
-        return self._dll.mr_value_count(self._ctx)
+        return int(self._dll.mr_value_count(self._ctx))
 
     def _set_up_callback_into_sync_future(self) -> tuple[int, _SyncFuture]:
         """Create a _SyncFuture, and register a Python-side callback (and corresponding
@@ -953,10 +960,10 @@ class _Context:
 
         future = _SyncFuture()
 
-        def on_resolved(value: PythonJSConvertedTypes):
+        def on_resolved(value: PythonJSConvertedTypes) -> None:
             future.set_result(value)
 
-        def on_rejected(exc):
+        def on_rejected(exc: Exception) -> None:
             future.set_exception(exc)
 
         callback_id = next(self._next_callback_id)
@@ -964,17 +971,19 @@ class _Context:
 
         return callback_id, future
 
-    def _set_up_callback_into_async_future(self) -> tuple[int, Future]:
+    def _set_up_callback_into_async_future(
+        self,
+    ) -> tuple[int, Future[PythonJSConvertedTypes]]:
         """Create an asyncio.Future, and register a Python-side callback (and
         corresponding callback ID) which activates it."""
 
-        future: Future = Future()
+        future: Future[PythonJSConvertedTypes] = Future()
         loop = future.get_loop()
 
-        def on_resolved(value):
+        def on_resolved(value: PythonJSConvertedTypes) -> None:
             loop.call_soon_threadsafe(future.set_result, value)
 
-        def on_rejected(exc):
+        def on_rejected(exc: Exception) -> None:
             loop.call_soon_threadsafe(future.set_exception, exc)
 
         callback_id = next(self._next_callback_id)
@@ -1078,7 +1087,7 @@ class _Context:
             self._dll.mr_free_value(self._ctx, res)
 
     @contextmanager
-    def _run_mr_task(self, dll_method, *args) -> Iterator[_SyncFuture]:
+    def _run_mr_task(self, dll_method: Any, *args: Any) -> Iterator[_SyncFuture]:
         """Manages those tasks which generate callbacks from the MiniRacer DLL.
 
         Several MiniRacer functions (JS evaluation and 2 heap stats calls) are
@@ -1122,7 +1131,7 @@ class MiniRacer:
 
     json_impl: ClassVar[Any] = json
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._ctx = _Context()
 
         self.eval(_INSTALL_SET_TIMEOUT)
@@ -1179,7 +1188,7 @@ class MiniRacer:
         timeout: Numeric | None = None,
         timeout_sec: Numeric | None = None,
         max_memory: int | None = None,
-    ) -> dict:
+    ) -> Any:
         """Helper to evaluate a JavaScript expression and return composite types.
 
         Returned value is serialized to JSON inside the V8 isolate and deserialized
@@ -1208,12 +1217,12 @@ class MiniRacer:
     def call(
         self,
         expr: str,
-        *args,
+        *args: Any,
         encoder: JSONEncoder | None = None,
         timeout: Numeric | None = None,
         timeout_sec: Numeric | None = None,
         max_memory: int | None = None,
-    ) -> dict:
+    ) -> Any:
         """Helper to call a JavaScript function and return compositve types.
 
         The `expr` argument refers to a JavaScript function in the current V8
@@ -1273,7 +1282,7 @@ class MiniRacer:
         """Ask the V8 isolate to collect memory more aggressively."""
         self._ctx.low_memory_notification()
 
-    def heap_stats(self) -> dict:
+    def heap_stats(self) -> Any:
         """Return the V8 isolate heap statistics."""
 
         return self.json_impl.loads(self._ctx.heap_stats())

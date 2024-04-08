@@ -140,7 +140,7 @@ dependencies = [
 
 [tool.hatch.envs.types.scripts]
 # Because we run detached (see above), we have to tell mypy where our source is:
-check = "PYTHONPATH=src mypy --install-types --non-interactive {args:src}"
+check = "PYTHONPATH=src mypy --install-types --strict --non-interactive {args:src}"
 
 [tool.ruff]
 # Hatch changes this from the Black default. Change it back:
