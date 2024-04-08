@@ -7,10 +7,13 @@
 
 - Fixed memory leak on the exception object reported when an `eval` times out.
 
-- Hardened the memory management of JS value interchange between C++ and Python.
+- Hardened the memory management of JS value interchange, context tracking, and
+    asynchronous task tracking between C++ and Python.
 
-- Hardened the memory management of task identification for asynchronous tasks between
-    C++ and Python.
+- Added exhaustive typing (now with a MyPy pre-commit to verify!)
+
+- Added a test asserting that [the v8 sandbox](https://v8.dev/blog/sandbox) is enabled
+    on all platforms we build wheels for.
 
 ## 0.11.0 (2024-04-03)
 

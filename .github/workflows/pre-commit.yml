@@ -40,4 +40,8 @@ jobs:
     - name: Set up hatch docs env
       run: hatch env create docs
 
+    # Same as above, for the mypy env:
+    - name: Set up hatch types env
+      run: hatch env create types
+
     - uses: pre-commit/action@v3.0.1

@@ -268,7 +268,6 @@ p
 
     assert isinstance(promise, JSPromise)
     assert promise.__hash__()
-    assert promise.keys() == ()
 
     del promise
     gc_check.check(mr)

@@ -18,6 +18,11 @@ repos:
     entry: hatch run docs:build --strict  # checks for, e.g., bad links
     language: system
     pass_filenames: false
+  - id: hatch-types-check
+    name: Hatch check types
+    entry: hatch run types:check
+    language: system
+    types: [python]
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v4.5.0
   hooks:

@@ -128,6 +128,20 @@ python = ["3.8", "3.9", "3.10", "3.11", "3.12"]
 # A weird trick to smuggle the just-built wheel into the env, for matrix testing:
 install = "pip install {args}"
 
+[tool.hatch.envs.types]
+# To avoid running the whole C++ V8 build just to check Python types, run detached:
+detached = true
+
+dependencies = [
+  "hatchling",
+  "mypy>=1.0.0",
+  "pytest",
+]
+
+[tool.hatch.envs.types.scripts]
+# Because we run detached (see above), we have to tell mypy where our source is:
+check = "PYTHONPATH=src mypy --install-types --non-interactive {args:src}"
+
 [tool.ruff]
 # Hatch changes this from the Black default. Change it back:
 line-length = 88

@@ -16,7 +16,16 @@ from os.path import exists
 from os.path import join as pathjoin
 from sys import platform, version_info
 from threading import Condition, Lock
-from typing import Any, Callable, ClassVar, Iterable, Iterator, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    ClassVar,
+    Generator,
+    Iterable,
+    Iterator,
+    Union,
+)
 
 Numeric = Union[int, float]
 
@@ -28,7 +37,7 @@ class MiniRacerBaseException(Exception):  # noqa: N818
 class LibNotFoundError(MiniRacerBaseException):
     """MiniRacer-wrapped V8 build not found."""
 
-    def __init__(self, path):
+    def __init__(self, path: str):
         super().__init__(f"Native library or dependency not available at {path}")
 
 
@@ -79,7 +88,7 @@ class JSConversionException(MiniRacerBaseException):
 class WrongReturnTypeException(MiniRacerBaseException):
     """Invalid type returned by the JavaScript runtime."""
 
-    def __init__(self, typ):
+    def __init__(self, typ: type):
         super().__init__(f"Unexpected return value type {typ}")
 
 
@@ -111,23 +120,36 @@ class JSObject:
 
     def __init__(
         self,
-        ctx,
+        ctx: _Context,
         handle: _ValueHandle,
     ):
         self._ctx = ctx
         self._handle = handle
 
-
-class JSMappedObject(MutableMapping, JSObject):
-    """A JavaScript object with Pythonic MutableMapping methods (keys(),
-    __getitem__(), etc).
-
-    keys() and __iter__() will return properties from any prototypes as well as this
-    object, as if using a for-in statement in JavaScript.
-    """
-
     def __hash__(self):
         return self._ctx.get_identity_hash(self)
+
+
+PythonJSConvertedTypes = Union[
+    None,
+    JSUndefinedType,
+    bool,
+    int,
+    float,
+    str,
+    JSObject,
+    datetime,
+    memoryview,
+]
+
+
+class JSMappedObject(JSObject, MutableMapping):
+    """A JavaScript object with Pythonic MutableMapping methods (`keys()`,
+    `__getitem__()`, etc).
+
+    `keys()` and `__iter__()` will return properties from any prototypes as well as this
+    object, as if using a for-in statement in JavaScript.
+    """
 
     def keys(self):
         return self._ctx.get_own_property_names(self)
@@ -135,29 +157,36 @@ class JSMappedObject(MutableMapping, JSObject):
     def __iter__(self):
         return iter(self.keys())
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: PythonJSConvertedTypes) -> PythonJSConvertedTypes:
         return self._ctx.get_object_item(self, key)
 
-    def __setitem__(self, key, val):
-        return self._ctx.set_object_item(self, key, val)
+    def __setitem__(
+        self, key: PythonJSConvertedTypes, val: PythonJSConvertedTypes
+    ) -> None:
+        self._ctx.set_object_item(self, key, val)
 
-    def __delitem__(self, key):
-        return self._ctx.del_object_item(self, key)
+    def __delitem__(self, key: PythonJSConvertedTypes) -> None:
+        self._ctx.del_object_item(self, key)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.keys())
 
 
 class JSArray(MutableSequence, JSObject):
     """JavaScript array.
 
-    Has Pythonic MutableSequence methods (e.g., insert(), __getitem__(), ,,,).
+    Has Pythonic MutableSequence methods (e.g., `insert()`, `__getitem__()`, ...).
     """
 
-    def __len__(self):
-        return self._ctx.get_object_item(self, "length")
+    def __len__(self) -> int:
+        ret = self._ctx.get_object_item(self, "length")
+        assert isinstance(ret, int)  # noqa: S101
+        return ret
 
-    def __getitem__(self, index: int):
+    def __getitem__(self, index: int | slice) -> Any:
+        if not isinstance(index, int):
+            raise TypeError
+
         index = op_index(index)
         if index < 0:
             index += len(self)
@@ -167,10 +196,16 @@ class JSArray(MutableSequence, JSObject):
 
         raise IndexError
 
-    def __setitem__(self, index: int, val):
-        return self._ctx.set_object_item(self, index, val)
+    def __setitem__(self, index: int | slice, val: Any) -> None:
+        if not isinstance(index, int):
+            raise TypeError
 
-    def __delitem__(self, index: int):
+        self._ctx.set_object_item(self, index, val)
+
+    def __delitem__(self, index: int | slice) -> None:
+        if not isinstance(index, int):
+            raise TypeError
+
         if index >= len(self) or index < -len(self):
             # JavaScript Array.prototype.splice() just ignores deletion beyond the
             # end of the array, meaning if you pass a very large value here it would
@@ -183,18 +218,24 @@ class JSArray(MutableSequence, JSObject):
 
         return self._ctx.del_from_array(self, index)
 
-    def insert(self, index: int, new_obj):
+    def insert(self, index: int, new_obj: PythonJSConvertedTypes):
         return self._ctx.array_insert(self, index, new_obj)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[PythonJSConvertedTypes]:
         for i in range(len(self)):
             yield self[i]
 
 
 class JSFunction(JSMappedObject):
-    """JavaScript function."""
+    """JavaScript function.
 
-    def __call__(self, *args, this=None, timeout_sec: Numeric | None = None):
+    You can call this object from Python, passing in positional args to match what the
+    JavaScript function expects, along with a keyword argument, `timeout_sec`.
+    """
+
+    def __call__(
+        self, *args, this: JSObject | None = None, timeout_sec: Numeric | None = None
+    ) -> PythonJSConvertedTypes:
         return self._ctx.call_function(self, *args, this=this, timeout_sec=timeout_sec)
 
 
@@ -202,7 +243,7 @@ class JSSymbol(JSMappedObject):
     """JavaScript symbol."""
 
 
-class JSPromise(JSMappedObject):
+class JSPromise(JSObject):
     """JavaScript Promise.
 
     To get a value, call `promise.get()` to block, or `await promise` from within an
@@ -212,12 +253,12 @@ class JSPromise(JSMappedObject):
 
     def __init__(
         self,
-        ctx,
-        handle,
+        ctx: _Context,
+        handle: _ValueHandle,
     ):
         super().__init__(ctx, handle)
 
-    def get(self, *, timeout: Numeric | None = None):
+    def get(self, *, timeout: Numeric | None = None) -> PythonJSConvertedTypes:
         """Get the value, or raise an exception. This call blocks.
 
         Args:
@@ -227,11 +268,11 @@ class JSPromise(JSMappedObject):
 
         return self._ctx.promise_to_sync_future(self).get(timeout=timeout)
 
-    def __await__(self):
+    def __await__(self) -> Generator[Any, None, Any]:
         return self._ctx.promise_to_async_future(self).__await__()
 
 
-def _get_lib_filename(name):
+def _get_lib_filename(name: str) -> str:
     """Return the path of the library called `name` on the current system."""
     if platform == "darwin":
         prefix, ext = "lib", ".dylib"
@@ -244,7 +285,7 @@ def _get_lib_filename(name):
 
 
 class _RawValueUnion(ctypes.Union):
-    _fields_: ClassVar[tuple[str, object]] = [
+    _fields_: ClassVar[list[tuple[str, object]]] = [
         ("value_ptr", ctypes.c_void_p),
         ("bytes_val", ctypes.POINTER(ctypes.c_char)),
         ("char_p_val", ctypes.c_char_p),
@@ -254,7 +295,7 @@ class _RawValueUnion(ctypes.Union):
 
 
 class _RawValue(ctypes.Structure):
-    _fields_: ClassVar[tuple[str, object]] = [
+    _fields_: ClassVar[list[tuple[str, object]]] = [
         ("value", _RawValueUnion),
         ("len", ctypes.c_size_t),
         ("type", ctypes.c_uint8),
@@ -264,11 +305,14 @@ class _RawValue(ctypes.Structure):
 
 _RawValueHandle = ctypes.POINTER(_RawValue)
 
+if TYPE_CHECKING:
+    _RawValueHandleType = ctypes._Pointer[_RawValue]  # noqa: SLF001
+
 
 class _ArrayBufferByte(ctypes.Structure):
     # Cannot use c_ubyte directly because it uses <B
     # as an internal type but we need B for memoryview.
-    _fields_: ClassVar[tuple[str, object]] = [
+    _fields_: ClassVar[list[tuple[str, object]]] = [
         ("b", ctypes.c_ubyte),
     ]
     _pack_ = 1
@@ -281,14 +325,14 @@ class _ValueHandle:
     """An object which holds open a Python reference to a _RawValue owned by
     a C++ MiniRacer context."""
 
-    def __init__(self, ctx, raw: _RawValueHandle):
+    def __init__(self, ctx: _Context, raw: _RawValueHandleType):
         self.ctx = ctx
-        self.raw: _RawValueHandle = raw
+        self.raw: _RawValueHandleType = raw
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.ctx.free(self.raw)
 
-    def to_python(self) -> Any:
+    def to_python(self) -> PythonJSConvertedTypes:
         """Convert a binary value handle from the C++ side into a Python object."""
 
         # A MiniRacer binary value handle is a pointer to a structure which, for some
@@ -361,7 +405,7 @@ class _ValueHandle:
         raise JSConversionException
 
 
-def _build_dll_handle(dll_path) -> ctypes.CDLL:
+def _build_dll_handle(dll_path: str) -> ctypes.CDLL:
     handle = ctypes.CDLL(dll_path)
 
     handle.mr_init_v8.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
@@ -514,7 +558,7 @@ _SNAPSHOT_FILENAME = "snapshot_blob.bin"
 DEFAULT_V8_FLAGS = ("--single-threaded",)
 
 
-def _open_resource_file(filename, exit_stack):
+def _open_resource_file(filename: str, exit_stack: ExitStack) -> str:
     if version_info >= (3, 9):
         # resources.as_file was added in Python 3.9
         resource_path = resources.files("py_mini_racer") / filename
@@ -527,7 +571,7 @@ def _open_resource_file(filename, exit_stack):
     return str(exit_stack.enter_context(context_manager))
 
 
-def _check_path(path):
+def _check_path(path: str):
     if path is None or not exists(path):
         raise LibNotFoundError(path)
 
@@ -607,7 +651,7 @@ class _SyncFuture:
         self._res = None
         self._exc = None
 
-    def get(self, *, timeout: Numeric | None = None):
+    def get(self, *, timeout: Numeric | None = None) -> PythonJSConvertedTypes:
         with self._cv:
             while not self._settled:
                 if not self._cv.wait(timeout=timeout):
@@ -617,13 +661,13 @@ class _SyncFuture:
                 raise self._exc
             return self._res
 
-    def set_result(self, res):
+    def set_result(self, res: PythonJSConvertedTypes) -> None:
         with self._cv:
             self._res = res
             self._settled = True
             self._cv.notify()
 
-    def set_exception(self, exc):
+    def set_exception(self, exc: Exception) -> None:
         with self._cv:
             self._exc = exc
             self._settled = True
@@ -678,11 +722,11 @@ var clearTimeout = (...arguments) => __timer_manager.clearTimeout(...arguments);
 
 @dataclass
 class _Callbacks:
-    on_resolved: Callable
-    on_rejected: Callable
+    on_resolved: Callable[[PythonJSConvertedTypes], None]
+    on_rejected: Callable[[Exception], None]
 
 
-def _context_count():
+def _context_count() -> int:
     """For tests only: how many context handles are still allocated?"""
 
     dll = init_mini_racer(ignore_duplicate_init=True)
@@ -693,13 +737,13 @@ class _Context:
     """Wrapper for all operations involving the DLL and C++ MiniRacer::Context."""
 
     def __init__(self):
-        self._dll: ctypes.CDLL = init_mini_racer(ignore_duplicate_init=True)
+        self._dll = init_mini_racer(ignore_duplicate_init=True)
         self._ctx = self._dll.mr_init_context()
-        self._active_callbacks: dict[int, _Callbacks] = {}
+        self._active_callbacks = {}
 
         # define an all-purpose callback for _SyncFuture:
         @_MR_CALLBACK
-        def mr_callback(callback_id, raw_val_handle):
+        def mr_callback(callback_id: int, raw_val_handle: _RawValueHandleType):
             val_handle = self._wrap_raw_handle(raw_val_handle)
 
             callbacks = self._active_callbacks.pop(callback_id)
@@ -724,25 +768,27 @@ class _Context:
         self,
         code: str,
         timeout_sec: Numeric | None = None,
-    ) -> Any:
+    ) -> PythonJSConvertedTypes:
         code_handle = self._python_to_value_handle(code)
 
         with self._run_mr_task(self._dll.mr_eval, self._ctx, code_handle.raw) as future:
             return future.get(timeout=timeout_sec)
 
-    def promise_to_sync_future(self, promise):
+    def promise_to_sync_future(self, promise: JSPromise) -> _SyncFuture:
         """Create and attach a Python _SyncFuture to a JS Promise."""
         callback_id, future = self._set_up_callback_into_sync_future()
         self._attach_callbacks_to_promise(promise, callback_id)
         return future
 
-    def promise_to_async_future(self, promise):
+    def promise_to_async_future(self, promise: JSPromise) -> Future:
         """Create and attach a Python asyncio.Future to a JS Promise."""
         callback_id, future = self._set_up_callback_into_async_future()
         self._attach_callbacks_to_promise(promise, callback_id)
         return future
 
-    def _attach_callbacks_to_promise(self, promise, callback_id):
+    def _attach_callbacks_to_promise(
+        self, promise: JSPromise, callback_id: int
+    ) -> None:
         promise_handle = self._python_to_value_handle(promise)
 
         self._wrap_raw_handle(
@@ -754,14 +800,16 @@ class _Context:
             )
         ).to_python()
 
-    def get_identity_hash(self, obj) -> int:
+    def get_identity_hash(self, obj: JSObject) -> int:
         obj_handle = self._python_to_value_handle(obj)
 
-        return self._wrap_raw_handle(
+        ret = self._wrap_raw_handle(
             self._dll.mr_get_identity_hash(self._ctx, obj_handle.raw)
         ).to_python()
+        assert isinstance(ret, int)  # noqa: S101
+        return ret
 
-    def get_own_property_names(self, obj) -> int:
+    def get_own_property_names(self, obj: JSObject) -> tuple[str]:
         obj_handle = self._python_to_value_handle(obj)
 
         names = self._wrap_raw_handle(
@@ -771,7 +819,9 @@ class _Context:
             raise TypeError
         return tuple(names)
 
-    def get_object_item(self, obj, key: Any):
+    def get_object_item(
+        self, obj: JSObject, key: PythonJSConvertedTypes
+    ) -> PythonJSConvertedTypes:
         obj_handle = self._python_to_value_handle(obj)
         key_handle = self._python_to_value_handle(key)
 
@@ -783,7 +833,9 @@ class _Context:
             )
         ).to_python()
 
-    def set_object_item(self, obj, key: Any, val: Any):
+    def set_object_item(
+        self, obj: JSObject, key: PythonJSConvertedTypes, val: PythonJSConvertedTypes
+    ) -> None:
         obj_handle = self._python_to_value_handle(obj)
         key_handle = self._python_to_value_handle(key)
         val_handle = self._python_to_value_handle(val)
@@ -798,7 +850,7 @@ class _Context:
             )
         ).to_python()
 
-    def del_object_item(self, obj, key: Any):
+    def del_object_item(self, obj: JSObject, key: PythonJSConvertedTypes) -> None:
         obj_handle = self._python_to_value_handle(obj)
         key_handle = self._python_to_value_handle(key)
 
@@ -811,15 +863,17 @@ class _Context:
             )
         ).to_python()
 
-    def del_from_array(self, obj, index: int):
-        obj_handle = self._python_to_value_handle(obj)
+    def del_from_array(self, arr: JSArray, index: int) -> None:
+        arr_handle = self._python_to_value_handle(arr)
 
         # Convert the value just to convert any exceptions (and GC the result)
         self._wrap_raw_handle(
-            self._dll.mr_splice_array(self._ctx, obj_handle.raw, index, 1, None)
+            self._dll.mr_splice_array(self._ctx, arr_handle.raw, index, 1, None)
         ).to_python()
 
-    def array_insert(self, arr, index: int, new_val: Any):
+    def array_insert(
+        self, arr: JSArray, index: int, new_val: PythonJSConvertedTypes
+    ) -> None:
         arr_handle = self._python_to_value_handle(arr)
         new_val_handle = self._python_to_value_handle(new_val)
 
@@ -836,12 +890,13 @@ class _Context:
 
     def call_function(
         self,
-        func,
-        *args,
-        this=None,
+        func: JSFunction,
+        *args: Iterable[PythonJSConvertedTypes],
+        this: JSObject | None = None,
         timeout_sec: Numeric | None = None,
-    ):
+    ) -> PythonJSConvertedTypes:
         argv = self.evaluate("[]")
+        assert isinstance(argv, JSArray)  # noqa: S101
         for arg in args:
             argv.append(arg)
 
@@ -875,26 +930,30 @@ class _Context:
 
     def heap_stats(self) -> str:
         with self._run_mr_task(self._dll.mr_heap_stats, self._ctx) as future:
-            return future.get()
+            ret = future.get()
+            assert isinstance(ret, str)  # noqa: S101
+            return ret
 
     def heap_snapshot(self) -> str:
         """Return a snapshot of the V8 isolate heap."""
 
         with self._run_mr_task(self._dll.mr_heap_snapshot, self._ctx) as future:
-            return future.get()
+            ret = future.get()
+            assert isinstance(ret, str)  # noqa: S101
+            return ret
 
-    def value_count(self):
+    def value_count(self) -> int:
         """For tests only: how many value handles are still allocated?"""
 
         return self._dll.mr_value_count(self._ctx)
 
-    def _set_up_callback_into_sync_future(self):
+    def _set_up_callback_into_sync_future(self) -> tuple[int, _SyncFuture]:
         """Create a _SyncFuture, and register a Python-side callback (and corresponding
         callback ID) which activates it."""
 
         future = _SyncFuture()
 
-        def on_resolved(value):
+        def on_resolved(value: PythonJSConvertedTypes):
             future.set_result(value)
 
         def on_rejected(exc):
@@ -905,11 +964,11 @@ class _Context:
 
         return callback_id, future
 
-    def _set_up_callback_into_async_future(self):
+    def _set_up_callback_into_async_future(self) -> tuple[int, Future]:
         """Create an asyncio.Future, and register a Python-side callback (and
         corresponding callback ID) which activates it."""
 
-        future = Future()
+        future: Future = Future()
         loop = future.get_loop()
 
         def on_resolved(value):
@@ -923,10 +982,10 @@ class _Context:
 
         return callback_id, future
 
-    def _wrap_raw_handle(self, raw):
+    def _wrap_raw_handle(self, raw: _RawValueHandleType) -> _ValueHandle:
         return _ValueHandle(self, raw)
 
-    def _python_to_value_handle(self, obj) -> _RawValue:
+    def _python_to_value_handle(self, obj: PythonJSConvertedTypes) -> _ValueHandle:
         if isinstance(obj, JSObject):
             # JSObjects originate from the V8 side. We can just send back the handle
             # we originally got. (This also covers derived types JSFunction, JSSymbol,
@@ -1014,12 +1073,12 @@ class _Context:
 
         raise JSConversionException
 
-    def free(self, res: _RawValue) -> None:
+    def free(self, res: _RawValueHandleType) -> None:
         if self._dll:
             self._dll.mr_free_value(self._ctx, res)
 
     @contextmanager
-    def _run_mr_task(self, dll_method, *args):
+    def _run_mr_task(self, dll_method, *args) -> Iterator[_SyncFuture]:
         """Manages those tasks which generate callbacks from the MiniRacer DLL.
 
         Several MiniRacer functions (JS evaluation and 2 heap stats calls) are
@@ -1047,7 +1106,7 @@ class _Context:
             with suppress(Exception):
                 future.get()
 
-    def __del__(self):
+    def __del__(self) -> None:
         if self._dll:
             self._dll.mr_free_context(self._ctx)
 
@@ -1061,7 +1120,7 @@ class MiniRacer:
             [json](https://docs.python.org/3/library/json.html)
     """
 
-    json_impl: ClassVar[object] = json
+    json_impl: ClassVar[Any] = json
 
     def __init__(self):
         self._ctx = _Context()
@@ -1079,11 +1138,11 @@ class MiniRacer:
         timeout: Numeric | None = None,
         timeout_sec: Numeric | None = None,
         max_memory: int | None = None,
-    ) -> Any:
+    ) -> PythonJSConvertedTypes:
         """Evaluate JavaScript code in the V8 isolate.
 
         Side effects from the JavaScript evaluation is persisted inside a context
-        (meaning variables set are kept for the next evaluations).
+        (meaning variables set are kept for the next evaluation).
 
         The JavaScript value returned by the last expression in `code` is converted to
         a Python value and returned by this method. Only primitive types are supported
