@@ -16,21 +16,23 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include "isolate_manager.h"
 
 namespace MiniRacer {
 
 IsolateObjectDeleter::IsolateObjectDeleter() : isolate_manager_(nullptr) {}
 
-IsolateObjectDeleter::IsolateObjectDeleter(IsolateManager* isolate_manager)
-    : isolate_manager_(isolate_manager) {}
+IsolateObjectDeleter::IsolateObjectDeleter(
+    std::shared_ptr<IsolateManager> isolate_manager)
+    : isolate_manager_(std::move(isolate_manager)) {}
 
 // NOLINTBEGIN(cppcoreguidelines-pro-type-union-access)
 
 BinaryValue::BinaryValue(IsolateObjectDeleter isolate_object_deleter,
                          v8::Local<v8::Context> context,
                          v8::Local<v8::Value> value)
-    : isolate_object_deleter_(isolate_object_deleter) {
+    : isolate_object_deleter_(std::move(isolate_object_deleter)) {
   if (value->IsNull()) {
     handle_.type = type_null;
   } else if (value->IsUndefined()) {
@@ -91,7 +93,7 @@ BinaryValue::BinaryValue(IsolateObjectDeleter isolate_object_deleter,
 BinaryValue::BinaryValue(IsolateObjectDeleter isolate_object_deleter,
                          std::string_view val,
                          BinaryTypes type)
-    : isolate_object_deleter_(isolate_object_deleter) {
+    : isolate_object_deleter_(std::move(isolate_object_deleter)) {
   handle_.len = val.size();
   handle_.type = type;
   msg_.resize(handle_.len + 1);
@@ -101,7 +103,7 @@ BinaryValue::BinaryValue(IsolateObjectDeleter isolate_object_deleter,
 }
 
 BinaryValue::BinaryValue(IsolateObjectDeleter isolate_object_deleter, bool val)
-    : isolate_object_deleter_(isolate_object_deleter) {
+    : isolate_object_deleter_(std::move(isolate_object_deleter)) {
   handle_.len = 0;
   handle_.type = type_bool;
   handle_.int_val = val ? 1 : 0;
@@ -110,7 +112,7 @@ BinaryValue::BinaryValue(IsolateObjectDeleter isolate_object_deleter, bool val)
 BinaryValue::BinaryValue(IsolateObjectDeleter isolate_object_deleter,
                          int64_t val,
                          BinaryTypes type)
-    : isolate_object_deleter_(isolate_object_deleter) {
+    : isolate_object_deleter_(std::move(isolate_object_deleter)) {
   handle_.len = 0;
   handle_.type = type;
   handle_.int_val = val;
@@ -119,7 +121,7 @@ BinaryValue::BinaryValue(IsolateObjectDeleter isolate_object_deleter,
 BinaryValue::BinaryValue(IsolateObjectDeleter isolate_object_deleter,
                          double val,
                          BinaryTypes type)
-    : isolate_object_deleter_(isolate_object_deleter) {
+    : isolate_object_deleter_(std::move(isolate_object_deleter)) {
   handle_.len = 0;
   handle_.type = type;
   handle_.double_val = val;
@@ -195,7 +197,7 @@ BinaryValue::BinaryValue(IsolateObjectDeleter isolate_object_deleter,
                          v8::Local<v8::Message> message,
                          v8::Local<v8::Value> exception_obj,
                          BinaryTypes result_type)
-    : BinaryValue(isolate_object_deleter,
+    : BinaryValue(std::move(isolate_object_deleter),
                   ExceptionToString(context, message, exception_obj),
                   result_type) {}
 
@@ -298,8 +300,9 @@ void BinaryValue::CreateBackingStoreRef(v8::Local<v8::Value> value) {
 
 // NOLINTEND(cppcoreguidelines-pro-type-union-access)
 
-BinaryValueFactory::BinaryValueFactory(IsolateManager* isolate_manager)
-    : isolate_manager_(isolate_manager) {}
+BinaryValueFactory::BinaryValueFactory(
+    std::shared_ptr<IsolateManager> isolate_manager)
+    : isolate_manager_(std::move(isolate_manager)) {}
 
 void BinaryValueFactory::Free(BinaryValueHandle* handle) {
   const std::lock_guard<std::mutex> lock(mutex_);

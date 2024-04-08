@@ -4,13 +4,17 @@
 #include <v8-callbacks.h>
 #include <v8-isolate.h>
 #include <cstddef>
+#include <memory>
 #include "isolate_manager.h"
 
 namespace MiniRacer {
 
+class IsolateMemoryMonitorState;
+
 class IsolateMemoryMonitor {
  public:
-  explicit IsolateMemoryMonitor(IsolateManager* isolate_manager);
+  explicit IsolateMemoryMonitor(
+      const std::shared_ptr<IsolateManager>& isolate_manager);
   ~IsolateMemoryMonitor();
 
   IsolateMemoryMonitor(const IsolateMemoryMonitor&) = delete;
@@ -31,21 +35,30 @@ class IsolateMemoryMonitor {
                                v8::GCType type,
                                v8::GCCallbackFlags flags,
                                void* data);
+
+  std::shared_ptr<IsolateManager> isolate_manager_;
+  std::shared_ptr<IsolateMemoryMonitorState> state_;
+};
+
+class IsolateMemoryMonitorState {
+ public:
+  explicit IsolateMemoryMonitorState(
+      std::shared_ptr<IsolateManager> isolate_manager);
+
+  [[nodiscard]] auto IsSoftMemoryLimitReached() const -> bool;
+  [[nodiscard]] auto IsHardMemoryLimitReached() const -> bool;
+  void SetHardMemoryLimit(size_t limit);
+  void SetSoftMemoryLimit(size_t limit);
+
   void GCCallback(v8::Isolate* isolate);
 
-  IsolateManager* isolate_manager_;
+ private:
+  std::shared_ptr<IsolateManager> isolate_manager_;
   size_t soft_memory_limit_;
   bool soft_memory_limit_reached_;
   size_t hard_memory_limit_;
   bool hard_memory_limit_reached_;
 };
-
-inline auto IsolateMemoryMonitor::IsSoftMemoryLimitReached() const -> bool {
-  return soft_memory_limit_reached_;
-}
-inline auto IsolateMemoryMonitor::IsHardMemoryLimitReached() const -> bool {
-  return hard_memory_limit_reached_;
-}
 
 }  // end namespace MiniRacer
 

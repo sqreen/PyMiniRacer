@@ -10,15 +10,16 @@
 #include <v8-promise.h>
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include "binary_value.h"
 #include "callback.h"
-#include "gsl_stub.h"
+#include "context_holder.h"
 
 namespace MiniRacer {
 
-PromiseAttacher::PromiseAttacher(v8::Persistent<v8::Context>* context,
-                                 BinaryValueFactory* bv_factory)
-    : context_(context), bv_factory_(bv_factory) {}
+PromiseAttacher::PromiseAttacher(std::shared_ptr<ContextHolder> context,
+                                 std::shared_ptr<BinaryValueFactory> bv_factory)
+    : context_(std::move(context)), bv_factory_(std::move(bv_factory)) {}
 
 auto PromiseAttacher::AttachPromiseThen(v8::Isolate* isolate,
                                         BinaryValue* promise_ptr,
@@ -27,7 +28,7 @@ auto PromiseAttacher::AttachPromiseThen(v8::Isolate* isolate,
     -> BinaryValue::Ptr {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
-  const v8::Local<v8::Context> local_context = context_->Get(isolate);
+  const v8::Local<v8::Context> local_context = context_->Get()->Get(isolate);
   const v8::Context::Scope context_scope(local_context);
 
   const v8::Local<v8::Value> local_promise_val =
@@ -37,8 +38,10 @@ auto PromiseAttacher::AttachPromiseThen(v8::Isolate* isolate,
 
   // Note that completion_handler will be deleted by whichever callback is
   // called. (If we use auto here we can't mark gsl::owner, so disable this
-  // lint check:) NOLINTNEXTLINE(hicpp-use-auto,modernize-use-auto)
-  gsl::owner<PromiseCompletionHandler*> completion_handler =
+  // lint check:)
+
+  // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
+  auto* completion_handler =
       new PromiseCompletionHandler(bv_factory_, callback, callback_id);
   const v8::Local<v8::External> edata =
       v8::External::New(isolate, completion_handler);
@@ -58,10 +61,12 @@ auto PromiseAttacher::AttachPromiseThen(v8::Isolate* isolate,
 }
 
 PromiseCompletionHandler::PromiseCompletionHandler(
-    BinaryValueFactory* bv_factory,
+    std::shared_ptr<BinaryValueFactory> bv_factory,
     Callback callback,
     uint64_t callback_id)
-    : bv_factory_(bv_factory), callback_(callback), callback_id_(callback_id) {}
+    : bv_factory_(std::move(bv_factory)),
+      callback_(callback),
+      callback_id_(callback_id) {}
 
 void PromiseCompletionHandler::OnFulfilledStatic(
     const v8::FunctionCallbackInfo<v8::Value>& info) {

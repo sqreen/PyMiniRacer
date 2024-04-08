@@ -6,15 +6,17 @@
 #include <v8-isolate.h>
 #include <v8-persistent-handle.h>
 #include <cstdint>
+#include <memory>
 #include "binary_value.h"
 #include "callback.h"
+#include "context_holder.h"
 
 namespace MiniRacer {
 
 class PromiseAttacher {
  public:
-  PromiseAttacher(v8::Persistent<v8::Context>* context,
-                  BinaryValueFactory* bv_factory);
+  PromiseAttacher(std::shared_ptr<ContextHolder> context,
+                  std::shared_ptr<BinaryValueFactory> bv_factory);
 
   auto AttachPromiseThen(v8::Isolate* isolate,
                          BinaryValue* promise_ptr,
@@ -22,13 +24,13 @@ class PromiseAttacher {
                          uint64_t callback_id) -> BinaryValue::Ptr;
 
  private:
-  v8::Persistent<v8::Context>* context_;
-  BinaryValueFactory* bv_factory_;
+  std::shared_ptr<ContextHolder> context_;
+  std::shared_ptr<BinaryValueFactory> bv_factory_;
 };
 
 class PromiseCompletionHandler {
  public:
-  PromiseCompletionHandler(BinaryValueFactory* bv_factory,
+  PromiseCompletionHandler(std::shared_ptr<BinaryValueFactory> bv_factory,
                            Callback callback_,
                            uint64_t callback_id);
 
@@ -40,7 +42,7 @@ class PromiseCompletionHandler {
   void OnFulfilled(v8::Isolate* isolate, const v8::Local<v8::Value>& value);
   void OnRejected(v8::Isolate* isolate, const v8::Local<v8::Value>& exc);
 
-  BinaryValueFactory* bv_factory_;
+  std::shared_ptr<BinaryValueFactory> bv_factory_;
   Callback callback_;
   uint64_t callback_id_;
 };

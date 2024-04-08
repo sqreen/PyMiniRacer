@@ -9,23 +9,27 @@
 #include <v8-primitive.h>
 #include <v8-script.h>
 #include <v8-value.h>
+#include <memory>
+#include <utility>
 #include "binary_value.h"
+#include "context_holder.h"
 #include "isolate_memory_monitor.h"
 
 namespace MiniRacer {
 
-CodeEvaluator::CodeEvaluator(v8::Persistent<v8::Context>* context,
-                             BinaryValueFactory* bv_factory,
-                             IsolateMemoryMonitor* memory_monitor)
-    : context_(context),
-      bv_factory_(bv_factory),
-      memory_monitor_(memory_monitor) {}
+CodeEvaluator::CodeEvaluator(
+    std::shared_ptr<ContextHolder> context,
+    std::shared_ptr<BinaryValueFactory> bv_factory,
+    std::shared_ptr<IsolateMemoryMonitor> memory_monitor)
+    : context_(std::move(context)),
+      bv_factory_(std::move(bv_factory)),
+      memory_monitor_(std::move(memory_monitor)) {}
 
 auto CodeEvaluator::Eval(v8::Isolate* isolate,
                          BinaryValue* code_ptr) -> BinaryValue::Ptr {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
-  const v8::Local<v8::Context> context = context_->Get(isolate);
+  const v8::Local<v8::Context> context = context_->Get()->Get(isolate);
   const v8::Context::Scope context_scope(context);
 
   const v8::TryCatch trycatch(isolate);

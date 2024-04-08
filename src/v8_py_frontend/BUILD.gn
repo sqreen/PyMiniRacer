@@ -16,8 +16,6 @@ v8_shared_library("mini_racer") {
     "context_factory.cc",
     "context_holder.h",
     "context_holder.cc",
-    "count_down_latch.h",
-    "count_down_latch.cc",
     "gsl_stub.h",
     "heap_reporter.h",
     "heap_reporter.cc",

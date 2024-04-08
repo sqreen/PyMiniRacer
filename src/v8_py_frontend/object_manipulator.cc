@@ -9,21 +9,25 @@
 #include <v8-persistent-handle.h>
 #include <v8-primitive.h>
 #include <cstdint>
+#include <memory>
+#include <utility>
 #include <vector>
 #include "binary_value.h"
+#include "context_holder.h"
 
 namespace MiniRacer {
 
-ObjectManipulator::ObjectManipulator(v8::Persistent<v8::Context>* context,
-                                     BinaryValueFactory* bv_factory)
-    : context_(context), bv_factory_(bv_factory) {}
+ObjectManipulator::ObjectManipulator(
+    std::shared_ptr<ContextHolder> context,
+    std::shared_ptr<BinaryValueFactory> bv_factory)
+    : context_(std::move(context)), bv_factory_(std::move(bv_factory)) {}
 
 auto ObjectManipulator::GetIdentityHash(v8::Isolate* isolate,
                                         BinaryValue* obj_ptr)
     -> BinaryValue::Ptr {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
-  const v8::Local<v8::Context> local_context = context_->Get(isolate);
+  const v8::Local<v8::Context> local_context = context_->Get()->Get(isolate);
   const v8::Context::Scope context_scope(local_context);
 
   const v8::Local<v8::Value> local_obj_val = obj_ptr->ToValue(local_context);
@@ -38,7 +42,7 @@ auto ObjectManipulator::GetOwnPropertyNames(v8::Isolate* isolate,
     -> BinaryValue::Ptr {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
-  const v8::Local<v8::Context> local_context = context_->Get(isolate);
+  const v8::Local<v8::Context> local_context = context_->Get()->Get(isolate);
   const v8::Context::Scope context_scope(local_context);
 
   const v8::Local<v8::Value> local_obj_val = obj_ptr->ToValue(local_context);
@@ -55,7 +59,7 @@ auto ObjectManipulator::Get(v8::Isolate* isolate,
                             BinaryValue* key_ptr) -> BinaryValue::Ptr {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
-  const v8::Local<v8::Context> local_context = context_->Get(isolate);
+  const v8::Local<v8::Context> local_context = context_->Get()->Get(isolate);
   const v8::Context::Scope context_scope(local_context);
 
   const v8::Local<v8::Value> local_obj_val = obj_ptr->ToValue(local_context);
@@ -78,7 +82,7 @@ auto ObjectManipulator::Set(v8::Isolate* isolate,
                             BinaryValue* val_ptr) -> BinaryValue::Ptr {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
-  const v8::Local<v8::Context> local_context = context_->Get(isolate);
+  const v8::Local<v8::Context> local_context = context_->Get()->Get(isolate);
   const v8::Context::Scope context_scope(local_context);
 
   const v8::Local<v8::Value> local_obj_val = obj_ptr->ToValue(local_context);
@@ -96,7 +100,7 @@ auto ObjectManipulator::Del(v8::Isolate* isolate,
                             BinaryValue* key_ptr) -> BinaryValue::Ptr {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
-  const v8::Local<v8::Context> local_context = context_->Get(isolate);
+  const v8::Local<v8::Context> local_context = context_->Get()->Get(isolate);
   const v8::Context::Scope context_scope(local_context);
 
   const v8::Local<v8::Value> local_obj_val = obj_ptr->ToValue(local_context);
@@ -118,7 +122,7 @@ auto ObjectManipulator::Splice(v8::Isolate* isolate,
                                BinaryValue* new_val_ptr) -> BinaryValue::Ptr {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
-  const v8::Local<v8::Context> local_context = context_->Get(isolate);
+  const v8::Local<v8::Context> local_context = context_->Get()->Get(isolate);
   const v8::Context::Scope context_scope(local_context);
 
   const v8::Local<v8::Value> local_obj_val = obj_ptr->ToValue(local_context);
@@ -168,7 +172,7 @@ auto ObjectManipulator::Call(v8::Isolate* isolate,
                              BinaryValue* argv_ptr) -> BinaryValue::Ptr {
   const v8::Isolate::Scope isolate_scope(isolate);
   const v8::HandleScope handle_scope(isolate);
-  const v8::Local<v8::Context> local_context = context_->Get(isolate);
+  const v8::Local<v8::Context> local_context = context_->Get()->Get(isolate);
   const v8::Context::Scope context_scope(local_context);
 
   const v8::Local<v8::Value> local_func_val = func_ptr->ToValue(local_context);
