@@ -5,13 +5,12 @@
 #include <v8-platform.h>
 #include <future>
 #include <memory>
-#include <mutex>
 #include <type_traits>
 #include <utility>
 
 namespace MiniRacer {
 
-class IsolateManagerTracker;
+class IsolateMessagePump;
 
 /** Owns a v8::Isolate and mediates access to it via a task queue.
  *
@@ -51,8 +50,6 @@ class IsolateManager {
   void Shutdown();
 
  private:
-  static void PumpMessages(std::shared_ptr<IsolateManagerTracker> tracker);
-
   /** Translate from a callback from v8::Isolate::RequestInterrupt into a
    * v8::Task::Run. */
   static void RunInterrupt(v8::Isolate* /*isolate*/, void* data);
@@ -68,29 +65,27 @@ class IsolateManager {
                                     std::promise<T>& prom);
 
   v8::Platform* platform_;
-  std::shared_ptr<IsolateManagerTracker> tracker_;
+  std::shared_ptr<IsolateMessagePump> message_pump_;
   v8::Isolate* isolate_;
 };
 
-/** Exchanges state information between the IsolateManager and the message pump
- * thread. */
-class IsolateManagerTracker {
+/** Runs the Isolate MessagePump in a thread. */
+class IsolateMessagePump {
  public:
-  explicit IsolateManagerTracker(v8::Platform* platform);
+  explicit IsolateMessagePump(v8::Platform* platform);
 
-  auto GetPlatform() -> v8::Platform*;
-  auto GetIsolate() -> v8::Isolate*;
-  void SetIsolate(v8::Isolate* isolate);
+  static auto Start(const std::shared_ptr<IsolateMessagePump>& message_pump)
+      -> v8::Isolate*;
 
-  void ShutDown(IsolateManager* isolate_manager);
-  auto ShouldShutDown() -> bool;
+  void ShutDown();
 
  private:
+  void PumpMessages();
+
   v8::Platform* platform_;
   bool shutdown_flag_;
   std::promise<v8::Isolate*> isolate_promise_;
   std::shared_future<v8::Isolate*> isolate_future_;
-  std::mutex mutex_;
 };
 
 /** Just a silly way to run code on the foreground task runner thread. */
