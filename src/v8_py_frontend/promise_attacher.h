@@ -15,15 +15,16 @@ namespace MiniRacer {
 
 class PromiseAttacher {
  public:
-  PromiseAttacher(std::shared_ptr<ContextHolder> context,
+  PromiseAttacher(Callback callback,
+                  std::shared_ptr<ContextHolder> context,
                   std::shared_ptr<BinaryValueFactory> bv_factory);
 
   auto AttachPromiseThen(v8::Isolate* isolate,
                          BinaryValue* promise_ptr,
-                         Callback callback,
                          uint64_t callback_id) -> BinaryValue::Ptr;
 
  private:
+  Callback callback_;
   std::shared_ptr<ContextHolder> context_;
   std::shared_ptr<BinaryValueFactory> bv_factory_;
 };

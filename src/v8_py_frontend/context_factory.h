@@ -9,6 +9,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include "callback.h"
 #include "context.h"
 #include "gsl_stub.h"
 
@@ -21,7 +22,7 @@ class ContextFactory {
                    const std::filesystem::path& snapshot_path);
 
   static auto Get() -> ContextFactory*;
-  auto MakeContext() -> uint64_t;
+  auto MakeContext(Callback callback) -> uint64_t;
   auto GetContext(uint64_t context_id) -> std::shared_ptr<Context>;
   void FreeContext(uint64_t context_id);
   auto Count() -> size_t;

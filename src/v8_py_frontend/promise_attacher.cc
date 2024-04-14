@@ -17,13 +17,15 @@
 
 namespace MiniRacer {
 
-PromiseAttacher::PromiseAttacher(std::shared_ptr<ContextHolder> context,
+PromiseAttacher::PromiseAttacher(Callback callback,
+                                 std::shared_ptr<ContextHolder> context,
                                  std::shared_ptr<BinaryValueFactory> bv_factory)
-    : context_(std::move(context)), bv_factory_(std::move(bv_factory)) {}
+    : callback_(callback),
+      context_(std::move(context)),
+      bv_factory_(std::move(bv_factory)) {}
 
 auto PromiseAttacher::AttachPromiseThen(v8::Isolate* isolate,
                                         BinaryValue* promise_ptr,
-                                        Callback callback,
                                         uint64_t callback_id)
     -> BinaryValue::Ptr {
   const v8::Isolate::Scope isolate_scope(isolate);
@@ -42,7 +44,7 @@ auto PromiseAttacher::AttachPromiseThen(v8::Isolate* isolate,
 
   // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
   auto* completion_handler =
-      new PromiseCompletionHandler(bv_factory_, callback, callback_id);
+      new PromiseCompletionHandler(bv_factory_, callback_, callback_id);
   const v8::Local<v8::External> edata =
       v8::External::New(isolate, completion_handler);
 

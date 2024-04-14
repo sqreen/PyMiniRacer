@@ -417,13 +417,12 @@ def _build_dll_handle(dll_path: str) -> ctypes.CDLL:
 
     handle.mr_init_v8.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
 
-    handle.mr_init_context.argtypes = []
+    handle.mr_init_context.argtypes = [_MR_CALLBACK]
     handle.mr_init_context.restype = ctypes.c_uint64
 
     handle.mr_eval.argtypes = [
         ctypes.c_uint64,
         _RawValueHandle,
-        _MR_CALLBACK,
         ctypes.c_uint64,
     ]
     handle.mr_eval.restype = ctypes.c_uint64
@@ -457,7 +456,6 @@ def _build_dll_handle(dll_path: str) -> ctypes.CDLL:
 
     handle.mr_heap_stats.argtypes = [
         ctypes.c_uint64,
-        _MR_CALLBACK,
         ctypes.c_uint64,
     ]
     handle.mr_heap_stats.restype = ctypes.c_uint64
@@ -467,14 +465,12 @@ def _build_dll_handle(dll_path: str) -> ctypes.CDLL:
     handle.mr_attach_promise_then.argtypes = [
         ctypes.c_uint64,
         _RawValueHandle,
-        _MR_CALLBACK,
         ctypes.c_uint64,
     ]
     handle.mr_attach_promise_then.restype = _RawValueHandle
 
     handle.mr_heap_snapshot.argtypes = [
         ctypes.c_uint64,
-        _MR_CALLBACK,
         ctypes.c_uint64,
     ]
     handle.mr_heap_snapshot.restype = ctypes.c_uint64
@@ -527,7 +523,6 @@ def _build_dll_handle(dll_path: str) -> ctypes.CDLL:
         _RawValueHandle,
         _RawValueHandle,
         _RawValueHandle,
-        _MR_CALLBACK,
         ctypes.c_uint64,
     ]
     handle.mr_call_function.restype = ctypes.c_uint64
@@ -745,10 +740,11 @@ class _Context:
 
     def __init__(self) -> None:
         self._dll = init_mini_racer(ignore_duplicate_init=True)
-        self._ctx = self._dll.mr_init_context()
-        self._active_callbacks: dict[int, _Callbacks] = {}
 
-        # define an all-purpose callback for _SyncFuture:
+        self._active_callbacks: dict[int, _Callbacks] = {}
+        self._next_callback_id = count()
+
+        # define an all-purpose callback:
         @_MR_CALLBACK  # type: ignore[misc]
         def mr_callback(callback_id: int, raw_val_handle: _RawValueHandleType) -> None:
             val_handle = self._wrap_raw_handle(raw_val_handle)
@@ -760,8 +756,10 @@ class _Context:
             except Exception as exc:  # noqa: BLE001
                 callbacks.on_rejected(exc)
 
+        # We need to save a reference to the callback or else Python will GC it:
         self._mr_callback = mr_callback
-        self._next_callback_id = count()
+
+        self._ctx = self._dll.mr_init_context(mr_callback)
 
     def v8_version(self) -> str:
         return str(self._dll.mr_v8_version().decode("utf-8"))
@@ -804,7 +802,6 @@ class _Context:
             self._dll.mr_attach_promise_then(
                 self._ctx,
                 promise_handle.raw,
-                self._mr_callback,
                 callback_id,
             )
         ).to_python()
@@ -1105,7 +1102,7 @@ class _Context:
         callback_id, future = self._set_up_callback_into_sync_future()
 
         # Start the task:
-        task_id = dll_method(*args, self._mr_callback, callback_id)
+        task_id = dll_method(*args, callback_id)
         try:
             # Let the caller handle waiting on the result:
             yield future

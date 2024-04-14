@@ -8,6 +8,7 @@
 #include <mutex>
 #include <string>
 #include <utility>
+#include "callback.h"
 #include "context.h"
 #include "gsl_stub.h"
 
@@ -29,10 +30,10 @@ auto ContextFactory::Get() -> ContextFactory* {
   return singleton_;
 }
 
-auto ContextFactory::MakeContext() -> uint64_t {
+auto ContextFactory::MakeContext(Callback callback) -> uint64_t {
   // Actually create the context before we get the lock, in case the program is
   // making Contexts in other threads:
-  auto context = std::make_shared<Context>(current_platform_.get());
+  auto context = std::make_shared<Context>(current_platform_.get(), callback);
 
   const std::lock_guard<std::mutex> lock(mutex_);
   const uint64_t context_id = next_context_id_++;

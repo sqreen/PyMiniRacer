@@ -28,13 +28,12 @@ auto GetContext(uint64_t context_id) -> std::shared_ptr<MiniRacer::Context> {
 
 LIB_EXPORT auto mr_eval(uint64_t context_id,
                         MiniRacer::BinaryValueHandle* code_handle,
-                        MiniRacer::Callback callback,
                         uint64_t callback_id) -> uint64_t {
   auto context = GetContext(context_id);
   if (!context) {
     return 0;
   }
-  return context->Eval(code_handle, callback, callback_id);
+  return context->Eval(code_handle, callback_id);
 }
 
 LIB_EXPORT void mr_init_v8(const char* v8_flags,
@@ -43,12 +42,12 @@ LIB_EXPORT void mr_init_v8(const char* v8_flags,
   MiniRacer::ContextFactory::Init(v8_flags, icu_path, snapshot_path);
 }
 
-LIB_EXPORT auto mr_init_context() -> uint64_t {
+LIB_EXPORT auto mr_init_context(MiniRacer::Callback callback) -> uint64_t {
   auto* context_factory = MiniRacer::ContextFactory::Get();
   if (context_factory == nullptr) {
     return 0;
   }
-  return context_factory->MakeContext();
+  return context_factory->MakeContext(callback);
 }
 
 LIB_EXPORT void mr_free_context(uint64_t context_id) {
@@ -119,13 +118,12 @@ LIB_EXPORT void mr_cancel_task(uint64_t context_id, uint64_t task_id) {
 }
 
 LIB_EXPORT auto mr_heap_stats(uint64_t context_id,
-                              MiniRacer::Callback callback,
                               uint64_t callback_id) -> uint64_t {
   auto context = GetContext(context_id);
   if (!context) {
     return 0;
   }
-  return context->HeapStats(callback, callback_id);
+  return context->HeapStats(callback_id);
 }
 
 LIB_EXPORT void mr_set_hard_memory_limit(uint64_t context_id, size_t limit) {
@@ -179,13 +177,12 @@ LIB_EXPORT auto mr_v8_is_using_sandbox() -> bool {
 LIB_EXPORT auto mr_attach_promise_then(
     uint64_t context_id,
     MiniRacer::BinaryValueHandle* promise_handle,
-    MiniRacer::Callback callback,
     uint64_t callback_id) -> MiniRacer::BinaryValueHandle* {
   auto context = GetContext(context_id);
   if (!context) {
     return nullptr;
   }
-  return context->AttachPromiseThen(promise_handle, callback, callback_id);
+  return context->AttachPromiseThen(promise_handle, callback_id);
 }
 
 LIB_EXPORT auto mr_get_identity_hash(uint64_t context_id,
@@ -260,24 +257,22 @@ LIB_EXPORT auto mr_call_function(uint64_t context_id,
                                  MiniRacer::BinaryValueHandle* func_handle,
                                  MiniRacer::BinaryValueHandle* this_handle,
                                  MiniRacer::BinaryValueHandle* argv_handle,
-                                 MiniRacer::Callback callback,
                                  uint64_t callback_id) -> uint64_t {
   auto context = GetContext(context_id);
   if (!context) {
     return 0;
   }
-  return context->CallFunction(func_handle, this_handle, argv_handle, callback,
+  return context->CallFunction(func_handle, this_handle, argv_handle,
                                callback_id);
 }
 
 LIB_EXPORT auto mr_heap_snapshot(uint64_t context_id,
-                                 MiniRacer::Callback callback,
                                  uint64_t callback_id) -> uint64_t {
   auto context = GetContext(context_id);
   if (!context) {
     return 0;
   }
-  return context->HeapSnapshot(callback, callback_id);
+  return context->HeapSnapshot(callback_id);
 }
 
 LIB_EXPORT auto mr_value_count(uint64_t context_id) -> size_t {

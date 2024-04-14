@@ -20,7 +20,7 @@ namespace MiniRacer {
 
 class Context {
  public:
-  explicit Context(v8::Platform* platform);
+  explicit Context(v8::Platform* platform, Callback callback);
 
   void SetHardMemoryLimit(size_t limit);
   void SetSoftMemoryLimit(size_t limit);
@@ -33,13 +33,13 @@ class Context {
   template <typename... Params>
   auto AllocBinaryValue(Params&&... params) -> BinaryValueHandle*;
   void CancelTask(uint64_t task_id);
-  auto HeapSnapshot(Callback callback, uint64_t callback_id) -> uint64_t;
-  auto HeapStats(Callback callback, uint64_t callback_id) -> uint64_t;
+  auto HeapSnapshot(uint64_t callback_id) -> uint64_t;
+  auto HeapStats(uint64_t callback_id) -> uint64_t;
   auto Eval(BinaryValueHandle* code_handle,
-            Callback callback,
+
             uint64_t callback_id) -> uint64_t;
   auto AttachPromiseThen(BinaryValueHandle* promise_handle,
-                         Callback callback,
+
                          uint64_t callback_id) -> BinaryValueHandle*;
   auto GetIdentityHash(BinaryValueHandle* obj_handle) -> BinaryValueHandle*;
   auto GetOwnPropertyNames(BinaryValueHandle* obj_handle) -> BinaryValueHandle*;
@@ -57,16 +57,17 @@ class Context {
   auto CallFunction(BinaryValueHandle* func_handle,
                     BinaryValueHandle* this_handle,
                     BinaryValueHandle* argv_handle,
-                    Callback callback,
+
                     uint64_t callback_id) -> uint64_t;
   auto BinaryValueCount() -> size_t;
 
  private:
   template <typename Runnable>
   auto RunTask(Runnable runnable,
-               Callback callback,
+
                uint64_t callback_id) -> uint64_t;
 
+  Callback callback_;
   std::shared_ptr<IsolateManager> isolate_manager_;
   std::shared_ptr<IsolateMemoryMonitor> isolate_memory_monitor_;
   std::shared_ptr<BinaryValueFactory> bv_factory_;

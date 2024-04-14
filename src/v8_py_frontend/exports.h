@@ -36,8 +36,18 @@ LIB_EXPORT auto mr_v8_is_using_sandbox() -> bool;
  * A MiniRacer context is an isolated JavaScript execution envrionment. It
  * contains one v8::Isolate, one v8::Context, one message loop thread, and
  * one pool of BinaryValueHandles and asynchronous tasks.
+ *
+ * The given callback function pointer must point to valid memory for the
+ * the entire lifetime of this context (assuming any async tasks are started
+ * or promises are attached to callbacks).
+ *
+ * The callback will be called from within the Isolate message loop, while
+ * holding the isolate lock. It should thus return as soon as possible, and
+ * not attempt to make new calls into V8 (as they would deadlock).
+ * Consequently the best thing for the callback to do is to signal another
+ * thread (e.g., using a future or thread-safe queue) and immediately return.
  **/
-LIB_EXPORT auto mr_init_context() -> uint64_t;
+LIB_EXPORT auto mr_init_context(MiniRacer::Callback callback) -> uint64_t;
 
 /** Free a MiniRacer context.
  *
@@ -192,7 +202,6 @@ LIB_EXPORT auto mr_splice_array(uint64_t context_id,
 LIB_EXPORT auto mr_attach_promise_then(
     uint64_t context_id,
     MiniRacer::BinaryValueHandle* promise_handle,
-    MiniRacer::Callback callback,
     uint64_t callback_id) -> MiniRacer::BinaryValueHandle*;
 
 /** Cancel the given asynchronous task.
@@ -206,11 +215,10 @@ LIB_EXPORT void mr_cancel_task(uint64_t context_id, uint64_t task_id);
  *
  * Code can be evaluated by, e.g., mr_alloc_string_val.
  *
- * This call is processed asynchronously and as such accepts a callback pointer
- * and callback ID. The callback ID and a MiniRacer::BinaryValueHandle*
- * containing the evaluation result are passed back to the callback upon
- * completion. A task ID is returned which can be passed back to mr_cancel_task
- * to cancel evaluation.
+ * This call is processed asynchronously and as such accepts a callback ID.
+ * The callback ID and a MiniRacer::BinaryValueHandle* containing the
+ * evaluation result are passed back to the callback upon completion. A task ID
+ * is returned which can be passed back to mr_cancel_task to cancel evaluation.
  *
  * The result of the evaluation (usually the value of the last statement in the
  * code snippet) is supplied as the evaluation result, except in case of an
@@ -219,50 +227,43 @@ LIB_EXPORT void mr_cancel_task(uint64_t context_id, uint64_t task_id);
  */
 LIB_EXPORT auto mr_eval(uint64_t context_id,
                         MiniRacer::BinaryValueHandle* code_handle,
-                        MiniRacer::Callback callback,
                         uint64_t callback_id) -> uint64_t;
 
 /** Call JavaScript `func.call(this, ...argv)`.
  *
- * This call is processed asynchronously and as such accepts a callback pointer
- * and callback ID. The callback ID and a MiniRacer::BinaryValueHandle*
- * containing the evaluation result are passed back to the callback upon
- * completion. A task ID is returned which can be passed back to mr_cancel_task
- * to cancel evaluation.
+ * This call is processed asynchronously and as such accepts a callback ID.
+ * The callback ID and a MiniRacer::BinaryValueHandle* containing the
+ * evaluation result are passed back to the callback upon completion. A task ID
+ * is returned which can be passed back to mr_cancel_task to cancel evaluation.
  **/
 LIB_EXPORT auto mr_call_function(uint64_t context_id,
                                  MiniRacer::BinaryValueHandle* func_handle,
                                  MiniRacer::BinaryValueHandle* this_handle,
                                  MiniRacer::BinaryValueHandle* argv_handle,
-                                 MiniRacer::Callback callback,
                                  uint64_t callback_id) -> uint64_t;
 
 /** Get stats for the V8 heap.
  *
  * This function is intended for use in debugging only.
  *
- * This call is processed asynchronously and as such accepts a callback pointer
- * and callback ID. The callback ID and a MiniRacer::BinaryValueHandle*
- * containing the evaluation result are passed back to the callback upon
- * completion. A task ID is returned which can be passed back to mr_cancel_task
- * to cancel evaluation.
+ * This call is processed asynchronously and as such accepts a callback ID.
+ * The callback ID and a MiniRacer::BinaryValueHandle* containing the
+ * evaluation result are passed back to the callback upon completion. A task ID
+ * is returned which can be passed back to mr_cancel_task to cancel evaluation.
  **/
 LIB_EXPORT auto mr_heap_stats(uint64_t context_id,
-                              MiniRacer::Callback callback,
                               uint64_t callback_id) -> uint64_t;
 
 /** Get a snapshot of the V8 heap.
  *
  * This function is intended for use in debugging only.
  *
- * This call is processed asynchronously and as such accepts a callback pointer
- * and callback ID. The callback ID and a MiniRacer::BinaryValueHandle*
- * containing the evaluation result are passed back to the callback upon
- * completion. A task ID is returned which can be passed back to mr_cancel_task
- * to cancel evaluation.
+ * This call is processed asynchronously and as such accepts a callback ID.
+ * The callback ID and a MiniRacer::BinaryValueHandle* containing the
+ * evaluation result are passed back to the callback upon completion. A task ID
+ * is returned which can be passed back to mr_cancel_task to cancel evaluation.
  **/
 LIB_EXPORT auto mr_heap_snapshot(uint64_t context_id,
-                                 MiniRacer::Callback callback,
                                  uint64_t callback_id) -> uint64_t;
 
 // NOLINTEND(bugprone-easily-swappable-parameters)
