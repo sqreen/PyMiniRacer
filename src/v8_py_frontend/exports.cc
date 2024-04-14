@@ -1,3 +1,4 @@
+#include "exports.h"
 #include <v8-initialization.h>
 #include <v8-version-string.h>
 #include <cstddef>
@@ -9,12 +10,6 @@
 #include "context.h"
 #include "context_factory.h"
 
-#ifdef V8_OS_WIN
-#define LIB_EXPORT __declspec(dllexport)
-#else  // V8_OS_WIN
-#define LIB_EXPORT __attribute__((visibility("default")))
-#endif
-
 namespace {
 auto GetContext(uint64_t context_id) -> std::shared_ptr<MiniRacer::Context> {
   auto* context_factory = MiniRacer::ContextFactory::Get();
@@ -24,8 +19,6 @@ auto GetContext(uint64_t context_id) -> std::shared_ptr<MiniRacer::Context> {
   return context_factory->GetContext(context_id);
 }
 }  // end anonymous namespace
-
-extern "C" {
 
 // This lint check wants us to make classes to encompass parameters, which
 // isn't very helpful in a low-level cross-language API (we'd be just as
@@ -277,7 +270,6 @@ LIB_EXPORT auto mr_call_function(uint64_t context_id,
                                callback_id);
 }
 
-// FOR DEBUGGING ONLY
 LIB_EXPORT auto mr_heap_snapshot(uint64_t context_id,
                                  MiniRacer::Callback callback,
                                  uint64_t callback_id) -> uint64_t {
@@ -297,5 +289,3 @@ LIB_EXPORT auto mr_value_count(uint64_t context_id) -> size_t {
 }
 
 // NOLINTEND(bugprone-easily-swappable-parameters)
-
-}  // end extern "C"
