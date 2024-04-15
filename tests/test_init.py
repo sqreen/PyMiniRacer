@@ -1,6 +1,6 @@
 from gc import collect
 from re import match
-from time import sleep
+from time import sleep, time
 
 import pytest
 from py_mini_racer import LibAlreadyInitializedError, MiniRacer, init_mini_racer
@@ -43,6 +43,10 @@ def test_del():
     count_before = _context_count()
     mr = MiniRacer()
     del mr
-    sleep(1)
-    collect()
+
+    start = time()
+    while time() - start < 2 and _context_count() != count_before:
+        collect()
+        sleep(0.1)
+
     assert _context_count() == count_before

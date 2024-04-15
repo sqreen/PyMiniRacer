@@ -166,23 +166,21 @@ LIB_EXPORT void mr_low_memory_notification(uint64_t context_id) {
   context->ApplyLowMemoryNotification();
 }
 
+LIB_EXPORT auto mr_make_js_callback(uint64_t context_id, uint64_t callback_id)
+    -> MiniRacer::BinaryValueHandle* {
+  auto context = GetContext(context_id);
+  if (!context) {
+    return nullptr;
+  }
+  return context->MakeJSCallback(callback_id);
+}
+
 LIB_EXPORT auto mr_v8_version() -> char const* {
   return V8_VERSION_STRING;
 }
 
 LIB_EXPORT auto mr_v8_is_using_sandbox() -> bool {
   return v8::V8::IsSandboxConfiguredSecurely();
-}
-
-LIB_EXPORT auto mr_attach_promise_then(
-    uint64_t context_id,
-    MiniRacer::BinaryValueHandle* promise_handle,
-    uint64_t callback_id) -> MiniRacer::BinaryValueHandle* {
-  auto context = GetContext(context_id);
-  if (!context) {
-    return nullptr;
-  }
-  return context->AttachPromiseThen(promise_handle, callback_id);
 }
 
 LIB_EXPORT auto mr_get_identity_hash(uint64_t context_id,

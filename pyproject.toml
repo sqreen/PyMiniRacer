@@ -101,7 +101,6 @@ dependencies = [
   "coverage[toml]",
   "pytest",
   "pytest-cov",
-  "pytest-asyncio",
 ]
 
 [[tool.hatch.envs.test.matrix]]
@@ -118,7 +117,6 @@ dependencies = [
   "coverage[toml]",
   "pytest",
   "pytest-cov",
-  "pytest-asyncio",
 ]
 
 [[tool.hatch.envs.testinstalled.matrix]]

@@ -1,5 +1,6 @@
 """ Test .eval() method """
 
+from asyncio import run as asyncio_run
 from time import sleep, time
 
 import pytest
@@ -8,6 +9,7 @@ from py_mini_racer import (
     JSOOMException,
     JSParseException,
     JSPromise,
+    JSPromiseError,
     JSSymbol,
     JSTimeoutException,
     JSUndefined,
@@ -416,24 +418,25 @@ new Promise((res, rej) => setTimeout(() => res(42), 1000)); // 1 s timeout
     gc_check.check(mr)
 
 
-@pytest.mark.asyncio
-async def test_promise_async(gc_check):
+def test_promise_async(gc_check):
     mr = MiniRacer()
-    promise = mr.eval(
-        """
+
+    async def run_test():
+        promise = mr.eval(
+            """
 new Promise((res, rej) => setTimeout(() => res(42), 1000)); // 1 s timeout
 """
-    )
-    assert isinstance(promise, JSPromise)
-    start = time()
-    result = await promise
-    assert time() - start > 0.5
-    # Give the 1-second wait 10 seconds to finish. (Emulated aarch64 tests are
-    # surprisingly slow!)
-    assert time() - start < 10
-    assert result == 42
+        )
+        assert isinstance(promise, JSPromise)
+        start = time()
+        result = await promise
+        assert time() - start > 0.5
+        # Give the 1-second wait 10 seconds to finish. (Emulated aarch64 tests are
+        # surprisingly slow!)
+        assert time() - start < 10
+        assert result == 42
 
-    del promise
+    asyncio_run(run_test())
     gc_check.check(mr)
 
 
@@ -445,10 +448,64 @@ def test_resolved_promise_sync(gc_check):
     gc_check.check(mr)
 
 
-@pytest.mark.asyncio
-async def test_resolved_promise_async(gc_check):
+def test_resolved_promise_async(gc_check):
     mr = MiniRacer()
-    val = await mr.eval("Promise.resolve(6*7)")
-    assert val == 42
 
+    async def run_test():
+        val = await mr.eval("Promise.resolve(6*7)")
+        assert val == 42
+
+    asyncio_run(run_test())
+    gc_check.check(mr)
+
+
+def test_rejected_promise_sync(gc_check):
+    mr = MiniRacer()
+    with pytest.raises(JSPromiseError) as exc_info:
+        mr.eval("Promise.reject(new Error('this is an error'))").get()
+
+    assert (
+        exc_info.value.args[0]
+        == """\
+JavaScript rejected promise with reason: Error: this is an error
+    at <anonymous>:1:16
+"""
+    )
+
+    del exc_info
+    gc_check.check(mr)
+
+
+def test_rejected_promise_async(gc_check):
+    mr = MiniRacer()
+
+    async def run_test():
+        with pytest.raises(JSPromiseError) as exc_info:
+            await mr.eval("Promise.reject(new Error('this is an error'))")
+
+        assert (
+            exc_info.value.args[0]
+            == """\
+JavaScript rejected promise with reason: Error: this is an error
+    at <anonymous>:1:16
+"""
+        )
+
+    asyncio_run(run_test())
+    gc_check.check(mr)
+
+
+def test_rejected_promise_sync_stringerror(gc_check):
+    mr = MiniRacer()
+    with pytest.raises(JSPromiseError) as exc_info:
+        mr.eval("Promise.reject('this is a string')").get()
+
+    assert (
+        exc_info.value.args[0]
+        == """\
+JavaScript rejected promise with reason: this is a string
+"""
+    )
+
+    del exc_info
     gc_check.check(mr)

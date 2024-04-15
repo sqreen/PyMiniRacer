@@ -183,7 +183,13 @@ auto ObjectManipulator::Call(v8::Isolate* isolate,
 
   const v8::Local<v8::Function> local_func = local_func_val.As<v8::Function>();
 
-  const v8::Local<v8::Value> local_this = this_ptr->ToValue(local_context);
+  v8::Local<v8::Value> local_this;
+  if (this_ptr == nullptr) {
+    local_this = v8::Undefined(isolate);
+  } else {
+    local_this = this_ptr->ToValue(local_context);
+  }
+
   const v8::Local<v8::Value> local_argv_value =
       argv_ptr->ToValue(local_context);
 

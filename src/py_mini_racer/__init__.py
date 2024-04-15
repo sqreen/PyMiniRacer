@@ -10,6 +10,7 @@ JSOOMException = py_mini_racer.JSOOMException
 JSObject = py_mini_racer.JSObject
 JSParseException = py_mini_racer.JSParseException
 JSPromise = py_mini_racer.JSPromise
+JSPromiseError = py_mini_racer.JSPromiseError
 JSSymbol = py_mini_racer.JSSymbol
 JSTimeoutException = py_mini_racer.JSTimeoutException
 JSUndefined = py_mini_racer.JSUndefined

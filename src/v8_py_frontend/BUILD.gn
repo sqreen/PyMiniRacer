@@ -27,8 +27,8 @@ v8_shared_library("mini_racer") {
     "isolate_memory_monitor.cc",
     "object_manipulator.h",
     "object_manipulator.cc",
-    "promise_attacher.h",
-    "promise_attacher.cc",
+    "js_callback_maker.h",
+    "js_callback_maker.cc",
   ]
   deps = [
     "//build/config:shared_library_deps",

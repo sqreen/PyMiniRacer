@@ -13,8 +13,8 @@
 #include "heap_reporter.h"
 #include "isolate_manager.h"
 #include "isolate_memory_monitor.h"
+#include "js_callback_maker.h"
 #include "object_manipulator.h"
-#include "promise_attacher.h"
 
 namespace MiniRacer {
 
@@ -38,9 +38,7 @@ class Context {
   auto Eval(BinaryValueHandle* code_handle,
 
             uint64_t callback_id) -> uint64_t;
-  auto AttachPromiseThen(BinaryValueHandle* promise_handle,
-
-                         uint64_t callback_id) -> BinaryValueHandle*;
+  auto MakeJSCallback(uint64_t callback_id) -> BinaryValueHandle*;
   auto GetIdentityHash(BinaryValueHandle* obj_handle) -> BinaryValueHandle*;
   auto GetOwnPropertyNames(BinaryValueHandle* obj_handle) -> BinaryValueHandle*;
   auto GetObjectItem(BinaryValueHandle* obj_handle,
@@ -72,9 +70,9 @@ class Context {
   std::shared_ptr<IsolateMemoryMonitor> isolate_memory_monitor_;
   std::shared_ptr<BinaryValueFactory> bv_factory_;
   std::shared_ptr<ContextHolder> context_holder_;
+  std::shared_ptr<JSCallbackMaker> js_callback_maker_;
   std::shared_ptr<CodeEvaluator> code_evaluator_;
   std::shared_ptr<HeapReporter> heap_reporter_;
-  std::shared_ptr<PromiseAttacher> promise_attacher_;
   std::shared_ptr<ObjectManipulator> object_manipulator_;
   std::shared_ptr<CancelableTaskRunner> cancelable_task_runner_;
 };

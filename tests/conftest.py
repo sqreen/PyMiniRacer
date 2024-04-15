@@ -1,5 +1,5 @@
 from gc import collect
-from time import sleep
+from time import sleep, time
 
 import pytest
 
@@ -17,9 +17,11 @@ class GcCheck:
         The Python gc doesn't seem particularly deterministic, so we do 2 collects
         and a sleep here to reduce the flake rate.
         """
-        collect()
-        sleep(0.1)
-        collect()
+        start = time()
+        while time() - start < 5 and mr._ctx.value_count() != 0:  # noqa: SLF001
+            collect()
+            sleep(0.05)
+
         assert mr._ctx.value_count() == 0  # noqa: SLF001
 
 

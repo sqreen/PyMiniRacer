@@ -16,8 +16,8 @@
 #include "heap_reporter.h"
 #include "isolate_manager.h"
 #include "isolate_memory_monitor.h"
+#include "js_callback_maker.h"
 #include "object_manipulator.h"
-#include "promise_attacher.h"
 
 namespace MiniRacer {
 
@@ -28,17 +28,26 @@ Context::Context(v8::Platform* platform, Callback callback)
           std::make_shared<IsolateMemoryMonitor>(isolate_manager_)),
       bv_factory_(std::make_shared<BinaryValueFactory>(isolate_manager_)),
       context_holder_(std::make_shared<ContextHolder>(isolate_manager_)),
+      js_callback_maker_(std::make_shared<JSCallbackMaker>(context_holder_,
+                                                           bv_factory_,
+                                                           callback_)),
       code_evaluator_(std::make_shared<CodeEvaluator>(context_holder_,
                                                       bv_factory_,
                                                       isolate_memory_monitor_)),
       heap_reporter_(std::make_shared<HeapReporter>(bv_factory_)),
-      promise_attacher_(std::make_shared<PromiseAttacher>(callback_,
-                                                          context_holder_,
-                                                          bv_factory_)),
       object_manipulator_(
           std::make_shared<ObjectManipulator>(context_holder_, bv_factory_)),
       cancelable_task_runner_(
           std::make_shared<CancelableTaskRunner>(isolate_manager_)) {}
+
+auto Context::MakeJSCallback(uint64_t callback_id) -> BinaryValueHandle* {
+  return isolate_manager_
+      ->RunAndAwait([js_callback_maker = js_callback_maker_,
+                     callback_id](v8::Isolate* isolate) {
+        return js_callback_maker->MakeJSCallback(isolate, callback_id);
+      })
+      ->GetHandle();
+}
 
 template <typename Runnable>
 auto Context::RunTask(Runnable runnable, uint64_t callback_id) -> uint64_t {
@@ -99,23 +108,6 @@ auto Context::HeapStats(uint64_t callback_id) -> uint64_t {
         return heap_reporter->HeapStats(isolate);
       },
       callback_id);
-}
-
-auto Context::AttachPromiseThen(BinaryValueHandle* promise_handle,
-                                uint64_t callback_id) -> BinaryValueHandle* {
-  auto promise_ptr = bv_factory_->FromHandle(promise_handle);
-  if (!promise_ptr) {
-    return bv_factory_->New("Bad handle: promise", type_value_exception)
-        ->GetHandle();
-  }
-
-  return isolate_manager_
-      ->RunAndAwait([promise_attacher = promise_attacher_, promise_ptr,
-                     callback_id](v8::Isolate* isolate) {
-        return promise_attacher->AttachPromiseThen(isolate, promise_ptr.get(),
-                                                   callback_id);
-      })
-      ->GetHandle();
 }
 
 auto Context::GetIdentityHash(BinaryValueHandle* obj_handle)

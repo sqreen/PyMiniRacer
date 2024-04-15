@@ -5,7 +5,6 @@ import json
 import sys
 from asyncio import Future
 from contextlib import ExitStack, contextmanager, suppress
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib import resources
 from itertools import count
@@ -26,6 +25,7 @@ from typing import (
     MutableMapping,
     MutableSequence,
     Union,
+    cast,
 )
 
 Numeric = Union[int, float]
@@ -51,15 +51,35 @@ class LibAlreadyInitializedError(MiniRacerBaseException):
         )
 
 
-class JSParseException(MiniRacerBaseException):
-    """JavaScript could not be parsed."""
-
-
 class JSEvalException(MiniRacerBaseException):
     """JavaScript could not be executed."""
 
 
-class JSKeyError(MiniRacerBaseException, KeyError):
+class JSParseException(JSEvalException):
+    """JavaScript could not be parsed."""
+
+
+def _get_exception_msg(reason: PythonJSConvertedTypes) -> str:
+    if not isinstance(reason, JSMappedObject):
+        return str(reason)
+
+    if "stack" in reason:
+        return cast(str, reason["stack"])
+
+    return str(reason)
+
+
+class JSPromiseError(MiniRacerBaseException):
+    """JavaScript rejected a promise."""
+
+    def __init__(self, reason: PythonJSConvertedTypes) -> None:
+        super().__init__(
+            f"JavaScript rejected promise with reason: {_get_exception_msg(reason)}\n"
+        )
+        self.reason = reason
+
+
+class JSKeyError(JSEvalException, KeyError):
     """No such key found."""
 
 
@@ -184,8 +204,7 @@ class JSArray(MutableSequence[PythonJSConvertedTypes], JSObject):
 
     def __len__(self) -> int:
         ret = self._ctx.get_object_item(self, "length")
-        assert isinstance(ret, int)  # noqa: S101
-        return ret
+        return cast(int, ret)
 
     def __getitem__(self, index: int | slice) -> Any:
         if not isinstance(index, int):
@@ -240,7 +259,7 @@ class JSFunction(JSMappedObject):
     def __call__(
         self,
         *args: PythonJSConvertedTypes,
-        this: JSObject | None = None,
+        this: JSObject | JSUndefinedType = JSUndefined,
         timeout_sec: Numeric | None = None,
     ) -> PythonJSConvertedTypes:
         return self._ctx.call_function(self, *args, this=this, timeout_sec=timeout_sec)
@@ -273,10 +292,10 @@ class JSPromise(JSObject):
                 This is deprecated; use timeout_sec instead.
         """
 
-        return self._ctx.promise_to_sync_future(self).get(timeout=timeout)
+        return self._ctx.get_from_promise(self, timeout=timeout)
 
     def __await__(self) -> Generator[Any, None, Any]:
-        return self._ctx.promise_to_async_future(self).__await__()
+        return self._ctx.await_promise(self).__await__()
 
 
 def _get_lib_filename(name: str) -> str:
@@ -339,7 +358,13 @@ class _ValueHandle:
     def __del__(self) -> None:
         self.ctx.free(self.raw)
 
-    def to_python(self) -> PythonJSConvertedTypes:
+    def to_python_or_raise(self) -> PythonJSConvertedTypes:
+        val = self.to_python()
+        if isinstance(val, JSEvalException):
+            raise val
+        return val
+
+    def to_python(self) -> PythonJSConvertedTypes | JSEvalException:
         """Convert a binary value handle from the C++ side into a Python object."""
 
         # A MiniRacer binary value handle is a pointer to a structure which, for some
@@ -367,7 +392,7 @@ class _ValueHandle:
             msg = val.bytes_val[0:length].decode("utf-8")
             msg = msg or generic_msg
 
-            raise klass(msg)
+            return klass(msg)
 
         if typ == _MiniRacerTypes.null:
             return None
@@ -462,12 +487,11 @@ def _build_dll_handle(dll_path: str) -> ctypes.CDLL:
 
     handle.mr_low_memory_notification.argtypes = [ctypes.c_uint64]
 
-    handle.mr_attach_promise_then.argtypes = [
+    handle.mr_make_js_callback.argtypes = [
         ctypes.c_uint64,
-        _RawValueHandle,
         ctypes.c_uint64,
     ]
-    handle.mr_attach_promise_then.restype = _RawValueHandle
+    handle.mr_make_js_callback.restype = _RawValueHandle
 
     handle.mr_heap_snapshot.argtypes = [
         ctypes.c_uint64,
@@ -722,12 +746,6 @@ var clearTimeout = (...arguments) => __timer_manager.clearTimeout(...arguments);
 """
 
 
-@dataclass
-class _Callbacks:
-    on_resolved: Callable[[PythonJSConvertedTypes], None]
-    on_rejected: Callable[[Exception], None]
-
-
 def _context_count() -> int:
     """For tests only: how many context handles are still allocated?"""
 
@@ -741,20 +759,17 @@ class _Context:
     def __init__(self) -> None:
         self._dll = init_mini_racer(ignore_duplicate_init=True)
 
-        self._active_callbacks: dict[int, _Callbacks] = {}
+        self._active_callbacks: dict[
+            int, Callable[[PythonJSConvertedTypes | JSEvalException], None]
+        ] = {}
         self._next_callback_id = count()
 
         # define an all-purpose callback:
         @_MR_CALLBACK  # type: ignore[misc]
         def mr_callback(callback_id: int, raw_val_handle: _RawValueHandleType) -> None:
             val_handle = self._wrap_raw_handle(raw_val_handle)
-
-            callbacks = self._active_callbacks.pop(callback_id)
-            try:
-                val = val_handle.to_python()
-                callbacks.on_resolved(val)
-            except Exception as exc:  # noqa: BLE001
-                callbacks.on_rejected(exc)
+            callback = self._active_callbacks[callback_id]
+            callback(val_handle.to_python())
 
         # We need to save a reference to the callback or else Python will GC it:
         self._mr_callback = mr_callback
@@ -779,41 +794,97 @@ class _Context:
         with self._run_mr_task(self._dll.mr_eval, self._ctx, code_handle.raw) as future:
             return future.get(timeout=timeout_sec)
 
-    def promise_to_sync_future(self, promise: JSPromise) -> _SyncFuture:
-        """Create and attach a Python _SyncFuture to a JS Promise."""
-        callback_id, future = self._set_up_callback_into_sync_future()
-        self._attach_callbacks_to_promise(promise, callback_id)
-        return future
-
-    def promise_to_async_future(
-        self, promise: JSPromise
-    ) -> Future[PythonJSConvertedTypes]:
-        """Create and attach a Python asyncio.Future to a JS Promise."""
-        callback_id, future = self._set_up_callback_into_async_future()
-        self._attach_callbacks_to_promise(promise, callback_id)
-        return future
-
     def _attach_callbacks_to_promise(
-        self, promise: JSPromise, callback_id: int
+        self,
+        promise: JSPromise,
+        future_caller: Callable[[Any], None],
     ) -> None:
-        promise_handle = self._python_to_value_handle(promise)
+        """Attach the given Python callbacks to a JS Promise."""
 
-        self._wrap_raw_handle(
-            self._dll.mr_attach_promise_then(
+        cleanups: list[Callable[[], None]] = []
+
+        def run_cleanups() -> None:
+            for cleanup in cleanups:
+                cleanup()
+
+        def on_resolved_and_cleanup(
+            value: PythonJSConvertedTypes | JSEvalException,
+        ) -> None:
+            run_cleanups()
+            future_caller([False, cast(JSArray, value)])
+
+        def on_rejected_and_cleanup(
+            value: PythonJSConvertedTypes | JSEvalException,
+        ) -> None:
+            run_cleanups()
+            future_caller([True, cast(JSArray, value)])
+
+        (on_resolved_callback_cleanup, on_resolved_js_func) = self._make_js_callback(
+            on_resolved_and_cleanup
+        )
+        cleanups.append(on_resolved_callback_cleanup)
+
+        (on_rejected_callback_cleanup, on_rejected_js_func) = self._make_js_callback(
+            on_rejected_and_cleanup
+        )
+        cleanups.append(on_rejected_callback_cleanup)
+
+        promise_handle = self._python_to_value_handle(promise)
+        then_name_handle = self._python_to_value_handle("then")
+        then_func = self._wrap_raw_handle(
+            self._dll.mr_get_object_item(
                 self._ctx,
                 promise_handle.raw,
-                callback_id,
+                then_name_handle.raw,
             )
-        ).to_python()
+        ).to_python_or_raise()
+
+        then_func = cast(JSFunction, then_func)
+        then_func(on_resolved_js_func, on_rejected_js_func, this=promise)
+
+    def _unpack_promise_results(self, results: Any) -> PythonJSConvertedTypes:
+        is_rejected, argv = results
+        result = cast(PythonJSConvertedTypes, cast(JSArray, argv)[0])
+        if is_rejected:
+            raise JSPromiseError(result)
+        return result
+
+    def get_from_promise(
+        self, promise: JSPromise, timeout: Numeric | None = None
+    ) -> PythonJSConvertedTypes:
+        """Create and attach a Python _SyncFuture to a JS Promise."""
+
+        future = _SyncFuture()
+
+        def future_caller(value: Any) -> None:
+            future.set_result(value)
+
+        self._attach_callbacks_to_promise(promise, future_caller)
+
+        results = future.get(timeout=timeout)
+        return self._unpack_promise_results(results)
+
+    async def await_promise(self, promise: JSPromise) -> PythonJSConvertedTypes:
+        """Create and attach a Python asyncio.Future to a JS Promise."""
+
+        future: Future[PythonJSConvertedTypes] = Future()
+        loop = future.get_loop()
+
+        def future_caller(value: Any) -> None:
+            loop.call_soon_threadsafe(future.set_result, value)
+
+        self._attach_callbacks_to_promise(promise, future_caller)
+
+        results = await future
+        return self._unpack_promise_results(results)
 
     def get_identity_hash(self, obj: JSObject) -> int:
         obj_handle = self._python_to_value_handle(obj)
 
         ret = self._wrap_raw_handle(
             self._dll.mr_get_identity_hash(self._ctx, obj_handle.raw)
-        ).to_python()
-        assert isinstance(ret, int)  # noqa: S101
-        return ret
+        ).to_python_or_raise()
+        return cast(int, ret)
 
     def get_own_property_names(
         self, obj: JSObject
@@ -822,7 +893,7 @@ class _Context:
 
         names = self._wrap_raw_handle(
             self._dll.mr_get_own_property_names(self._ctx, obj_handle.raw)
-        ).to_python()
+        ).to_python_or_raise()
         if not isinstance(names, JSArray):
             raise TypeError
         return tuple(names)
@@ -839,7 +910,7 @@ class _Context:
                 obj_handle.raw,
                 key_handle.raw,
             )
-        ).to_python()
+        ).to_python_or_raise()
 
     def set_object_item(
         self, obj: JSObject, key: PythonJSConvertedTypes, val: PythonJSConvertedTypes
@@ -856,7 +927,7 @@ class _Context:
                 key_handle.raw,
                 val_handle.raw,
             )
-        ).to_python()
+        ).to_python_or_raise()
 
     def del_object_item(self, obj: JSObject, key: PythonJSConvertedTypes) -> None:
         obj_handle = self._python_to_value_handle(obj)
@@ -869,7 +940,7 @@ class _Context:
                 obj_handle.raw,
                 key_handle.raw,
             )
-        ).to_python()
+        ).to_python_or_raise()
 
     def del_from_array(self, arr: JSArray, index: int) -> None:
         arr_handle = self._python_to_value_handle(arr)
@@ -877,7 +948,7 @@ class _Context:
         # Convert the value just to convert any exceptions (and GC the result)
         self._wrap_raw_handle(
             self._dll.mr_splice_array(self._ctx, arr_handle.raw, index, 1, None)
-        ).to_python()
+        ).to_python_or_raise()
 
     def array_insert(
         self, arr: JSArray, index: int, new_val: PythonJSConvertedTypes
@@ -894,17 +965,16 @@ class _Context:
                 0,
                 new_val_handle.raw,
             )
-        ).to_python()
+        ).to_python_or_raise()
 
     def call_function(
         self,
         func: JSFunction,
         *args: PythonJSConvertedTypes,
-        this: JSObject | None = None,
+        this: JSObject | JSUndefinedType = JSUndefined,
         timeout_sec: Numeric | None = None,
     ) -> PythonJSConvertedTypes:
-        argv = self.evaluate("[]")
-        assert isinstance(argv, JSArray)  # noqa: S101
+        argv = cast(JSArray, self.evaluate("[]"))
         for arg in args:
             argv.append(arg)
 
@@ -938,59 +1008,42 @@ class _Context:
 
     def heap_stats(self) -> str:
         with self._run_mr_task(self._dll.mr_heap_stats, self._ctx) as future:
-            ret = future.get()
-            assert isinstance(ret, str)  # noqa: S101
-            return ret
+            return cast(str, future.get())
 
     def heap_snapshot(self) -> str:
         """Return a snapshot of the V8 isolate heap."""
 
         with self._run_mr_task(self._dll.mr_heap_snapshot, self._ctx) as future:
-            ret = future.get()
-            assert isinstance(ret, str)  # noqa: S101
-            return ret
+            return cast(str, future.get())
 
     def value_count(self) -> int:
         """For tests only: how many value handles are still allocated?"""
 
         return int(self._dll.mr_value_count(self._ctx))
 
-    def _set_up_callback_into_sync_future(self) -> tuple[int, _SyncFuture]:
-        """Create a _SyncFuture, and register a Python-side callback (and corresponding
-        callback ID) which activates it."""
+    def _make_js_callback(
+        self, func: Callable[[PythonJSConvertedTypes | JSEvalException], None]
+    ) -> tuple[Callable[[], None], JSFunction]:
+        """Make a JS callback which forwards to the given Python function.
 
-        future = _SyncFuture()
-
-        def on_resolved(value: PythonJSConvertedTypes) -> None:
-            future.set_result(value)
-
-        def on_rejected(exc: Exception) -> None:
-            future.set_exception(exc)
-
-        callback_id = next(self._next_callback_id)
-        self._active_callbacks[callback_id] = _Callbacks(on_resolved, on_rejected)
-
-        return callback_id, future
-
-    def _set_up_callback_into_async_future(
-        self,
-    ) -> tuple[int, Future[PythonJSConvertedTypes]]:
-        """Create an asyncio.Future, and register a Python-side callback (and
-        corresponding callback ID) which activates it."""
-
-        future: Future[PythonJSConvertedTypes] = Future()
-        loop = future.get_loop()
-
-        def on_resolved(value: PythonJSConvertedTypes) -> None:
-            loop.call_soon_threadsafe(future.set_result, value)
-
-        def on_rejected(exc: Exception) -> None:
-            loop.call_soon_threadsafe(future.set_exception, exc)
+        Note that it's crucial that the given Python function *not* call back
+        into the C++ MiniRacer context, or it will deadlock. Instead it should
+        signal another thread; e.g., by putting received data onto a queue or
+        future.
+        """
 
         callback_id = next(self._next_callback_id)
-        self._active_callbacks[callback_id] = _Callbacks(on_resolved, on_rejected)
 
-        return callback_id, future
+        def cleanup() -> None:
+            self._active_callbacks.pop(callback_id)
+
+        self._active_callbacks[callback_id] = func
+
+        js_callback = self._wrap_raw_handle(
+            self._dll.mr_make_js_callback(self._ctx, callback_id)
+        )
+        js_callback_py = js_callback.to_python_or_raise()
+        return cleanup, cast(JSFunction, js_callback_py)
 
     def _wrap_raw_handle(self, raw: _RawValueHandleType) -> _ValueHandle:
         return _ValueHandle(self, raw)
@@ -1099,7 +1152,16 @@ class _Context:
         the right caller, and we manage the lifecycle of the task and task handle.
         """
 
-        callback_id, future = self._set_up_callback_into_sync_future()
+        future = _SyncFuture()
+
+        def callback(value: PythonJSConvertedTypes | JSEvalException) -> None:
+            if isinstance(value, JSEvalException):
+                future.set_exception(value)
+            else:
+                future.set_result(value)
+
+        callback_id = next(self._next_callback_id)
+        self._active_callbacks[callback_id] = callback
 
         # Start the task:
         task_id = dll_method(*args, callback_id)
@@ -1115,6 +1177,8 @@ class _Context:
             # cancelation error for GC purposes:
             with suppress(Exception):
                 future.get()
+
+            self._active_callbacks.pop(callback_id)
 
     def __del__(self) -> None:
         if self._dll:
@@ -1327,7 +1391,7 @@ class _MiniRacerTypes:
     key_exception = 206
 
 
-_ERRORS = {
+_ERRORS: dict[int, tuple[type[JSEvalException], str]] = {
     _MiniRacerTypes.parse_exception: (
         JSParseException,
         "Unknown JavaScript error during parse",

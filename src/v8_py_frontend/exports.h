@@ -39,7 +39,7 @@ LIB_EXPORT auto mr_v8_is_using_sandbox() -> bool;
  *
  * The given callback function pointer must point to valid memory for the
  * the entire lifetime of this context (assuming any async tasks are started
- * or promises are attached to callbacks).
+ * or mr_get_js_callback is used).
  *
  * The callback will be called from within the Isolate message loop, while
  * holding the isolate lock. It should thus return as soon as possible, and
@@ -79,6 +79,14 @@ LIB_EXPORT auto mr_soft_memory_limit_reached(uint64_t context_id) -> bool;
  * This makes V8 more aggressively collect and free unused objects.
  **/
 LIB_EXPORT void mr_low_memory_notification(uint64_t context_id);
+
+/** Make a JS callback wrapping the C callback supplied to mr_init_context.
+ *
+ * When the given JS function is called, any args will be packed into an array
+ * and passed to the C callback.
+ **/
+LIB_EXPORT auto mr_make_js_callback(uint64_t context_id, uint64_t callback_id)
+    -> MiniRacer::BinaryValueHandle*;
 
 /** Allocate a BinaryValueHandle containing the given int or int-like data.
  *
@@ -190,19 +198,6 @@ LIB_EXPORT auto mr_splice_array(uint64_t context_id,
                                 int32_t delete_count,
                                 MiniRacer::BinaryValueHandle* new_val_handle)
     -> MiniRacer::BinaryValueHandle*;
-
-/** Attach a callback to the given promise.
- *
- * The callback will be called with the resolution of the promise, or an
- * exception if the promise is rejected.
- *
- * Returns a value which is either true, or an exception upon error to attach
- * the callback.
- **/
-LIB_EXPORT auto mr_attach_promise_then(
-    uint64_t context_id,
-    MiniRacer::BinaryValueHandle* promise_handle,
-    uint64_t callback_id) -> MiniRacer::BinaryValueHandle*;
 
 /** Cancel the given asynchronous task.
  *
