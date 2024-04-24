@@ -756,25 +756,18 @@ def _context_count() -> int:
 class _Context:
     """Wrapper for all operations involving the DLL and C++ MiniRacer::Context."""
 
-    def __init__(self) -> None:
-        self._dll = init_mini_racer(ignore_duplicate_init=True)
-
-        self._active_callbacks: dict[
+    def __init__(
+        self,
+        dll: ctypes.CDLL,
+        ctx: ctypes.c_uint64,
+        active_callbacks: dict[
             int, Callable[[PythonJSConvertedTypes | JSEvalException], None]
-        ] = {}
+        ],
+    ) -> None:
+        self._dll = dll
+        self._ctx = ctx
+        self._active_callbacks = active_callbacks
         self._next_callback_id = count()
-
-        # define an all-purpose callback:
-        @_MR_CALLBACK  # type: ignore[misc]
-        def mr_callback(callback_id: int, raw_val_handle: _RawValueHandleType) -> None:
-            val_handle = self._wrap_raw_handle(raw_val_handle)
-            callback = self._active_callbacks[callback_id]
-            callback(val_handle.to_python())
-
-        # We need to save a reference to the callback or else Python will GC it:
-        self._mr_callback = mr_callback
-
-        self._ctx = self._dll.mr_init_context(mr_callback)
 
     def v8_version(self) -> str:
         return str(self._dll.mr_v8_version().decode("utf-8"))
@@ -1197,7 +1190,25 @@ class MiniRacer:
     json_impl: ClassVar[Any] = json
 
     def __init__(self) -> None:
-        self._ctx = _Context()
+        dll = init_mini_racer(ignore_duplicate_init=True)
+
+        active_callbacks: dict[
+            int, Callable[[PythonJSConvertedTypes | JSEvalException], None]
+        ] = {}
+
+        # define an all-purpose callback:
+        @_MR_CALLBACK  # type: ignore[misc]
+        def mr_callback(callback_id: int, raw_val_handle: _RawValueHandleType) -> None:
+            val_handle = self._wrap_raw_handle(raw_val_handle)
+            callback = active_callbacks[callback_id]
+            callback(val_handle.to_python())
+
+        # We need to save a reference to the callback or else Python will GC it:
+        self._mr_callback = mr_callback
+
+        ctx = dll.mr_init_context(mr_callback)
+
+        self._ctx = _Context(dll, ctx, active_callbacks)
 
         self.eval(_INSTALL_SET_TIMEOUT)
 
@@ -1351,6 +1362,9 @@ class MiniRacer:
         """Return the V8 isolate heap statistics."""
 
         return self.json_impl.loads(self._ctx.heap_stats())
+
+    def _wrap_raw_handle(self, raw: _RawValueHandleType) -> _ValueHandle:
+        return _ValueHandle(self._ctx, raw)
 
 
 # Compatibility with versions 0.4 & 0.5
