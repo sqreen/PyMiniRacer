@@ -1,25 +1,57 @@
-from py_mini_racer import py_mini_racer
+from py_mini_racer._dll import (
+    DEFAULT_V8_FLAGS,
+    LibAlreadyInitializedError,
+    LibNotFoundError,
+    init_mini_racer,
+)
+from py_mini_racer._mini_racer import (
+    MiniRacer,
+    StrictMiniRacer,
+)
+from py_mini_racer._objects import (
+    JSArray,
+    JSArrayIndexError,
+    JSFunction,
+    JSPromise,
+    JSPromiseError,
+    JSSymbol,
+)
+from py_mini_racer._types import (
+    JSEvalException,
+    JSObject,
+    JSTimeoutException,
+    JSUndefined,
+    JSUndefinedType,
+    PythonJSConvertedTypes,
+)
+from py_mini_racer._value_handle import (
+    JSKeyError,
+    JSOOMException,
+    JSParseException,
+    JSValueError,
+)
 
-DEFAULT_V8_FLAGS = py_mini_racer.DEFAULT_V8_FLAGS
-JSArray = py_mini_racer.JSArray
-JSArrayIndexError = py_mini_racer.JSArrayIndexError
-JSEvalException = py_mini_racer.JSEvalException
-JSFunction = py_mini_racer.JSFunction
-JSKeyError = py_mini_racer.JSKeyError
-JSOOMException = py_mini_racer.JSOOMException
-JSObject = py_mini_racer.JSObject
-JSParseException = py_mini_racer.JSParseException
-JSPromise = py_mini_racer.JSPromise
-JSPromiseError = py_mini_racer.JSPromiseError
-JSSymbol = py_mini_racer.JSSymbol
-JSTimeoutException = py_mini_racer.JSTimeoutException
-JSUndefined = py_mini_racer.JSUndefined
-JSValueError = py_mini_racer.JSValueError
-LibAlreadyInitializedError = py_mini_racer.LibAlreadyInitializedError
-LibNotFoundError = py_mini_racer.LibNotFoundError
-MiniRacer = py_mini_racer.MiniRacer
-StrictMiniRacer = py_mini_racer.StrictMiniRacer
-init_mini_racer = py_mini_racer.init_mini_racer
-
-
-__all__ = ["py_mini_racer", "MiniRacer"]
+__all__ = [
+    "DEFAULT_V8_FLAGS",
+    "JSKeyError",
+    "JSOOMException",
+    "JSParseException",
+    "JSValueError",
+    "LibAlreadyInitializedError",
+    "LibNotFoundError",
+    "init_mini_racer",
+    "MiniRacer",
+    "StrictMiniRacer",
+    "JSArray",
+    "JSArrayIndexError",
+    "JSFunction",
+    "JSPromise",
+    "JSPromiseError",
+    "JSSymbol",
+    "JSEvalException",
+    "JSObject",
+    "JSTimeoutException",
+    "JSUndefined",
+    "JSUndefinedType",
+    "PythonJSConvertedTypes",
+]

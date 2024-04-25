@@ -4,7 +4,7 @@ from time import sleep, time
 
 import pytest
 from py_mini_racer import LibAlreadyInitializedError, MiniRacer, init_mini_racer
-from py_mini_racer.py_mini_racer import _context_count
+from py_mini_racer._context import context_count
 
 
 def test_init():
@@ -40,13 +40,13 @@ def test_sandbox():
 
 def test_del():
     collect()
-    count_before = _context_count()
+    count_before = context_count()
     mr = MiniRacer()
     del mr
 
     start = time()
-    while time() - start < 2 and _context_count() != count_before:
+    while time() - start < 2 and context_count() != count_before:
         collect()
         sleep(0.1)
 
-    assert _context_count() == count_before
+    assert context_count() == count_before
