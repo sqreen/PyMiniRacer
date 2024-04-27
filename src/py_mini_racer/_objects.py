@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from asyncio import Future
+from contextlib import ExitStack
 from operator import index as op_index
 from typing import (
     TYPE_CHECKING,
@@ -228,35 +229,27 @@ class JSPromise(JSObjectImpl):
     ) -> None:
         """Attach the given Python callbacks to a JS Promise."""
 
-        cleanups: list[Callable[[], None]] = []
-
-        def run_cleanups() -> None:
-            for cleanup in cleanups:
-                cleanup()
+        exit_stack = ExitStack()
 
         def on_resolved_and_cleanup(
             value: PythonJSConvertedTypes | JSEvalException,
         ) -> None:
-            run_cleanups()
+            exit_stack.__exit__(None, None, None)
             future_caller([False, cast(JSArray, value)])
+
+        on_resolved_js_func = exit_stack.enter_context(
+            self._ctx.js_callback(on_resolved_and_cleanup)
+        )
 
         def on_rejected_and_cleanup(
             value: PythonJSConvertedTypes | JSEvalException,
         ) -> None:
-            run_cleanups()
+            exit_stack.__exit__(None, None, None)
             future_caller([True, cast(JSArray, value)])
 
-        (
-            on_resolved_callback_cleanup,
-            on_resolved_js_func,
-        ) = self._ctx.make_js_callback(on_resolved_and_cleanup)
-        cleanups.append(on_resolved_callback_cleanup)
-
-        (
-            on_rejected_callback_cleanup,
-            on_rejected_js_func,
-        ) = self._ctx.make_js_callback(on_rejected_and_cleanup)
-        cleanups.append(on_rejected_callback_cleanup)
+        on_rejected_js_func = exit_stack.enter_context(
+            self._ctx.js_callback(on_rejected_and_cleanup)
+        )
 
         self._ctx.promise_then(self, on_resolved_js_func, on_rejected_js_func)
 

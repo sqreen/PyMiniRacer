@@ -1,5 +1,14 @@
 # History
 
+## 0.12.0 (2024-04-??)
+
+- Added support for installing callbacks from JS back into Python, using
+    MiniRacer.wrap_into_js_function.
+
+- Refactored the Python implementation into many internal files. This should mostly not
+    present a breaking change, except for code which reaches into internal
+    (`_`-prefixed) variables.
+
 ## 0.11.1 (2024-04-08)
 
 - Fixed Python crash on long-running microtasks, introduced in v0.8.1 (before which

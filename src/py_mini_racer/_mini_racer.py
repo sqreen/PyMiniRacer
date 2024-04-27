@@ -14,7 +14,11 @@ from py_mini_racer._set_timeout import INSTALL_SET_TIMEOUT
 from py_mini_racer._types import MiniRacerBaseException
 
 if TYPE_CHECKING:
+    from contextlib import AbstractAsyncContextManager
+
+    from py_mini_racer._context import PyJsFunctionType
     from py_mini_racer._numeric import Numeric
+    from py_mini_racer._objects import JSFunction
     from py_mini_racer._types import PythonJSConvertedTypes
 
 
@@ -157,6 +161,30 @@ class MiniRacer:
         json_args = self.json_impl.dumps(args, separators=(",", ":"), cls=encoder)
         js = f"{expr}.apply(this, {json_args})"
         return self.execute(js, timeout_sec=timeout_sec, max_memory=max_memory)
+
+    def wrap_into_js_function(
+        self,
+        func: PyJsFunctionType,
+    ) -> AbstractAsyncContextManager[JSFunction]:
+        """Wrap a Python function such that it can be called from JS.
+
+        To be wrapped and exposed in JavaScript, a Python function should:
+
+          1. Be async,
+          2. Accept variable positional arguments each of type PythonJSConvertedTypes,
+             and
+          3. Return one value of type PythonJSConvertedTypes (a type union which
+             includes None).
+
+        The function is rendered on the JavaScript side as an async function (i.e., a
+        function which returns a Promise).
+
+        Returns:
+            An async context manager which, when entered, yields a JS Function which
+            can be passed into MiniRacer and called by JS code.
+        """
+
+        return self._ctx.wrap_into_js_function(func)
 
     def set_hard_memory_limit(self, limit: int) -> None:
         """Set a hard memory limit on this V8 isolate.

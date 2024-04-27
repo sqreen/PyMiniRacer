@@ -1,3 +1,6 @@
+from py_mini_racer._context import (
+    PyJsFunctionType,
+)
 from py_mini_racer._dll import (
     DEFAULT_V8_FLAGS,
     LibAlreadyInitializedError,
@@ -54,4 +57,6 @@ __all__ = [
     "JSUndefined",
     "JSUndefinedType",
     "PythonJSConvertedTypes",
+    "PyJsFunctionType",
+    "AsyncCleanupType",
 ]

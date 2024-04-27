@@ -1,16 +1,27 @@
 from __future__ import annotations
 
-from contextlib import contextmanager, suppress
+from asyncio import (
+    FIRST_COMPLETED,
+    Queue,
+    Task,
+    create_task,
+    get_running_loop,
+    wait,
+)
+from contextlib import asynccontextmanager, contextmanager, suppress
 from itertools import count
+from traceback import format_exc
 from typing import (
     TYPE_CHECKING,
     Any,
+    AsyncIterator,
+    Awaitable,
     Callable,
     Iterator,
     cast,
 )
 
-from py_mini_racer._context_base import ContextBase, ValueHandleBase
+from py_mini_racer._context_base import ContextBase
 from py_mini_racer._dll import (
     MR_CALLBACK,
     init_mini_racer,
@@ -36,8 +47,12 @@ from py_mini_racer._value_handle import (
 if TYPE_CHECKING:
     import ctypes
 
+    from py_mini_racer._context_base import ValueHandleBase
     from py_mini_racer._numeric import Numeric
     from py_mini_racer._value_handle import RawValueHandleType
+
+PyJsFunctionType = Callable[..., Awaitable[PythonJSConvertedTypes]]
+AsyncCleanupType = Callable[[], Awaitable[None]]
 
 
 def context_count() -> int:
@@ -268,9 +283,10 @@ class Context(ContextBase):
 
         return int(self._dll.mr_value_count(self._ctx))
 
-    def make_js_callback(
+    @contextmanager
+    def js_callback(
         self, func: Callable[[PythonJSConvertedTypes | JSEvalException], None]
-    ) -> tuple[Callable[[], None], JSFunction]:
+    ) -> Iterator[JSFunction]:
         """Make a JS callback which forwards to the given Python function.
 
         Note that it's crucial that the given Python function *not* call back
@@ -281,14 +297,14 @@ class Context(ContextBase):
 
         callback_id = self._callback_registry.register(func)
 
-        def cleanup() -> None:
-            self._callback_registry.cleanup(callback_id)
-
-        js_callback = self._wrap_raw_handle(
+        cb = self._wrap_raw_handle(
             self._dll.mr_make_js_callback(self._ctx, callback_id)
         )
-        js_callback_py = js_callback.to_python_or_raise()
-        return cleanup, cast(JSFunction, js_callback_py)
+        cb_py = cast(JSFunction, cb.to_python_or_raise())
+
+        yield cb_py
+
+        self._callback_registry.cleanup(callback_id)
 
     def _wrap_raw_handle(self, raw: RawValueHandleType) -> ValueHandle:
         return ValueHandle(self, raw)
@@ -364,6 +380,103 @@ class Context(ContextBase):
                 future.get()
 
             self._callback_registry.cleanup(callback_id)
+
+    @asynccontextmanager
+    async def wrap_into_js_function(
+        self, func: PyJsFunctionType
+    ) -> AsyncIterator[JSFunction]:
+        queue: Queue[PythonJSConvertedTypes | JSEvalException] = Queue()
+
+        loop = get_running_loop()
+
+        def on_called(value: PythonJSConvertedTypes | JSEvalException) -> None:
+            loop.call_soon_threadsafe(queue.put_nowait, value)
+
+        with self.js_callback(on_called) as callback:
+            wrapper = self.evaluate(
+                """
+callback => {
+    return (...arguments) => {
+        let p = Promise.withResolvers();
+
+        callback(arguments, p.resolve, p.reject);
+
+        return p.promise;
+    }
+}
+"""
+            )
+            wrapped = cast(JSFunction, cast(JSFunction, wrapper)(callback))
+
+            queue_processor = create_task(self._process_callback_queue(queue, func))
+
+            yield wrapped
+
+            # This should tell the queue processor to shut down
+            # (after any pending calls are processed):
+            await queue.put(None)
+
+            await queue_processor
+            await queue.join()
+
+    async def _process_callback_queue(
+        self,
+        queue: Queue[PythonJSConvertedTypes | JSEvalException],
+        func: PyJsFunctionType,
+    ) -> None:
+        async def run_one(params: JSArray) -> None:
+            arguments, resolve, reject = params
+            arguments = cast(JSArray, arguments)
+            resolve = cast(JSFunction, resolve)
+            reject = cast(JSFunction, reject)
+            try:
+                result = await func(*arguments)
+                resolve(result)
+            except Exception:  # noqa: BLE001
+                # Convert this Python exception into a JS exception so we can send it
+                # into JS:
+                s = f"Error running Python function:\n{format_exc()}"
+                err_maker = self.evaluate("s => new Error(s)")
+                err_maker = cast(JSFunction, err_maker)
+                err = err_maker(s)
+                reject(err)
+
+            queue.task_done()
+
+        pending: set[Task[PythonJSConvertedTypes | JSEvalException]] = set()
+
+        queue_get = None
+
+        def start_read() -> None:
+            nonlocal queue_get
+            queue_get = create_task(queue.get())
+            pending.add(queue_get)
+
+        start_read()
+        while pending:
+            done, pending = await wait(pending, return_when=FIRST_COMPLETED)
+            for coro in done:
+                if coro is not queue_get:
+                    # One of our tasks finished. Nothing to do but join it:
+                    await coro
+                    continue
+
+                # Got a new call off the queue!
+                params = await coro
+                if params is None:
+                    # params of None is our shutdown sentinel. Continue without
+                    # starting a new queue read.
+                    continue
+
+                # Start a new task to run the new task:
+                task = create_task(run_one(cast(JSArray, params)))
+                pending.add(task)
+
+                # ... And in parallel, start waiting for the next task:
+                start_read()
+
+        # Mark that we "finished" the terminating None queue entry:
+        queue.task_done()
 
     def __del__(self) -> None:
         if self._dll:

@@ -163,6 +163,22 @@ respectively:
     [JSUndefined, None]
 ```
 
+You can install callbacks from JavaScript to Python (*new in v0.12.0*):
+
+```python
+    >>> async def my_print(*args):
+    ...     print(*args)
+    ...
+    >>> async def demo():
+    ...    async with ctx.wrap_into_js_function(my_print) as jsfunc:
+    ...        # "Install" our JS function on the global "this" object:
+    ...        ctx.eval("x => this.my_print = x")(jsfunc)
+    ...        await ctx.eval('this.my_print("foobar")')
+    ...
+    >>> asyncio.run(demo())
+    foobar
+```
+
 MiniRacer supports [the ECMA `Intl` API](https://tc39.es/ecma402/):
 
 ```python

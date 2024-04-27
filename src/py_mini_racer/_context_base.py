@@ -9,6 +9,8 @@ from typing import (
 from py_mini_racer._types import JSUndefined
 
 if TYPE_CHECKING:
+    from contextlib import AbstractContextManager
+
     from py_mini_racer._numeric import Numeric
     from py_mini_racer._objects import (
         JSArray,
@@ -92,9 +94,9 @@ class ContextBase(ABC):
         pass
 
     @abstractmethod
-    def make_js_callback(
+    def js_callback(
         self, func: Callable[[PythonJSConvertedTypes | JSEvalException], None]
-    ) -> tuple[Callable[[], None], JSFunction]:
+    ) -> AbstractContextManager[JSFunction]:
         pass
 
     @abstractmethod
@@ -117,4 +119,12 @@ class ContextBase(ABC):
 
     @abstractmethod
     def free(self, val_handle: ValueHandleBase) -> None:
+        pass
+
+    @abstractmethod
+    def evaluate(
+        self,
+        code: str,
+        timeout_sec: Numeric | None = None,
+    ) -> PythonJSConvertedTypes:
         pass
