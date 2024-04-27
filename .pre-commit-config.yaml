@@ -46,11 +46,7 @@ repos:
         # lvmlibc-* is intended for the llvm project itself
         # llvm-header-guard is likewise hard-coded for the llvm project itself
         # llvm-include-order fights clang-format --style=Chromium
-        # fuchsia-default-arguments-calls seems counter to code maintainability
-        # outside of a monorepo
-        # same for fuchsia-default-arguments-declarations
-        # fuchsia-trailing-return is counter to another cpp modernization rule
-        # fuchsia-overloaded-operator is incompatible with... making functors?
+        # fuchsia has some odd opinions, so disable it globally.
         # altera-* is designed for FPGAs and gives weird performance advice.
         # we aren't using Google's absl lib, so disable its suggestions.
         - >-
@@ -58,10 +54,7 @@ repos:
           -llvmlibc-*,
           -llvm-header-guard,
           -llvm-include-order,
-          -fuchsia-default-arguments-calls,
-          -fuchsia-default-arguments-declarations,
-          -fuchsia-trailing-return,
-          -fuchsia-overloaded-operator,
+          -fuchsia-*,
           -altera-*,
           -abseil-*
         - -warnings-as-errors=*
