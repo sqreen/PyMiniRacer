@@ -7,7 +7,7 @@ from typing import (
     ClassVar,
 )
 
-from py_mini_racer._context_base import ContextBase, ValueHandleBase
+from py_mini_racer._abstract_context import AbstractContext, AbstractValueHandle
 from py_mini_racer._objects import (
     JSArray,
     JSFunction,
@@ -141,11 +141,11 @@ _ERRORS: dict[int, tuple[type[JSEvalException], str]] = {
 }
 
 
-class ValueHandle(ValueHandleBase):
+class ValueHandle(AbstractValueHandle):
     """An object which holds open a Python reference to a _RawValue owned by
     a C++ MiniRacer context."""
 
-    def __init__(self, ctx: ContextBase, raw: RawValueHandleType):
+    def __init__(self, ctx: AbstractContext, raw: RawValueHandleType):
         self.ctx = ctx
         self._raw = raw
 
@@ -236,8 +236,8 @@ class ValueHandle(ValueHandleBase):
 
 
 def python_to_value_handle(
-    context: ContextBase, obj: PythonJSConvertedTypes
-) -> ValueHandleBase:
+    context: AbstractContext, obj: PythonJSConvertedTypes
+) -> AbstractValueHandle:
     if isinstance(obj, JSObjectImpl):
         # JSObjects originate from the V8 side. We can just send back the handle
         # we originally got. (This also covers derived types JSFunction, JSSymbol,

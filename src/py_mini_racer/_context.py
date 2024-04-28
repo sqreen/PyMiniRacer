@@ -21,7 +21,7 @@ from typing import (
     cast,
 )
 
-from py_mini_racer._context_base import ContextBase
+from py_mini_racer._abstract_context import AbstractContext
 from py_mini_racer._dll import (
     MR_CALLBACK,
     init_mini_racer,
@@ -47,7 +47,7 @@ from py_mini_racer._value_handle import (
 if TYPE_CHECKING:
     import ctypes
 
-    from py_mini_racer._context_base import ValueHandleBase
+    from py_mini_racer._abstract_context import AbstractValueHandle
     from py_mini_racer._numeric import Numeric
     from py_mini_racer._value_handle import RawValueHandleType
 
@@ -64,7 +64,7 @@ def context_count() -> int:
 
 class _CallbackRegistry:
     def __init__(
-        self, raw_handle_wrapper: Callable[[RawValueHandleType], ValueHandleBase]
+        self, raw_handle_wrapper: Callable[[RawValueHandleType], AbstractValueHandle]
     ):
         self._active_callbacks: dict[
             int, Callable[[PythonJSConvertedTypes | JSEvalException], None]
@@ -94,7 +94,7 @@ class _CallbackRegistry:
         self._active_callbacks.pop(callback_id)
 
 
-class Context(ContextBase):
+class Context(AbstractContext):
     """Wrapper for all operations involving the DLL and C++ MiniRacer::Context."""
 
     def __init__(
@@ -309,7 +309,7 @@ class Context(ContextBase):
     def _wrap_raw_handle(self, raw: RawValueHandleType) -> ValueHandle:
         return ValueHandle(self, raw)
 
-    def create_intish_val(self, val: int, typ: int) -> ValueHandleBase:
+    def create_intish_val(self, val: int, typ: int) -> AbstractValueHandle:
         return self._wrap_raw_handle(
             self._dll.mr_alloc_int_val(
                 self._ctx,
@@ -318,7 +318,7 @@ class Context(ContextBase):
             )
         )
 
-    def create_doublish_val(self, val: float, typ: int) -> ValueHandleBase:
+    def create_doublish_val(self, val: float, typ: int) -> AbstractValueHandle:
         return self._wrap_raw_handle(
             self._dll.mr_alloc_double_val(
                 self._ctx,
@@ -327,7 +327,7 @@ class Context(ContextBase):
             )
         )
 
-    def create_string_val(self, val: str, typ: int) -> ValueHandleBase:
+    def create_string_val(self, val: str, typ: int) -> AbstractValueHandle:
         b = val.encode("utf-8")
         return self._wrap_raw_handle(
             self._dll.mr_alloc_string_val(
@@ -338,7 +338,7 @@ class Context(ContextBase):
             )
         )
 
-    def free(self, val_handle: ValueHandleBase) -> None:
+    def free(self, val_handle: AbstractValueHandle) -> None:
         if self._dll:
             self._dll.mr_free_value(self._ctx, val_handle.raw)
 

@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     )
 
 
-class ValueHandleBase(ABC):
+class AbstractValueHandle(ABC):
     @property
     @abstractmethod
     def raw(self) -> object:
@@ -40,7 +40,7 @@ class ValueHandleBase(ABC):
         pass
 
 
-class ContextBase(ABC):
+class AbstractContext(ABC):
     """A Context provides Pythonic wrappers around the MiniRacer C API.
 
     This is intended for internal usage by py_mini_racer. MiniRacerContext provides
@@ -106,19 +106,19 @@ class ContextBase(ABC):
         pass
 
     @abstractmethod
-    def create_intish_val(self, val: int, typ: int) -> ValueHandleBase:
+    def create_intish_val(self, val: int, typ: int) -> AbstractValueHandle:
         pass
 
     @abstractmethod
-    def create_doublish_val(self, val: float, typ: int) -> ValueHandleBase:
+    def create_doublish_val(self, val: float, typ: int) -> AbstractValueHandle:
         pass
 
     @abstractmethod
-    def create_string_val(self, val: str, typ: int) -> ValueHandleBase:
+    def create_string_val(self, val: str, typ: int) -> AbstractValueHandle:
         pass
 
     @abstractmethod
-    def free(self, val_handle: ValueHandleBase) -> None:
+    def free(self, val_handle: AbstractValueHandle) -> None:
         pass
 
     @abstractmethod

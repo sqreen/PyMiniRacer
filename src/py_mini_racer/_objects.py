@@ -27,7 +27,7 @@ from py_mini_racer._types import (
 )
 
 if TYPE_CHECKING:
-    from py_mini_racer._context_base import ContextBase, ValueHandleBase
+    from py_mini_racer._abstract_context import AbstractContext, AbstractValueHandle
     from py_mini_racer._numeric import Numeric
 
 
@@ -63,8 +63,8 @@ class JSObjectImpl(JSObject):
 
     def __init__(
         self,
-        ctx: ContextBase,
-        handle: ValueHandleBase,
+        ctx: AbstractContext,
+        handle: AbstractValueHandle,
     ):
         self._ctx = ctx
         self._handle = handle
@@ -73,7 +73,7 @@ class JSObjectImpl(JSObject):
         return self._ctx.get_identity_hash(self)
 
     @property
-    def raw_handle(self) -> ValueHandleBase:
+    def raw_handle(self) -> AbstractValueHandle:
         return self._handle
 
 
