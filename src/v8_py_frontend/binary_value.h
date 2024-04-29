@@ -106,9 +106,11 @@ class BinaryValue {
   using Ptr = std::shared_ptr<BinaryValue>;
 
   auto ToValue(v8::Local<v8::Context> context) -> v8::Local<v8::Value>;
-  auto GetHandle() -> BinaryValueHandle*;
+
+  friend class BinaryValueRegistry;
 
  private:
+  auto GetHandle() -> BinaryValueHandle*;
   void SavePersistentHandle(v8::Isolate* isolate, v8::Local<v8::Value> value);
   void CreateBackingStoreRef(v8::Local<v8::Value> value);
 
@@ -125,15 +127,38 @@ class BinaryValueFactory {
  public:
   explicit BinaryValueFactory(std::shared_ptr<IsolateManager> isolate_manager);
 
-  auto FromHandle(BinaryValueHandle* handle) -> BinaryValue::Ptr;
-  void Free(BinaryValueHandle* handle);
-  auto Count() -> size_t;
-
   template <typename... Params>
   auto New(Params&&... params) -> BinaryValue::Ptr;
 
  private:
   std::shared_ptr<IsolateManager> isolate_manager_;
+};
+
+/** We return handles to BinaryValues to the MiniRacer user side (i.e.,
+ * Python), as raw pointers. To ensure we keep those handles alive while Python
+ * is using them, we register them in a map, contained within this class.
+ */
+class BinaryValueRegistry {
+ public:
+  /** Record the value in an internal map, so we don't destroy it when
+   * returning a binary value handle to the MiniRacer user (i.e., the
+   * Python side).
+   */
+  auto Remember(BinaryValue::Ptr ptr) -> BinaryValueHandle*;
+
+  /** Unrecord a value so it can be garbage collected (once any other
+   * shared_ptr references are dropped).
+   */
+  void Forget(BinaryValueHandle* handle);
+
+  /** "Re-hydrate" a value from just its handle (only works if it was
+   * "Remembered") */
+  auto FromHandle(BinaryValueHandle* handle) -> BinaryValue::Ptr;
+
+  /** Count the total number of remembered values, for test purposes. */
+  auto Count() -> size_t;
+
+ private:
   std::mutex mutex_;
   std::unordered_map<BinaryValueHandle*, std::shared_ptr<BinaryValue>> values_;
 };
@@ -161,17 +186,8 @@ void IsolateObjectDeleter::operator()(gsl::owner<T*> handle) const {
 
 template <typename... Params>
 inline auto BinaryValueFactory::New(Params&&... params) -> BinaryValue::Ptr {
-  auto ptr = std::make_shared<BinaryValue>(
-      IsolateObjectDeleter(isolate_manager_), std::forward<Params>(params)...);
-
-  {
-    // Track all created binary values to relieve Python of the duty of garbage
-    // collecting them in the correct order relative to the MiniRacer::Context:
-    const std::lock_guard<std::mutex> lock(mutex_);
-    values_[ptr->GetHandle()] = ptr;
-  }
-
-  return ptr;
+  return std::make_shared<BinaryValue>(IsolateObjectDeleter(isolate_manager_),
+                                       std::forward<Params>(params)...);
 }
 
 }  // namespace MiniRacer

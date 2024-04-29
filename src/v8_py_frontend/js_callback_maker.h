@@ -24,7 +24,7 @@ namespace MiniRacer {
 class JSCallbackCaller {
  public:
   JSCallbackCaller(std::shared_ptr<BinaryValueFactory> bv_factory,
-                   Callback callback);
+                   RememberValueAndCallback callback);
 
   void DoCallback(v8::Local<v8::Context> context,
                   uint64_t callback_id,
@@ -32,7 +32,7 @@ class JSCallbackCaller {
 
  private:
   std::shared_ptr<BinaryValueFactory> bv_factory_;
-  Callback callback_;
+  RememberValueAndCallback callback_;
 };
 
 /** Creates a JS callback wrapped around the given C callback function pointer.
@@ -41,7 +41,7 @@ class JSCallbackMaker {
  public:
   JSCallbackMaker(std::shared_ptr<ContextHolder> context_holder,
                   const std::shared_ptr<BinaryValueFactory>& bv_factory,
-                  Callback callback);
+                  RememberValueAndCallback callback);
 
   auto MakeJSCallback(v8::Isolate* isolate,
                       uint64_t callback_id) -> BinaryValue::Ptr;

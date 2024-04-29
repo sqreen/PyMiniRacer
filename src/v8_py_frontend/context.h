@@ -18,6 +18,8 @@
 
 namespace MiniRacer {
 
+class ValueHandleConverter;
+
 class Context {
  public:
   explicit Context(v8::Platform* platform, Callback callback);
@@ -65,16 +67,39 @@ class Context {
 
                uint64_t callback_id) -> uint64_t;
 
-  Callback callback_;
+  auto MakeHandleConverter(BinaryValueHandle* handle,
+                           const char* err_msg) -> ValueHandleConverter;
+
   std::shared_ptr<IsolateManager> isolate_manager_;
   std::shared_ptr<IsolateMemoryMonitor> isolate_memory_monitor_;
   std::shared_ptr<BinaryValueFactory> bv_factory_;
+  std::shared_ptr<BinaryValueRegistry> bv_registry_;
+  RememberValueAndCallback callback_;
   std::shared_ptr<ContextHolder> context_holder_;
   std::shared_ptr<JSCallbackMaker> js_callback_maker_;
   std::shared_ptr<CodeEvaluator> code_evaluator_;
   std::shared_ptr<HeapReporter> heap_reporter_;
   std::shared_ptr<ObjectManipulator> object_manipulator_;
   std::shared_ptr<CancelableTaskRunner> cancelable_task_runner_;
+};
+
+class ValueHandleConverter {
+ public:
+  ValueHandleConverter(std::shared_ptr<BinaryValueFactory> bv_factory,
+                       const std::shared_ptr<BinaryValueRegistry>& bv_registry,
+                       BinaryValueHandle* handle,
+                       const char* err_msg);
+
+  explicit operator bool() const;
+
+  auto GetErrorPtr() -> BinaryValue::Ptr;
+  auto GetErrorHandle() -> BinaryValueHandle*;
+  auto GetPtr() -> BinaryValue::Ptr;
+
+ private:
+  std::shared_ptr<BinaryValueRegistry> bv_registry_;
+  BinaryValue::Ptr ptr_;
+  BinaryValue::Ptr err_;
 };
 
 inline void Context::SetHardMemoryLimit(size_t limit) {
@@ -100,7 +125,8 @@ inline void Context::ApplyLowMemoryNotification() {
 template <typename... Params>
 inline auto Context::AllocBinaryValue(Params&&... params)
     -> BinaryValueHandle* {
-  return bv_factory_->New(std::forward<Params>(params)...)->GetHandle();
+  return bv_registry_->Remember(
+      bv_factory_->New(std::forward<Params>(params)...));
 }
 
 }  // namespace MiniRacer

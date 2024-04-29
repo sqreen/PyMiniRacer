@@ -261,7 +261,7 @@ void BinaryValue::SavePersistentHandle(v8::Isolate* isolate,
 
 void BinaryValue::CreateBackingStoreRef(v8::Local<v8::Value> value) {
   // For ArrayBuffer and friends, we store a reference to the ArrayBuffer
-  // shared_ptr in this BinaryValueFactory instance, and return a pointer
+  // shared_ptr in this BinaryValue instance, and return a pointer
   // *into* the buffer to the Python side.
 
   size_t offset = 0;
@@ -304,12 +304,19 @@ BinaryValueFactory::BinaryValueFactory(
     std::shared_ptr<IsolateManager> isolate_manager)
     : isolate_manager_(std::move(isolate_manager)) {}
 
-void BinaryValueFactory::Free(BinaryValueHandle* handle) {
+auto BinaryValueRegistry::Remember(BinaryValue::Ptr ptr) -> BinaryValueHandle* {
+  const std::lock_guard<std::mutex> lock(mutex_);
+  BinaryValueHandle* handle = ptr->GetHandle();
+  values_[handle] = std::move(ptr);
+  return handle;
+}
+
+void BinaryValueRegistry::Forget(BinaryValueHandle* handle) {
   const std::lock_guard<std::mutex> lock(mutex_);
   values_.erase(handle);
 }
 
-auto BinaryValueFactory::FromHandle(BinaryValueHandle* handle)
+auto BinaryValueRegistry::FromHandle(BinaryValueHandle* handle)
     -> BinaryValue::Ptr {
   // Track all created binary values to relieve Python of the duty of garbage
   // collecting them in the correct order relative to the MiniRacer::Context:
@@ -321,7 +328,7 @@ auto BinaryValueFactory::FromHandle(BinaryValueHandle* handle)
   return iter->second;
 }
 
-auto BinaryValueFactory::Count() -> size_t {
+auto BinaryValueRegistry::Count() -> size_t {
   const std::lock_guard<std::mutex> lock(mutex_);
   return values_.size();
 }
