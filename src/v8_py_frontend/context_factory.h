@@ -8,10 +8,10 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <unordered_map>
 #include "callback.h"
 #include "context.h"
 #include "gsl_stub.h"
+#include "id_maker.h"
 
 namespace MiniRacer {
 
@@ -35,9 +35,7 @@ class ContextFactory {
   static std::once_flag init_flag_;
   static gsl::owner<ContextFactory*> singleton_;
   std::unique_ptr<v8::Platform> current_platform_;
-  std::mutex mutex_;
-  uint64_t next_context_id_;
-  std::unordered_map<uint64_t, std::shared_ptr<Context>> contexts_;
+  IdMaker<Context> contexts_;
 };
 
 }  // namespace MiniRacer

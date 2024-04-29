@@ -7,7 +7,6 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <utility>
 #include "callback.h"
 #include "context.h"
 #include "gsl_stub.h"
@@ -35,46 +34,25 @@ auto ContextFactory::MakeContext(Callback callback) -> uint64_t {
   // making Contexts in other threads:
   auto context = std::make_shared<Context>(current_platform_.get(), callback);
 
-  const std::lock_guard<std::mutex> lock(mutex_);
-  const uint64_t context_id = next_context_id_++;
-  contexts_[context_id] = std::move(context);
-  return context_id;
+  return contexts_.MakeId(context);
+}
+
+void ContextFactory::FreeContext(uint64_t context_id) {
+  contexts_.EraseId(context_id);
 }
 
 auto ContextFactory::GetContext(uint64_t context_id)
     -> std::shared_ptr<Context> {
-  const std::lock_guard<std::mutex> lock(mutex_);
-  auto iter = contexts_.find(context_id);
-  if (iter == contexts_.end()) {
-    return {};
-  }
-  return iter->second;
-}
-
-void ContextFactory::FreeContext(uint64_t context_id) {
-  std::shared_ptr<Context> context;
-  {
-    const std::lock_guard<std::mutex> lock(mutex_);
-    auto iter = contexts_.find(context_id);
-    if (iter == contexts_.end()) {
-      return;
-    }
-    context = std::move(iter->second);
-    contexts_.erase(iter);
-  }
-  // We actually destruct the context here, outside of the mutex, so that other
-  // threads can continue to create, get, and free contexts.
+  return contexts_.GetObject(context_id);
 }
 
 auto ContextFactory::Count() -> size_t {
-  const std::lock_guard<std::mutex> lock(mutex_);
-  return contexts_.size();
+  return contexts_.CountIds();
 }
 
 ContextFactory::ContextFactory(const std::string& v8_flags,
                                const std::filesystem::path& icu_path,
-                               const std::filesystem::path& snapshot_path)
-    : next_context_id_(1) {
+                               const std::filesystem::path& snapshot_path) {
   v8::V8::InitializeICU(icu_path.string().c_str());
   v8::V8::InitializeExternalStartupDataFromFile(snapshot_path.string().c_str());
 

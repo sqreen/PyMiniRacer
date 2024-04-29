@@ -4,20 +4,39 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
-#include <unordered_map>
 #include <utility>
+#include "id_maker.h"
 #include "isolate_manager.h"
 #include "v8-isolate.h"
 
 namespace MiniRacer {
 
-class CancelableTaskRegistry;
+/** Keeps track of status of a cancelable task. */
+class CancelableTaskState {
+ public:
+  explicit CancelableTaskState();
+
+  void Cancel(IsolateManager* isolate_manager);
+
+  auto SetRunningIfNotCanceled() -> bool;
+
+  auto SetCompleteIfNotCanceled() -> bool;
+
+ private:
+  enum State : std::uint8_t {
+    kNotStarted = 0,
+    kRunning = 1,
+    kCompleted = 2,
+    kCanceled = 3
+  } state_;
+  std::mutex mutex_;
+};
 
 /** Grafts a concept of cancelable tasks on top of an IsolateManager. */
 class CancelableTaskRunner {
  public:
   explicit CancelableTaskRunner(
-      const std::shared_ptr<IsolateManager>& isolate_manager);
+      std::shared_ptr<IsolateManager> isolate_manager);
 
   /**
    * Schedule the given runnable.
@@ -41,65 +60,7 @@ class CancelableTaskRunner {
 
  private:
   std::shared_ptr<IsolateManager> isolate_manager_;
-  std::shared_ptr<CancelableTaskRegistry> task_registry_;
-};
-
-class CancelableTaskState;
-
-class CancelableTaskRegistry {
- public:
-  explicit CancelableTaskRegistry(
-      std::shared_ptr<IsolateManager> isolate_manager);
-
-  auto Create(std::shared_ptr<CancelableTaskState> task_state) -> uint64_t;
-  void Remove(uint64_t task_id);
-  void Cancel(uint64_t task_id);
-
- private:
-  std::shared_ptr<IsolateManager> isolate_manager_;
-  std::mutex mutex_;
-  uint64_t next_task_id_;
-  std::unordered_map<uint64_t, std::shared_ptr<CancelableTaskState>> tasks_;
-};
-
-class CancelableTaskRegistryRemover {
- public:
-  CancelableTaskRegistryRemover(
-      uint64_t task_id,
-      std::shared_ptr<CancelableTaskRegistry> task_registry);
-  ~CancelableTaskRegistryRemover();
-
-  CancelableTaskRegistryRemover(const CancelableTaskRegistryRemover&) = delete;
-  auto operator=(const CancelableTaskRegistryRemover&)
-      -> CancelableTaskRegistryRemover& = delete;
-  CancelableTaskRegistryRemover(CancelableTaskRegistryRemover&&) = delete;
-  auto operator=(CancelableTaskRegistryRemover&& other)
-      -> CancelableTaskRegistryRemover& = delete;
-
- private:
-  uint64_t task_id_;
-  std::shared_ptr<CancelableTaskRegistry> task_registry_;
-};
-
-/** Keeps track of status of a cancelable task. */
-class CancelableTaskState {
- public:
-  explicit CancelableTaskState();
-
-  void Cancel(IsolateManager* isolate_manager);
-
-  auto SetRunningIfNotCanceled() -> bool;
-
-  auto SetCompleteIfNotCanceled() -> bool;
-
- private:
-  enum State : std::uint8_t {
-    kNotStarted = 0,
-    kRunning = 1,
-    kCompleted = 2,
-    kCanceled = 3
-  } state_;
-  std::mutex mutex_;
+  std::shared_ptr<IdMaker<CancelableTaskState>> task_id_maker_;
 };
 
 template <typename Runnable, typename OnCompleted, typename OnCanceled>
@@ -108,7 +69,7 @@ class CancelableTask {
   CancelableTask(Runnable runnable,
                  OnCompleted on_completed,
                  OnCanceled on_canceled,
-                 const std::shared_ptr<CancelableTaskRegistry>& task_registry);
+                 std::shared_ptr<IdMaker<CancelableTaskState>> task_id_maker);
 
   void Run(v8::Isolate* isolate);
 
@@ -119,8 +80,7 @@ class CancelableTask {
   OnCompleted on_completed_;
   OnCanceled on_canceled_;
   std::shared_ptr<CancelableTaskState> task_state_;
-  uint64_t task_id_;
-  CancelableTaskRegistryRemover task_registry_remover_;
+  IdHolder<CancelableTaskState> task_id_holder_;
 };
 
 template <typename Runnable, typename OnCompleted, typename OnCanceled>
@@ -128,18 +88,17 @@ inline CancelableTask<Runnable, OnCompleted, OnCanceled>::CancelableTask(
     Runnable runnable,
     OnCompleted on_completed,
     OnCanceled on_canceled,
-    const std::shared_ptr<CancelableTaskRegistry>& task_registry)
+    std::shared_ptr<IdMaker<CancelableTaskState>> task_id_maker)
     : runnable_(std::move(runnable)),
       on_completed_(std::move(on_completed)),
       on_canceled_(std::move(on_canceled)),
       task_state_(std::make_shared<CancelableTaskState>()),
-      task_id_(task_registry->Create(task_state_)),
-      task_registry_remover_(task_id_, task_registry) {}
+      task_id_holder_(task_state_, std::move(task_id_maker)) {}
 
 template <typename Runnable, typename OnCompleted, typename OnCanceled>
 inline auto CancelableTask<Runnable, OnCompleted, OnCanceled>::TaskId()
     -> uint64_t {
-  return task_id_;
+  return task_id_holder_.GetId();
 }
 
 template <typename Runnable, typename OnCompleted, typename OnCanceled>
@@ -181,7 +140,7 @@ inline auto CancelableTaskRunner::Schedule(Runnable runnable,
   auto task =
       std::make_unique<CancelableTask<Runnable, OnCompleted, OnCanceled>>(
           std::move(runnable), std::move(on_completed), std::move(on_canceled),
-          task_registry_);
+          task_id_maker_);
 
   uint64_t task_id = task->TaskId();
 

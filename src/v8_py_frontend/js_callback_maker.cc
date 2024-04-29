@@ -14,10 +14,9 @@
 #include "binary_value.h"
 #include "callback.h"
 #include "context_holder.h"
+#include "id_maker.h"
 
 namespace MiniRacer {
-
-JSCallbackCallerRegistry JSCallbackCallerRegistry::singleton_;
 
 JSCallbackCaller::JSCallbackCaller(
     std::shared_ptr<BinaryValueFactory> bv_factory,
@@ -31,49 +30,15 @@ void JSCallbackCaller::DoCallback(v8::Local<v8::Context> context,
   callback_(callback_id, args_ptr->GetHandle());
 }
 
-auto JSCallbackCallerRegistry::Get() -> JSCallbackCallerRegistry* {
-  return &singleton_;
-}
+std::shared_ptr<IdMaker<JSCallbackCaller>> JSCallbackMaker::callback_callers_;
+std::once_flag JSCallbackMaker::callback_callers_init_flag_;
 
-auto JSCallbackCallerRegistry::Register(
-    std::shared_ptr<BinaryValueFactory> bv_factory,
-    Callback callback) -> uint64_t {
-  auto context_caller =
-      std::make_shared<JSCallbackCaller>(std::move(bv_factory), callback);
-  const std::lock_guard<std::mutex> lock(mutex_);
-  const uint64_t callback_caller_id = next_id_++;
-  callback_callers_[callback_caller_id] = context_caller;
-  return callback_caller_id;
-}
-
-void JSCallbackCallerRegistry::Unregister(uint64_t callback_caller_id) {
-  const std::lock_guard<std::mutex> lock(mutex_);
-  callback_callers_.erase(callback_caller_id);
-}
-
-auto JSCallbackCallerRegistry::Get(uint64_t callback_caller_id)
-    -> std::shared_ptr<JSCallbackCaller> {
-  const std::lock_guard<std::mutex> lock(mutex_);
-  auto iter = callback_callers_.find(callback_caller_id);
-  if (iter == callback_callers_.end()) {
-    return {};
-  }
-  return iter->second;
-}
-
-JSCallbackCallerHolder::JSCallbackCallerHolder(
-    std::shared_ptr<BinaryValueFactory> bv_factory,
-    Callback callback)
-    : callback_caller_id_(
-          JSCallbackCallerRegistry::Get()->Register(std::move(bv_factory),
-                                                    callback)) {}
-
-JSCallbackCallerHolder::~JSCallbackCallerHolder() {
-  JSCallbackCallerRegistry::Get()->Unregister(callback_caller_id_);
-}
-
-auto JSCallbackCallerHolder::Get() const -> uint64_t {
-  return callback_caller_id_;
+auto JSCallbackMaker::GetCallbackCallers()
+    -> std::shared_ptr<IdMaker<JSCallbackCaller>> {
+  std::call_once(callback_callers_init_flag_, []() {
+    callback_callers_ = std::make_shared<IdMaker<JSCallbackCaller>>();
+  });
+  return callback_callers_;
 }
 
 JSCallbackMaker::JSCallbackMaker(
@@ -82,7 +47,9 @@ JSCallbackMaker::JSCallbackMaker(
     Callback callback)
     : context_holder_(std::move(context_holder)),
       bv_factory_(bv_factory),
-      callback_caller_holder_(bv_factory, callback) {}
+      callback_caller_holder_(
+          std::make_shared<JSCallbackCaller>(bv_factory, callback),
+          GetCallbackCallers()) {}
 
 auto JSCallbackMaker::MakeJSCallback(v8::Isolate* isolate,
                                      uint64_t callback_id) -> BinaryValue::Ptr {
@@ -103,7 +70,7 @@ auto JSCallbackMaker::MakeJSCallback(v8::Isolate* isolate,
   // the underlying callback caller is torn down, that callback is safely
   // ignored.
   const v8::Local<v8::BigInt> callback_caller_id_bigint =
-      v8::BigInt::NewFromUnsigned(isolate, callback_caller_holder_.Get());
+      v8::BigInt::NewFromUnsigned(isolate, callback_caller_holder_.GetId());
   const v8::Local<v8::BigInt> callback_id_bigint =
       v8::BigInt::NewFromUnsigned(isolate, callback_id);
   std::array<v8::Local<v8::Value>, 2> data_elements = {
@@ -182,7 +149,7 @@ void JSCallbackMaker::OnCalledStatic(
       }).ToLocalChecked();
 
   const std::shared_ptr<JSCallbackCaller> callback_caller =
-      JSCallbackCallerRegistry::Get()->Get(callback_caller_id);
+      callback_callers_->GetObject(callback_caller_id);
   if (!callback_caller) {
     return;
   }

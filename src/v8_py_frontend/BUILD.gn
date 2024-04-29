@@ -19,6 +19,7 @@ v8_shared_library("mini_racer") {
     "gsl_stub.h",
     "heap_reporter.h",
     "heap_reporter.cc",
+    "id_maker.h",
     "isolate_holder.h",
     "isolate_holder.cc",
     "isolate_manager.h",

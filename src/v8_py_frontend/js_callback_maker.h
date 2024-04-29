@@ -9,16 +9,17 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
-#include <unordered_map>
 #include "binary_value.h"
 #include "callback.h"
 #include "context_holder.h"
+#include "id_maker.h"
 
 namespace MiniRacer {
 
-/** A callback caller contains the a bundle of items needed to successfully
- * handle a callback from JS. This is affine to a single MiniRacer::Context (and
- * so multiple callbacks can share a context).
+/** A callback caller contains the bundle of items needed to successfully
+ * handle a callback from JS by calling through to the MiniRacer user (i.e.,
+ * Python). A JSCallbackCaller is affine to a single MiniRacer::Context (and so
+ * multiple callbacks can share a single JSCallbackCaller).
  */
 class JSCallbackCaller {
  public:
@@ -34,45 +35,8 @@ class JSCallbackCaller {
   Callback callback_;
 };
 
-class JSCallbackCallerRegistry {
- public:
-  static auto Get() -> JSCallbackCallerRegistry*;
-
-  auto Register(std::shared_ptr<BinaryValueFactory> bv_factory,
-                Callback callback) -> uint64_t;
-  void Unregister(uint64_t callback_caller_id);
-
-  auto Get(uint64_t callback_caller_id) -> std::shared_ptr<JSCallbackCaller>;
-
- private:
-  static JSCallbackCallerRegistry singleton_;
-  std::mutex mutex_;
-  uint64_t next_id_{0};
-  std::unordered_map<uint64_t, std::shared_ptr<JSCallbackCaller>>
-      callback_callers_;
-};
-
-class JSCallbackCallerHolder {
- public:
-  JSCallbackCallerHolder(std::shared_ptr<BinaryValueFactory> bv_factory,
-                         Callback callback);
-
-  ~JSCallbackCallerHolder();
-
-  JSCallbackCallerHolder(const JSCallbackCallerHolder&) = delete;
-  auto operator=(const JSCallbackCallerHolder&) -> JSCallbackCallerHolder& =
-                                                       delete;
-  JSCallbackCallerHolder(JSCallbackCallerHolder&&) = delete;
-  auto operator=(JSCallbackCallerHolder&& other) -> JSCallbackCallerHolder& =
-                                                        delete;
-
-  [[nodiscard]] auto Get() const -> uint64_t;
-
- private:
-  uint64_t callback_caller_id_;
-};
-
-/** Wraps a JS callback wrapped around the given C callback function pointer. */
+/** Creates a JS callback wrapped around the given C callback function pointer.
+ */
 class JSCallbackMaker {
  public:
   JSCallbackMaker(std::shared_ptr<ContextHolder> context_holder,
@@ -84,10 +48,15 @@ class JSCallbackMaker {
 
  private:
   static void OnCalledStatic(const v8::FunctionCallbackInfo<v8::Value>& info);
+  static auto GetCallbackCallers()
+      -> std::shared_ptr<IdMaker<JSCallbackCaller>>;
+
+  static std::shared_ptr<IdMaker<JSCallbackCaller>> callback_callers_;
+  static std::once_flag callback_callers_init_flag_;
 
   std::shared_ptr<ContextHolder> context_holder_;
   std::shared_ptr<BinaryValueFactory> bv_factory_;
-  JSCallbackCallerHolder callback_caller_holder_;
+  IdHolder<JSCallbackCaller> callback_caller_holder_;
 };
 
 }  // namespace MiniRacer
