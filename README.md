@@ -167,13 +167,13 @@ You can install callbacks from JavaScript to Python (*new in v0.12.0*):
 
 ```python
     >>> async def read_file(fn):
-    ...     with open(fn) as f:  # 9or aiofiles would be even better here)
+    ...     with open(fn) as f:  # (or aiofiles would be even better here)
     ...         return f.read()
     ...
     >>> async def get_dictionary():
     ...    async with ctx.wrap_py_function(read_file) as jsfunc:
     ...        # "Install" our JS function on the global "this" object:
-    ...        ctx.eval('this')['read_file'] = (jsfunc)
+    ...        ctx.eval('this')['read_file'] = jsfunc
     ...        d = await ctx.eval('this.read_file("/usr/share/dict/words")')
     ...        return d.split()
     ...
