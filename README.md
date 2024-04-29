@@ -166,18 +166,24 @@ respectively:
 You can install callbacks from JavaScript to Python (*new in v0.12.0*):
 
 ```python
-    >>> async def my_print(*args):
-    ...     print(*args)
+    >>> async def read_file(fn):
+    ...     with open(fn) as f:  # 9or aiofiles would be even better here)
+    ...         return f.read()
     ...
-    >>> async def demo():
-    ...    async with ctx.wrap_into_js_function(my_print) as jsfunc:
+    >>> async def get_dictionary():
+    ...    async with ctx.wrap_py_function(read_file) as jsfunc:
     ...        # "Install" our JS function on the global "this" object:
-    ...        ctx.eval("x => this.my_print = x")(jsfunc)
-    ...        await ctx.eval('this.my_print("foobar")')
+    ...        ctx.eval('this')['read_file'] = (jsfunc)
+    ...        d = await ctx.eval('this.read_file("/usr/share/dict/words")')
+    ...        return d.split()
     ...
-    >>> asyncio.run(demo())
-    foobar
+    >>> dictionary = asyncio.run(get_dictionary())
+    >>> print(dictionary[0:10])
+    ['A', 'AA', 'AAA', "AA's", 'AB', 'ABC', "ABC's", 'ABCs', 'ABM', "ABM's"]
 ```
+
+*Note that adding Python callbacks may degrade the security properties of PyMiniRacer!
+See [PyMiniRacer's security goals](ARCHITECTURE.md#security-goals).*
 
 MiniRacer supports [the ECMA `Intl` API](https://tc39.es/ecma402/):
 

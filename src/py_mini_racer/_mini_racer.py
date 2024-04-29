@@ -162,7 +162,7 @@ class MiniRacer:
         js = f"{expr}.apply(this, {json_args})"
         return self.execute(js, timeout_sec=timeout_sec, max_memory=max_memory)
 
-    def wrap_into_js_function(
+    def wrap_py_function(
         self,
         func: PyJsFunctionType,
     ) -> AbstractAsyncContextManager[JSFunction]:
@@ -184,7 +184,7 @@ class MiniRacer:
             can be passed into MiniRacer and called by JS code.
         """
 
-        return self._ctx.wrap_into_js_function(func)
+        return self._ctx.wrap_py_function(func)
 
     def set_hard_memory_limit(self, limit: int) -> None:
         """Set a hard memory limit on this V8 isolate.

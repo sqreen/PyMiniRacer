@@ -22,7 +22,7 @@ def test_basic(gc_check):
         return "foobar"
 
     async def run():
-        async with mr.wrap_into_js_function(append) as jsfunc:
+        async with mr.wrap_py_function(append) as jsfunc:
             # "Install" our JS function on the global "this" object:
             mr.eval("x => this.func = x")(jsfunc)
 
@@ -50,7 +50,7 @@ def test_exception(gc_check):
         raise RuntimeError(boo)
 
     async def run():
-        async with mr.wrap_into_js_function(append) as jsfunc:
+        async with mr.wrap_py_function(append) as jsfunc:
             # "Install" our JS function on the global "this" object:
             mr.eval("x => this.func = x")(jsfunc)
 
@@ -90,7 +90,7 @@ def test_slow(gc_check):
         return "foobar"
 
     async def run():
-        async with mr.wrap_into_js_function(append) as jsfunc:
+        async with mr.wrap_py_function(append) as jsfunc:
             # "Install" our JS function on the global "this" object:
             mr.eval("x => this.func = x")(jsfunc)
 

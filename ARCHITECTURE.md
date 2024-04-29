@@ -2,6 +2,64 @@
 
 This document contains some notes about the design of PyMiniRacer.
 
+## Security goals
+
+**First and foremost, PyMiniRacer makes no guarantees or warrantees, as noted in the
+license.** This section documents the security *goals* of PyMiniRacer. Anything that
+doesn't meet these goals should be considered to be a bug (but with no warrantee or even
+a guaranteed path to remediation).
+
+### PyMiniRacer should *be able to* run untrusted JavaScript code
+
+The ability for PyMiniRacer to run untrusted JavaScript code
+[was an original design goal for Sqreen](https://news.ycombinator.com/item?id=39754885#39813985)
+in developing PyMiniRacer, and continues to be a design goal today.
+
+To that end, PyMiniRacer provides:
+
+1. The innate sandboxing properties of V8. V8 is trusted by billions of folks to run
+    untrusted JavaScript every day, as a part of Chrome and other web browsers. It has
+    many features like the [security sandbox](https://v8.dev/blog/sandbox) and
+    undergoes close security scrutiny.
+
+1. The ability to create multiple `MiniRacer` instances which each have separate V8
+    isolates, to separate different blobs of untrusted code from each other.
+
+1. Optional timeouts and memory constraints on code being executed.
+
+Caveats:
+
+1. The continual security research is V8 under yields a corresponding
+    [stream of vulnerability reports](https://cve.mitre.org/cgi-bin/cvekey.cgi?keyword=v8).
+    
+
+1. ... and while V8 *as embedded in a web browser* will typically receive (funded!)
+    updates to correct those vulnerabilities, PyMiniRacer is unlikely to see as
+    aggressive and consistent an update schedule.
+
+1. ... and of course PyMiniRacer itself may have vulnerabilities.
+    [This has happened before](https://nvd.nist.gov/vuln/detail/CVE-2020-25489).
+
+1. ... and even if PyMiniRacer is updated to accomodate a vulnerability fix in itself or
+    V8, it is incumbent upon Python applications which integrate it to actually
+    redeploy with the new PyMiniRacer version.
+
+If running potentially adversarial JavaScript code in a high-security environment, it
+might be a better choice to run code using a purpose-built isolation environment such as
+containers on [gVisor](https://gvisor.dev/), than to rely on PyMiniRacer for isolation.
+
+### JavaScript-to-Python callbacks may breach any isolation boundary
+
+The `MiniRacer.wrap_py_function` method allows PyMiniRacer users to expose Python
+functions *they write* to JavaScript. This creates an extension framework which
+essentially breaches the isolation boundary provided by V8.
+
+This feature should only be used if the underlying JavaScript code *is* trusted, or if
+the author is certain the exposed Python function is safe for calls from untrusted code.
+(I.e., if you expose a Python function which allows reading arbitrary files from disk,
+this would obviously be bad if the JavaScript code which may call it is itself
+untrusted.)
+
 ## Brief catalog of key components
 
 ### `docs/`

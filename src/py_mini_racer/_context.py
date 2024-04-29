@@ -382,7 +382,7 @@ class Context(AbstractContext):
             self._callback_registry.cleanup(callback_id)
 
     @asynccontextmanager
-    async def wrap_into_js_function(
+    async def wrap_py_function(
         self, func: PyJsFunctionType
     ) -> AsyncIterator[JSFunction]:
         queue: Queue[PythonJSConvertedTypes | JSEvalException] = Queue()
