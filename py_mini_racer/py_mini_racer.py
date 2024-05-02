@@ -22,11 +22,15 @@ def _get_libc_name():
         return "muslc"
     return "glibc"
 
+def is_apple_silicon():
+    return sys.platform == 'darwin' and sys.maxsize > 2**32
 
 def _get_lib_path(name):
     """Return the path of the library called `name` on the current system."""
     if os.name == "posix" and sys.platform == "darwin":
         prefix, ext = "lib", ".dylib"
+        if is_apple_silicon():
+            prefix = "armlib"
     elif sys.platform == "win32":
         prefix, ext = "", ".dll"
     else:
