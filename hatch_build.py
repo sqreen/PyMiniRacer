@@ -9,7 +9,7 @@ from packaging.tags import Tag
 # During env initialization the PYTHONPATH doesn't include our helpers, so
 # give it some help:
 syspath.append(dirname(__file__))
-from helpers.v8_build import build_v8, clean_v8, get_platform_tag  # noqa: E402
+from helpers.v8_build import build_v8, clean_v8, get_platform_tag
 
 
 class V8BuildHook(BuildHookInterface[BuilderConfig]):

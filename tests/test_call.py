@@ -1,4 +1,4 @@
-""" Basic JS call functions """
+"""Basic JS call functions"""
 
 from datetime import datetime, timezone
 from json import JSONEncoder

@@ -1,4 +1,4 @@
-""" Test Python functions exposed as JS."""
+"""Test Python functions exposed as JS."""
 
 from asyncio import gather
 from asyncio import run as asyncio_run

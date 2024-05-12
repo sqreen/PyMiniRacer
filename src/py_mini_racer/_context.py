@@ -101,18 +101,25 @@ class Context(AbstractContext):
         self,
         dll: ctypes.CDLL,
     ) -> None:
-        self._dll = dll
+        self._dll: ctypes.CDLL | None = dll
 
         self._callback_registry = _CallbackRegistry(self._wrap_raw_handle)
         self._ctx = dll.mr_init_context(self._callback_registry.mr_callback)
 
+    def _get_dll(self) -> ctypes.CDLL:
+        if self._dll is None:
+            msg = "Operation on closed Context"
+            raise ValueError(msg)
+
+        return self._dll
+
     def v8_version(self) -> str:
-        return str(self._dll.mr_v8_version().decode("utf-8"))
+        return str(self._get_dll().mr_v8_version().decode("utf-8"))
 
     def v8_is_using_sandbox(self) -> bool:
         """Checks for enablement of the V8 Sandbox. See https://v8.dev/blog/sandbox."""
 
-        return bool(self._dll.mr_v8_is_using_sandbox())
+        return bool(self._get_dll().mr_v8_is_using_sandbox())
 
     def evaluate(
         self,
@@ -121,7 +128,9 @@ class Context(AbstractContext):
     ) -> PythonJSConvertedTypes:
         code_handle = python_to_value_handle(self, code)
 
-        with self._run_mr_task(self._dll.mr_eval, self._ctx, code_handle.raw) as future:
+        with self._run_mr_task(
+            self._get_dll().mr_eval, self._ctx, code_handle.raw
+        ) as future:
             return future.get(timeout=timeout_sec)
 
     def promise_then(
@@ -130,7 +139,7 @@ class Context(AbstractContext):
         promise_handle = python_to_value_handle(self, promise)
         then_name_handle = python_to_value_handle(self, "then")
         then_func = self._wrap_raw_handle(
-            self._dll.mr_get_object_item(
+            self._get_dll().mr_get_object_item(
                 self._ctx,
                 promise_handle.raw,
                 then_name_handle.raw,
@@ -144,7 +153,7 @@ class Context(AbstractContext):
         obj_handle = python_to_value_handle(self, obj)
 
         ret = self._wrap_raw_handle(
-            self._dll.mr_get_identity_hash(self._ctx, obj_handle.raw)
+            self._get_dll().mr_get_identity_hash(self._ctx, obj_handle.raw)
         ).to_python_or_raise()
         return cast(int, ret)
 
@@ -154,7 +163,7 @@ class Context(AbstractContext):
         obj_handle = python_to_value_handle(self, obj)
 
         names = self._wrap_raw_handle(
-            self._dll.mr_get_own_property_names(self._ctx, obj_handle.raw)
+            self._get_dll().mr_get_own_property_names(self._ctx, obj_handle.raw)
         ).to_python_or_raise()
         if not isinstance(names, JSArray):
             raise TypeError
@@ -167,7 +176,7 @@ class Context(AbstractContext):
         key_handle = python_to_value_handle(self, key)
 
         return self._wrap_raw_handle(
-            self._dll.mr_get_object_item(
+            self._get_dll().mr_get_object_item(
                 self._ctx,
                 obj_handle.raw,
                 key_handle.raw,
@@ -183,7 +192,7 @@ class Context(AbstractContext):
 
         # Convert the value just to convert any exceptions (and GC the result)
         self._wrap_raw_handle(
-            self._dll.mr_set_object_item(
+            self._get_dll().mr_set_object_item(
                 self._ctx,
                 obj_handle.raw,
                 key_handle.raw,
@@ -197,7 +206,7 @@ class Context(AbstractContext):
 
         # Convert the value just to convert any exceptions (and GC the result)
         self._wrap_raw_handle(
-            self._dll.mr_del_object_item(
+            self._get_dll().mr_del_object_item(
                 self._ctx,
                 obj_handle.raw,
                 key_handle.raw,
@@ -209,7 +218,7 @@ class Context(AbstractContext):
 
         # Convert the value just to convert any exceptions (and GC the result)
         self._wrap_raw_handle(
-            self._dll.mr_splice_array(self._ctx, arr_handle.raw, index, 1, None)
+            self._get_dll().mr_splice_array(self._ctx, arr_handle.raw, index, 1, None)
         ).to_python_or_raise()
 
     def array_insert(
@@ -220,7 +229,7 @@ class Context(AbstractContext):
 
         # Convert the value just to convert any exceptions (and GC the result)
         self._wrap_raw_handle(
-            self._dll.mr_splice_array(
+            self._get_dll().mr_splice_array(
                 self._ctx,
                 arr_handle.raw,
                 index,
@@ -245,7 +254,7 @@ class Context(AbstractContext):
         argv_handle = python_to_value_handle(self, argv)
 
         with self._run_mr_task(
-            self._dll.mr_call_function,
+            self._get_dll().mr_call_function,
             self._ctx,
             func_handle.raw,
             this_handle.raw,
@@ -254,34 +263,34 @@ class Context(AbstractContext):
             return future.get(timeout=timeout_sec)
 
     def set_hard_memory_limit(self, limit: int) -> None:
-        self._dll.mr_set_hard_memory_limit(self._ctx, limit)
+        self._get_dll().mr_set_hard_memory_limit(self._ctx, limit)
 
     def set_soft_memory_limit(self, limit: int) -> None:
-        self._dll.mr_set_soft_memory_limit(self._ctx, limit)
+        self._get_dll().mr_set_soft_memory_limit(self._ctx, limit)
 
     def was_hard_memory_limit_reached(self) -> bool:
-        return bool(self._dll.mr_hard_memory_limit_reached(self._ctx))
+        return bool(self._get_dll().mr_hard_memory_limit_reached(self._ctx))
 
     def was_soft_memory_limit_reached(self) -> bool:
-        return bool(self._dll.mr_soft_memory_limit_reached(self._ctx))
+        return bool(self._get_dll().mr_soft_memory_limit_reached(self._ctx))
 
     def low_memory_notification(self) -> None:
-        self._dll.mr_low_memory_notification(self._ctx)
+        self._get_dll().mr_low_memory_notification(self._ctx)
 
     def heap_stats(self) -> str:
-        with self._run_mr_task(self._dll.mr_heap_stats, self._ctx) as future:
+        with self._run_mr_task(self._get_dll().mr_heap_stats, self._ctx) as future:
             return cast(str, future.get())
 
     def heap_snapshot(self) -> str:
         """Return a snapshot of the V8 isolate heap."""
 
-        with self._run_mr_task(self._dll.mr_heap_snapshot, self._ctx) as future:
+        with self._run_mr_task(self._get_dll().mr_heap_snapshot, self._ctx) as future:
             return cast(str, future.get())
 
     def value_count(self) -> int:
         """For tests only: how many value handles are still allocated?"""
 
-        return int(self._dll.mr_value_count(self._ctx))
+        return int(self._get_dll().mr_value_count(self._ctx))
 
     @contextmanager
     def js_callback(
@@ -298,7 +307,7 @@ class Context(AbstractContext):
         callback_id = self._callback_registry.register(func)
 
         cb = self._wrap_raw_handle(
-            self._dll.mr_make_js_callback(self._ctx, callback_id)
+            self._get_dll().mr_make_js_callback(self._ctx, callback_id)
         )
         cb_py = cast(JSFunction, cb.to_python_or_raise())
 
@@ -311,7 +320,7 @@ class Context(AbstractContext):
 
     def create_intish_val(self, val: int, typ: int) -> AbstractValueHandle:
         return self._wrap_raw_handle(
-            self._dll.mr_alloc_int_val(
+            self._get_dll().mr_alloc_int_val(
                 self._ctx,
                 val,
                 typ,
@@ -320,7 +329,7 @@ class Context(AbstractContext):
 
     def create_doublish_val(self, val: float, typ: int) -> AbstractValueHandle:
         return self._wrap_raw_handle(
-            self._dll.mr_alloc_double_val(
+            self._get_dll().mr_alloc_double_val(
                 self._ctx,
                 val,
                 typ,
@@ -330,7 +339,7 @@ class Context(AbstractContext):
     def create_string_val(self, val: str, typ: int) -> AbstractValueHandle:
         b = val.encode("utf-8")
         return self._wrap_raw_handle(
-            self._dll.mr_alloc_string_val(
+            self._get_dll().mr_alloc_string_val(
                 self._ctx,
                 b,
                 len(b),
@@ -339,8 +348,9 @@ class Context(AbstractContext):
         )
 
     def free(self, val_handle: AbstractValueHandle) -> None:
-        if self._dll:
-            self._dll.mr_free_value(self._ctx, val_handle.raw)
+        dll = self._dll
+        if dll is not None:
+            dll.mr_free_value(self._ctx, val_handle.raw)
 
     @contextmanager
     def _run_mr_task(self, dll_method: Any, *args: Any) -> Iterator[SyncFuture]:
@@ -372,7 +382,7 @@ class Context(AbstractContext):
         finally:
             # Cancel the task if it's not already done (this call is ignored if it's
             # already done)
-            self._dll.mr_cancel_task(self._ctx, task_id)
+            self._get_dll().mr_cancel_task(self._ctx, task_id)
 
             # If the caller gives up on waiting, let's at least await the
             # cancelation error for GC purposes:
@@ -478,6 +488,10 @@ callback => {
         # Mark that we "finished" the terminating None queue entry:
         queue.task_done()
 
+    def close(self) -> None:
+        dll, self._dll = self._dll, None
+        if dll:
+            dll.mr_free_context(self._ctx)
+
     def __del__(self) -> None:
-        if self._dll:
-            self._dll.mr_free_context(self._ctx)
+        self.close()

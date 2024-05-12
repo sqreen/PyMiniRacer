@@ -50,3 +50,14 @@ def test_del():
         sleep(0.1)
 
     assert context_count() == count_before
+
+
+def test_interrupts_background_task_on_shutdown():
+    with MiniRacer() as mr:
+        # Schedule a never-ending background task:
+        mr.eval("setTimeout(() => { while (1); }, 1);")
+        # Make sure the task starts:
+        sleep(0.1)
+        # Now at the end of the with statement, we explicitly close the instance, which
+        # should terminate the background task (as oppposed to hanging indefinitely
+        # here).

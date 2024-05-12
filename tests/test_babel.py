@@ -1,4 +1,4 @@
-""" Test loading and executing babel.js """
+"""Test loading and executing babel.js"""
 
 from os.path import dirname
 from os.path import join as pathjoin
@@ -12,16 +12,13 @@ def test_babel(gc_check):
     path = pathjoin(dirname(__file__), "fixtures/babel.js")
     with open(path, encoding="utf-8") as f:
         babel_source = f.read()
-    source = (
-        """
+    source = f"""
       var self = this;
-      %s
-      babel.eval = function(code) {
+      {babel_source}
+      babel.eval = function(code) {{
         return eval(babel.transform(code)["code"]);
-      }
+      }}
     """
-        % babel_source
-    )
     mr.eval(source)
     assert mr.eval("babel.eval(((x) => x * x)(8))") == 64
 

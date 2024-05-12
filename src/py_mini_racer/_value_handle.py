@@ -90,16 +90,16 @@ class MiniRacerTypes:
 
     invalid = 0
     null = 1
-    bool = 2  # noqa: A003
+    bool = 2
     integer = 3
     double = 4
     str_utf8 = 5
     array = 6
     # deprecated:
-    hash = 7  # noqa: A003
+    hash = 7
     date = 8
     symbol = 9
-    object = 10  # noqa: A003
+    object = 10
     undefined = 11
 
     function = 100

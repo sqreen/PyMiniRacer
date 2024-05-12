@@ -1,4 +1,5 @@
 """Declarations for Python renderings of basic JavaScript types."""
+
 from __future__ import annotations
 
 from datetime import datetime

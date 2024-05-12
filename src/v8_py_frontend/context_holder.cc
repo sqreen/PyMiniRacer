@@ -21,7 +21,7 @@ ContextHolder::ContextHolder(std::shared_ptr<IsolateManager> isolate_manager)
       })) {}
 
 ContextHolder::~ContextHolder() {
-  isolate_manager_->RunAndAwait(
+  isolate_manager_->Run(
       [context = std::move(context_)](v8::Isolate*) { context->Reset(); });
 }
 

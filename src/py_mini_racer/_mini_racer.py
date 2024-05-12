@@ -15,6 +15,9 @@ from py_mini_racer._types import MiniRacerBaseException
 
 if TYPE_CHECKING:
     from contextlib import AbstractAsyncContextManager
+    from types import TracebackType
+
+    from typing_extensions import Self
 
     from py_mini_racer._context import PyJsFunctionType
     from py_mini_racer._numeric import Numeric
@@ -33,6 +36,15 @@ class MiniRacer:
     """
     MiniRacer evaluates JavaScript code using a V8 isolate.
 
+    A MiniRacer instance can be explicitly closed using the close() method, or by using
+    the MiniRacer as a context manager, i.e,:
+
+    with MiniRacer() as mr:
+        ...
+
+    The MiniRacer instance will otherwise clean up the underlying V8 resource upon
+    garbage collection.
+
     Attributes:
         json_impl: JSON module used by helper methods default is
             [json](https://docs.python.org/3/library/json.html)
@@ -47,12 +59,34 @@ class MiniRacer:
 
         self.eval(INSTALL_SET_TIMEOUT)
 
+    def close(self) -> None:
+        """Close this MiniRacer instance.
+
+        It is an error to use this MiniRacer instance or any JS objects returned by it
+        after calling this method.
+        """
+        self._ctx.close()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        del exc_type
+        del exc_val
+        del exc_tb
+        self.close()
+
     @property
     def v8_version(self) -> str:
         """Return the V8 version string."""
         return self._ctx.v8_version()
 
-    def eval(  # noqa: A003
+    def eval(
         self,
         code: str,
         timeout: Numeric | None = None,
@@ -119,7 +153,7 @@ class MiniRacer:
             # Système international d'unités use seconds.
             timeout_sec = timeout / 1000
 
-        wrapped_expr = "JSON.stringify((function(){return (%s)})())" % expr
+        wrapped_expr = f"JSON.stringify((function(){{return ({expr})}})())"
         ret = self.eval(wrapped_expr, timeout_sec=timeout_sec, max_memory=max_memory)
         if not isinstance(ret, str):
             raise WrongReturnTypeException(type(ret))

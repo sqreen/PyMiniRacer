@@ -1,4 +1,4 @@
-""" Tests JSFunctions """
+"""Tests JSFunctions"""
 
 import pytest
 from py_mini_racer import (

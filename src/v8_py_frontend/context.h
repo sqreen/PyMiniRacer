@@ -63,9 +63,7 @@ class Context {
 
  private:
   template <typename Runnable>
-  auto RunTask(Runnable runnable,
-
-               uint64_t callback_id) -> uint64_t;
+  auto RunTask(Runnable runnable, uint64_t callback_id) -> uint64_t;
 
   auto MakeHandleConverter(BinaryValueHandle* handle,
                            const char* err_msg) -> ValueHandleConverter;

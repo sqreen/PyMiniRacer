@@ -17,6 +17,16 @@ IsolateManager::IsolateManager(v8::Platform* platform)
       message_pump_(std::make_shared<IsolateMessagePump>(platform)),
       isolate_(IsolateMessagePump::Start(message_pump_)) {}
 
+IsolateManager::~IsolateManager() {
+  Run([message_pump = message_pump_](v8::Isolate*) {
+    message_pump->ShutDown();
+  });
+}
+
+void IsolateManager::TerminateOngoingTask() {
+  isolate_->TerminateExecution();
+}
+
 IsolateMessagePump::IsolateMessagePump(v8::Platform* platform)
     : platform_(platform),
       shutdown_flag_(false),
@@ -44,10 +54,6 @@ void IsolateMessagePump::ShutDown() {
   shutdown_flag_ = true;
 }
 
-void IsolateManager::TerminateOngoingTask() {
-  isolate_->TerminateExecution();
-}
-
 void IsolateMessagePump::PumpMessages() {
   IsolateHolder isolate_holder;
 
@@ -57,7 +63,7 @@ void IsolateMessagePump::PumpMessages() {
   const v8::Isolate::Scope scope(isolate_holder.Get());
 
   // However, some APIs, like posting and terminating tasks, don't require the
-  // lock. For such tasks, expose the isolate pointer:
+  // lock. For such APIs, expose the isolate pointer:
   isolate_promise_.set_value(isolate_holder.Get());
 
   const v8::SealHandleScope shs(isolate_holder.Get());
@@ -66,7 +72,16 @@ void IsolateMessagePump::PumpMessages() {
         platform_, isolate_holder.Get(),
         v8::platform::MessageLoopBehavior::kWaitForWork);
 
-    v8::MicrotasksScope::PerformCheckpoint(isolate_holder.Get());
+    if (!shutdown_flag_) {
+      v8::MicrotasksScope::PerformCheckpoint(isolate_holder.Get());
+    }
+  }
+
+  // Drain the message queue. This is important because we may have memory
+  // cleanup tasks on it:
+  while (v8::platform::PumpMessageLoop(
+      platform_, isolate_holder.Get(),
+      v8::platform::MessageLoopBehavior::kDoNotWait)) {
   }
 }
 
@@ -74,12 +89,6 @@ void IsolateManager::RunInterrupt(v8::Isolate* /*isolate*/, void* data) {
   std::unique_ptr<v8::Task> task(static_cast<v8::Task*>(data));
 
   task->Run();
-}
-
-IsolateManager::~IsolateManager() {
-  Run([message_pump = message_pump_](v8::Isolate*) {
-    message_pump->ShutDown();
-  });
 }
 
 }  // end namespace MiniRacer

@@ -1,4 +1,4 @@
-""" Test .eval() method """
+"""Test .eval() method"""
 
 from asyncio import run as asyncio_run
 from time import sleep, time

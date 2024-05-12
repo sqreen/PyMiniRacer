@@ -1,4 +1,4 @@
-""" Basic JS types tests """
+"""Basic JS types tests"""
 
 from datetime import datetime, timezone
 from json import dumps
@@ -231,7 +231,7 @@ def test_shared_array_buffer(gc_check):
     ret = mr.eval(js_source)
     assert len(ret) == 1024
     assert ret[0:1].tobytes() == b"\x42"
-    ret[1:2] = b"\xFF"
+    ret[1:2] = b"\xff"
     assert mr.eval("v[1]") == 0xFF
 
     del ret

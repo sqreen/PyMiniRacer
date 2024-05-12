@@ -1,4 +1,4 @@
-""" Transform the input stream using babel.transform """
+"""Transform the input stream using babel.transform"""
 
 import os
 import sys
@@ -20,18 +20,18 @@ def babel_transform(es_string):
     ctx = py_mini_racer.MiniRacer()
 
     # Parse babel
-    ctx.eval("""var self = this; %s """ % babel_source)
+    ctx.eval(f"var self = this; {babel_source}" "")
 
     # Transform stuff :)
-    val = "babel.transform(`%s`)['code']" % es_string
+    val = f"babel.transform(`{es_string}`)['code']"
     return ctx.eval(val)
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 1:
         name = sys.argv[0]
-        sys.stderr.write("Usage: cat es6file.js | %s\n" % name)
-        sys.stderr.write("Example: echo [1,2,3].map(n => n + 1); | %s\n" % name)
+        sys.stderr.write(f"Usage: cat es6file.js | {name}\n")
+        sys.stderr.write(f"Example: echo [1,2,3].map(n => n + 1); | {name}\n")
         sys.exit(-1)
 
     es6_data = sys.stdin.read()

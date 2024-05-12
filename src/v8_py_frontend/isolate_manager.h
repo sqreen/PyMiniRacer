@@ -37,17 +37,15 @@ class IsolateManager {
   /** Schedules a task to run on the foreground thread, using
    * v8::TaskRunner::PostTask. */
   template <typename Runnable>
-  void Run(Runnable runnable, bool interrupt = false);
+  void Run(Runnable runnable);
 
   /** Schedules a task to run on the foreground thread, using
    * v8::TaskRunner::PostTask. Awaits task completion. */
   template <typename Runnable>
-  auto RunAndAwait(Runnable runnable, bool interrupt = false)
+  auto RunAndAwait(Runnable runnable)
       -> std::invoke_result_t<Runnable, v8::Isolate*>;
 
   void TerminateOngoingTask();
-
-  void Shutdown();
 
  private:
   /** Translate from a callback from v8::Isolate::RequestInterrupt into a
@@ -102,14 +100,10 @@ class AdHocTask : public v8::Task {
 };
 
 template <typename Runnable>
-inline void IsolateManager::Run(Runnable runnable, bool interrupt) {
+inline void IsolateManager::Run(Runnable runnable) {
   auto task =
       std::make_unique<AdHocTask<Runnable>>(std::move(runnable), isolate_);
-  if (interrupt) {
-    isolate_->RequestInterrupt(&IsolateManager::RunInterrupt, task.release());
-  } else {
-    platform_->GetForegroundTaskRunner(isolate_)->PostTask(std::move(task));
-  }
+  platform_->GetForegroundTaskRunner(isolate_)->PostTask(std::move(task));
 }
 
 template <typename Runnable>
@@ -130,7 +124,7 @@ inline auto IsolateManager::RunAndSetPromiseValue(v8::Isolate* isolate,
 /** Schedules a task to run on the foreground thread, using
  * v8::TaskRunner::PostTask. Awaits task completion. */
 template <typename Runnable>
-inline auto IsolateManager::RunAndAwait(Runnable runnable, bool interrupt)
+inline auto IsolateManager::RunAndAwait(Runnable runnable)
     -> std::invoke_result_t<Runnable, v8::Isolate*> {
   std::promise<std::invoke_result_t<Runnable, v8::Isolate*>> prom;
 
@@ -138,7 +132,7 @@ inline auto IsolateManager::RunAndAwait(Runnable runnable, bool interrupt)
     RunAndSetPromiseValue(isolate, std::move(runnable), prom);
   };
 
-  Run(std::move(run_and_set_result), interrupt);
+  Run(std::move(run_and_set_result));
 
   return prom.get_future().get();
 }

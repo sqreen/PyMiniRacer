@@ -36,12 +36,11 @@ auto IsolateMemoryMonitor::IsHardMemoryLimitReached() const -> bool {
 
 void IsolateMemoryMonitor::ApplyLowMemoryNotification() {
   isolate_manager_->RunAndAwait(
-      [](v8::Isolate* isolate) { isolate->LowMemoryNotification(); },
-      /*interrupt=*/true);
+      [](v8::Isolate* isolate) { isolate->LowMemoryNotification(); });
 }
 
 IsolateMemoryMonitor::~IsolateMemoryMonitor() {
-  isolate_manager_->RunAndAwait([state = state_](v8::Isolate* isolate) {
+  isolate_manager_->Run([state = state_](v8::Isolate* isolate) {
     isolate->RemoveGCEpilogueCallback(&IsolateMemoryMonitor::StaticGCCallback,
                                       state.get());
   });
