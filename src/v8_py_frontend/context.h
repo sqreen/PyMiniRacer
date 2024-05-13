@@ -13,6 +13,7 @@
 #include "heap_reporter.h"
 #include "isolate_manager.h"
 #include "isolate_memory_monitor.h"
+#include "isolate_object_collector.h"
 #include "js_callback_maker.h"
 #include "object_manipulator.h"
 
@@ -69,6 +70,7 @@ class Context {
                            const char* err_msg) -> ValueHandleConverter;
 
   std::shared_ptr<IsolateManager> isolate_manager_;
+  IsolateObjectCollector isolate_object_collector_;
   std::shared_ptr<IsolateMemoryMonitor> isolate_memory_monitor_;
   std::shared_ptr<BinaryValueFactory> bv_factory_;
   std::shared_ptr<BinaryValueRegistry> bv_registry_;

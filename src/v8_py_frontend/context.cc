@@ -23,9 +23,11 @@ namespace MiniRacer {
 
 Context::Context(v8::Platform* platform, Callback callback)
     : isolate_manager_(std::make_shared<IsolateManager>(platform)),
+      isolate_object_collector_(isolate_manager_.get()),
       isolate_memory_monitor_(
           std::make_shared<IsolateMemoryMonitor>(isolate_manager_)),
-      bv_factory_(std::make_shared<BinaryValueFactory>(isolate_manager_)),
+      bv_factory_(
+          std::make_shared<BinaryValueFactory>(&isolate_object_collector_)),
       bv_registry_(std::make_shared<BinaryValueRegistry>()),
       callback_(
           [bv_registry = bv_registry_,

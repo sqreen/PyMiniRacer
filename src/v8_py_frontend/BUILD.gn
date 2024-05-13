@@ -26,6 +26,8 @@ v8_shared_library("mini_racer") {
     "isolate_manager.cc",
     "isolate_memory_monitor.h",
     "isolate_memory_monitor.cc",
+    "isolate_object_collector.h",
+    "isolate_object_collector.cc",
     "object_manipulator.h",
     "object_manipulator.cc",
     "js_callback_maker.h",

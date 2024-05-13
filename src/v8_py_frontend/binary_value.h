@@ -1,5 +1,5 @@
-#ifndef BINARY_VALUE_H
-#define BINARY_VALUE_H
+#ifndef INCLUDE_MINI_RACER_BINARY_VALUE_H
+#define INCLUDE_MINI_RACER_BINARY_VALUE_H
 
 #include <v8-array-buffer.h>
 #include <v8-context.h>
@@ -14,8 +14,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <vector>
-#include "gsl_stub.h"
-#include "isolate_manager.h"
+#include "isolate_object_collector.h"
 
 namespace MiniRacer {
 
@@ -69,19 +68,6 @@ struct BinaryValueHandle {
 // NOLINTEND(cppcoreguidelines-owning-memory)
 // NOLINTEND(misc-non-private-member-variables-in-classes)
 
-class IsolateObjectDeleter {
- public:
-  IsolateObjectDeleter();
-  explicit IsolateObjectDeleter(
-      std::shared_ptr<IsolateManager> isolate_manager);
-
-  template <typename T>
-  void operator()(T* handle) const;
-
- private:
-  std::shared_ptr<IsolateManager> isolate_manager_;
-};
-
 class BinaryValue {
  public:
   BinaryValue(IsolateObjectDeleter isolate_object_deleter,
@@ -125,13 +111,13 @@ class BinaryValue {
 
 class BinaryValueFactory {
  public:
-  explicit BinaryValueFactory(std::shared_ptr<IsolateManager> isolate_manager);
+  explicit BinaryValueFactory(IsolateObjectCollector* isolate_object_collector);
 
   template <typename... Params>
   auto New(Params&&... params) -> BinaryValue::Ptr;
 
  private:
-  std::shared_ptr<IsolateManager> isolate_manager_;
+  IsolateObjectCollector* isolate_object_collector_;
 };
 
 /** We return handles to BinaryValues to the MiniRacer user side (i.e.,
@@ -163,33 +149,13 @@ class BinaryValueRegistry {
   std::unordered_map<BinaryValueHandle*, std::shared_ptr<BinaryValue>> values_;
 };
 
-template <typename T>
-void IsolateObjectDeleter::operator()(gsl::owner<T*> handle) const {
-  // We don't generally own the isolate lock (i.e., aren't running from the
-  // IsolateManager's message loop) here. From the V8 documentation, it's not
-  // clear if we can safely free v8 objects like a v8::Persistent handle or
-  // decrement the ref count of a std::shared_ptr<v8::BackingStore> (which may
-  // free the BackingStore) without the lock. As a rule, messing with
-  // Isolate-owned objects without holding the Isolate lock is not safe, and
-  // there is no documentation indicating methods like
-  // v8::Persistent::~Persistent are exempt from this rule. So let's have the
-  // message loop handle the deletion.
-
-  // Note also that we don't wait on the deletion here. This method may be
-  // called by Python, as a result of callbacks from the C++ side of MiniRacer.
-  // Those callbacks originate from the IsolateManager message loop itself. If
-  // we were to wait on this *new* task we're adding to the message loop, we
-  // would deadlock.
-  isolate_manager_->Run(
-      [handle](v8::Isolate* /*isolate*/) mutable { delete handle; });
-}
-
 template <typename... Params>
 inline auto BinaryValueFactory::New(Params&&... params) -> BinaryValue::Ptr {
-  return std::make_shared<BinaryValue>(IsolateObjectDeleter(isolate_manager_),
-                                       std::forward<Params>(params)...);
+  return std::make_shared<BinaryValue>(
+      IsolateObjectDeleter(isolate_object_collector_),
+      std::forward<Params>(params)...);
 }
 
 }  // namespace MiniRacer
 
-#endif  // BINARY_VALUE_H
+#endif  // INCLUDE_MINI_RACER_BINARY_VALUE_H
