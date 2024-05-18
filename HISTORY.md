@@ -1,5 +1,11 @@
 # History
 
+## 0.12.1 (2024-05-18)
+
+- Update to V8 12.4. This includes fixes for CVE-2024-3159, CVE-2024-3156, and
+    CVE-2024-2625. These vulnerabilities in V8 would impact PyMiniRacer users who are
+    running untrusted and adversarial JavaScript code.
+
 ## 0.12.0 (2024-04-29)
 
 - Added support for installing callbacks from JS back into Python, using
