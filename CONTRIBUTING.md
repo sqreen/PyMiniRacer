@@ -184,28 +184,36 @@ Before you submit a pull request, check that it meets these guidelines:
 Releases for `PyMiniRacer` should be done by GitHub Actions on the official project
 repository.
 
-To release:
+### Ordinary releases
 
-1. Merge all changes into `main` on the offical repository.
+To make an ordinary release from `main`:
 
-1. Update `HISTORY.md` with a summary of changes since the last release.
+1. Merge all changes into `main` on the official repository.
 
 1. Pick the next revision number:
 
     ```sh
-    $ git fetch --tags
-    $ git tag -l
-    # observe the next available tag
+    $ git fetch
+    $ git ls-remote origin | grep refs/heads/release
+    # observe the next available release version
     ```
 
-1. Update `src/py_mini_racer/__about__.py` with the new revision number.
+1. Create a `feature/...` branch, and:
 
-1. Add and push a tag:
+    1. Update `HISTORY.md` with a summary of changes since the last release.
+
+    1. Update `src/py_mini_racer/__about__.py` with the new revision number.
+
+    1. Create and merge a pull request for this branch into `main`.
+
+1. Create a `release/...` branch:
 
     ```sh
-    NEXT_TAG=the next tag
-    $ git tag "${NEXT_TAG}"
-    $ git push origin "${NEXT_TAG}"
+    $ git checkout main
+    $ git pull
+    NEXT_RELEASE=the next tag, starting with the letter v. E.g., "v0.12.1".
+    $ git checkout -b "release/${NEXT_RELEASE}"
+    $ git push --set-upstream origin "release/${NEXT_RELEASE}"
     ```
 
 1. Observe the build process on GitHub Actions. It should build and push docs and upload
@@ -218,3 +226,38 @@ To release:
         left off due to [`sccache`](https://github.com/mozilla/sccache). The jobs should
         *eventually* complete within the time limit. You can observe their slow progress
         using the Ninja build status (e.g., `[1645/2312] CXX obj/v8_foo_bar.o`).
+
+### Hotfix releases
+
+To hotfix a prior release:
+
+1. Prepare the fix as a `feature` branch as normal, and merge it into `main`.
+
+1. Pick the next revision number. This will typically be a patch-version update on the
+    current release name.
+
+1. Create a new release branch for the hotfix:
+
+    ```sh
+    BASE_RELEASE=the release you are hotfixing, starting with the letter v. E.g., "v0.12.0".
+    NEXT_RELEASE=the next tag, starting with the letter v. E.g., "v0.12.1".
+    $ git checkout "release/${BASE_RELEASE}"
+    $ git pull
+    $ git checkout -b "release/${NEXT_RELEASE}"
+    ```
+
+1. Hotfix the commit(s) created in step #1 onto the new release branch.
+
+1. Create a version update commit:
+
+    1. Update `HISTORY.md` with a summary of changes since the last release.
+
+    1. Update `src/py_mini_racer/__about__.py` with the new revision number.
+
+1. Commit and push the new release branch to GitHub.
+
+1. Merge this branch into `main`. *All content on release branches should be included in
+    `main`.*
+
+1. Observe the build process on GitHub Actions. It should build and push docs and upload
+    wheels to PyPI automatically.
