@@ -5,8 +5,8 @@ on:
   pull_request: {}
   # For releases:
   push:
-    tags:
-      - v*
+    branches:
+      - 'release/*'
 
 concurrency:
   group: build-${{ github.head_ref }}
@@ -68,8 +68,8 @@ jobs:
           # releases.
           # For more info on this GitHub Actions hack, see:
           # https://stackoverflow.com/questions/65384420/how-do-i-make-a-github-action-matrix-element-conditional#answer-73822998
-          - image: ${{ !startsWith(github.ref, 'refs/tags') && 'arm64v8/debian:bullseye' }}
-          - image: ${{ !startsWith(github.ref, 'refs/tags') && 'arm64v8/alpine:3.19' }}
+          - image: ${{ !startsWith(github.ref, 'refs/heads/release/') && 'arm64v8/debian:bullseye' }}
+          - image: ${{ !startsWith(github.ref, 'refs/heads/release/') && 'arm64v8/alpine:3.19' }}
 
     steps:
     - name: Configure git
@@ -83,7 +83,7 @@ jobs:
     - name: Run sccache-cache
       uses: mozilla-actions/sccache-action@v0.0.3
       # For security reasons, only use sccache on releases:
-      if: ${{ startsWith(github.ref, 'refs/tags') }}
+      if: ${{ startsWith(github.ref, 'refs/heads/release/') }}
 
     - uses: uraimo/run-on-arch-action@v2
       name: Build wheel
@@ -323,7 +323,7 @@ jobs:
     - name: Run sccache-cache
       uses: mozilla-actions/sccache-action@v0.0.3
       # For security reasons, only use sccache on releases:
-      if: ${{ startsWith(github.ref, 'refs/tags') }}
+      if: ${{ startsWith(github.ref, 'refs/heads/release') }}
 
     - uses: actions/setup-python@v5
       with:
@@ -351,7 +351,7 @@ jobs:
 
   release:
     name: Create GitHub release
-    if: startsWith(github.ref, 'refs/tags')
+    if: startsWith(github.ref, 'refs/heads/release')
     needs:
     - linux-wheels
     - non-linux-wheels
@@ -361,14 +361,22 @@ jobs:
     steps:
     - uses: actions/download-artifact@v3
 
+    - name: Compute release version
+      run: |
+        VERSION=${GITHUB_REF_NAME#release/}
+        echo Version: $VERSION
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+
     - name: Make release
       uses: ncipollo/release-action@v1
       with:
         artifacts: "wheels/*,sdist/*"
+        commit: ${{ github.ref }}
+        tag: ${{ env.VERSION }}
 
   publish:
     name: Upload release to PyPI
-    if: startsWith(github.ref, 'refs/tags')
+    if: startsWith(github.ref, 'refs/heads/release')
     needs:
     - release
     runs-on: ubuntu-latest
