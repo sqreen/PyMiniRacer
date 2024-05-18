@@ -1,6 +1,6 @@
 # History
 
-## 0.12.2 (2024-05-12)
+## 0.12.2 (2024-05-??)
 
 - Fixed a potential hang on MiniRacer teardown if MiniRacer is executing a microtask
     which loops infinitely.
