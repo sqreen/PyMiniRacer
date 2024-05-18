@@ -1,13 +1,17 @@
 # History
 
-## 0.12.1 (2024-05-12)
-
-- Updated to V8 12.4 from V8 12.3 now that Chromium stable is on 12.4.
+## 0.12.2 (2024-05-12)
 
 - Fixed a potential hang on MiniRacer teardown if MiniRacer is executing a microtask
     which loops infinitely.
 
 - Add optional context manager and `.close()` semantics to Python `MiniRacer` class.
+
+## 0.12.1 (2024-05-18)
+
+- Update to V8 12.4. This includes fixes for CVE-2024-3159, CVE-2024-3156, and
+    CVE-2024-2625. These vulnerabilities in V8 would impact PyMiniRacer users who are
+    running untrusted and adversarial JavaScript code.
 
 ## 0.12.0 (2024-04-29)
 
