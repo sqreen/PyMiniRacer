@@ -1,11 +1,14 @@
 # History
 
-## 0.12.2 (2024-05-??)
+## 0.12.2 (2024-05-20)
+
+- Add optional context manager and `.close()` semantics to Python `MiniRacer` class.
 
 - Fixed a potential hang on MiniRacer teardown if MiniRacer is executing a microtask
     which loops infinitely.
 
-- Add optional context manager and `.close()` semantics to Python `MiniRacer` class.
+- Switch C++ side of MiniRacer to a more straightforward object lifecycle management
+    model.
 
 ## 0.12.1 (2024-05-18)
 
