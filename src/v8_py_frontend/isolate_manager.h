@@ -3,14 +3,35 @@
 
 #include <v8-isolate.h>
 #include <v8-platform.h>
+#include <atomic>
+#include <cstdint>
 #include <future>
 #include <memory>
+#include <thread>
 #include <type_traits>
 #include <utility>
+#include "isolate_holder.h"
 
 namespace MiniRacer {
 
-class IsolateMessagePump;
+/** Wraps up a runnable to run on a v8::Isolate's foreground task runner thread
+ * . */
+template <typename Runnable>
+class IsolateTask : public v8::Task {
+ public:
+  using ReturnType = std::invoke_result_t<Runnable, v8::Isolate*>;
+  using FutureType = std::future<ReturnType>;
+
+  explicit IsolateTask(Runnable runnable, v8::Isolate* isolate);
+
+  void Run() override;
+
+  auto GetFuture() -> FutureType;
+
+ private:
+  std::packaged_task<ReturnType(v8::Isolate*)> packaged_task_;
+  v8::Isolate* isolate_;
+};
 
 /** Owns a v8::Isolate and mediates access to it via a task queue.
  *
@@ -35,115 +56,64 @@ class IsolateManager {
   auto operator=(IsolateManager&& other) -> IsolateManager& = delete;
 
   /** Schedules a task to run on the foreground thread, using
-   * v8::TaskRunner::PostTask. */
+   * v8::TaskRunner::PostTask. Returns a future which gets the result.
+   * The caller should, of course, ensure that any references bound into the
+   * runnable outlive the task, by awaiting the returned future before tearing
+   * down any referred-to objects. */
   template <typename Runnable>
-  void Run(Runnable runnable);
-
-  /** Schedules a task to run on the foreground thread, using
-   * v8::TaskRunner::PostTask. Awaits task completion. */
-  template <typename Runnable>
-  auto RunAndAwait(Runnable runnable)
-      -> std::invoke_result_t<Runnable, v8::Isolate*>;
+  [[nodiscard]] auto Run(Runnable runnable)
+      -> IsolateTask<Runnable>::FutureType;
 
   void TerminateOngoingTask();
 
- private:
-  /** Translate from a callback from v8::Isolate::RequestInterrupt into a
-   * v8::Task::Run. */
-  static void RunInterrupt(v8::Isolate* /*isolate*/, void* data);
-
-  template <typename Runnable>
-  static auto RunAndSetPromiseValue(v8::Isolate* isolate,
-                                    Runnable runnable,
-                                    std::promise<void>& prom);
-
-  template <typename Runnable, typename T>
-  static auto RunAndSetPromiseValue(v8::Isolate* isolate,
-                                    Runnable runnable,
-                                    std::promise<T>& prom);
-
-  v8::Platform* platform_;
-  std::shared_ptr<IsolateMessagePump> message_pump_;
-  v8::Isolate* isolate_;
-};
-
-/** Runs the Isolate MessagePump in a thread. */
-class IsolateMessagePump {
- public:
-  explicit IsolateMessagePump(v8::Platform* platform);
-
-  static auto Start(const std::shared_ptr<IsolateMessagePump>& message_pump)
-      -> v8::Isolate*;
-
-  void ShutDown();
+  void StopJavaScript();
 
  private:
+  enum State : std::uint8_t {
+    kRun = 0,
+    kNoJavaScript = 1,
+    kStop = 2,
+  };
+
   void PumpMessages();
+  void ChangeState(State state);
 
   v8::Platform* platform_;
-  bool shutdown_flag_;
-  std::promise<v8::Isolate*> isolate_promise_;
-  std::shared_future<v8::Isolate*> isolate_future_;
+  std::atomic<State> state_;
+  IsolateHolder isolate_holder_;
+  std::thread thread_;
 };
-
-/** Just a silly way to run code on the foreground task runner thread. */
-template <typename Runnable>
-class AdHocTask : public v8::Task {
- public:
-  explicit AdHocTask(Runnable runnable, v8::Isolate* isolate);
-
-  void Run() override;
-
- private:
-  Runnable runnable_;
-  v8::Isolate* isolate_;
-};
-
-template <typename Runnable>
-inline void IsolateManager::Run(Runnable runnable) {
-  auto task =
-      std::make_unique<AdHocTask<Runnable>>(std::move(runnable), isolate_);
-  platform_->GetForegroundTaskRunner(isolate_)->PostTask(std::move(task));
-}
-
-template <typename Runnable>
-inline auto IsolateManager::RunAndSetPromiseValue(v8::Isolate* isolate,
-                                                  Runnable runnable,
-                                                  std::promise<void>& prom) {
-  runnable(isolate);
-  prom.set_value();
-}
-
-template <typename Runnable, typename T>
-inline auto IsolateManager::RunAndSetPromiseValue(v8::Isolate* isolate,
-                                                  Runnable runnable,
-                                                  std::promise<T>& prom) {
-  prom.set_value(runnable(isolate));
-}
 
 /** Schedules a task to run on the foreground thread, using
  * v8::TaskRunner::PostTask. Awaits task completion. */
 template <typename Runnable>
-inline auto IsolateManager::RunAndAwait(Runnable runnable)
-    -> std::invoke_result_t<Runnable, v8::Isolate*> {
-  std::promise<std::invoke_result_t<Runnable, v8::Isolate*>> prom;
+inline auto IsolateManager::Run(Runnable runnable)
+    -> IsolateTask<Runnable>::FutureType {
+  auto task = std::make_unique<IsolateTask<Runnable>>(std::move(runnable),
+                                                      isolate_holder_.Get());
 
-  auto run_and_set_result = [&prom, &runnable](v8::Isolate* isolate) {
-    RunAndSetPromiseValue(isolate, std::move(runnable), prom);
-  };
+  auto fut = task->GetFuture();
 
-  Run(std::move(run_and_set_result));
+  platform_->GetForegroundTaskRunner(isolate_holder_.Get())
+      ->PostTask(std::move(task));
 
-  return prom.get_future().get();
+  return fut;
 }
 
 template <typename Runnable>
-inline AdHocTask<Runnable>::AdHocTask(Runnable runnable, v8::Isolate* isolate)
-    : runnable_(std::move(runnable)), isolate_(isolate) {}
+inline IsolateTask<Runnable>::IsolateTask(Runnable runnable,
+                                          v8::Isolate* isolate)
+    : packaged_task_(std::move(runnable)), isolate_(isolate) {}
 
 template <typename Runnable>
-inline void AdHocTask<Runnable>::Run() {
-  runnable_(isolate_);
+inline void IsolateTask<Runnable>::Run() {
+  packaged_task_(isolate_);
+}
+
+template <typename Runnable>
+inline auto IsolateTask<Runnable>::GetFuture()
+    -> IsolateTask<Runnable>::FutureType {
+  return packaged_task_.get_future();
 }
 
 }  // end namespace MiniRacer

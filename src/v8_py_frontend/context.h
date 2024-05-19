@@ -4,7 +4,6 @@
 #include <v8-platform.h>
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include "binary_value.h"
 #include "callback.h"
 #include "cancelable_task_runner.h"
@@ -24,6 +23,12 @@ class ValueHandleConverter;
 class Context {
  public:
   explicit Context(v8::Platform* platform, Callback callback);
+  ~Context();
+
+  Context(const Context&) = delete;
+  auto operator=(const Context&) -> Context& = delete;
+  Context(Context&&) = delete;
+  auto operator=(Context&& other) -> Context& = delete;
 
   void SetHardMemoryLimit(size_t limit);
   void SetSoftMemoryLimit(size_t limit);
@@ -69,24 +74,24 @@ class Context {
   auto MakeHandleConverter(BinaryValueHandle* handle,
                            const char* err_msg) -> ValueHandleConverter;
 
-  std::shared_ptr<IsolateManager> isolate_manager_;
+  IsolateManager isolate_manager_;
   IsolateObjectCollector isolate_object_collector_;
-  std::shared_ptr<IsolateMemoryMonitor> isolate_memory_monitor_;
-  std::shared_ptr<BinaryValueFactory> bv_factory_;
-  std::shared_ptr<BinaryValueRegistry> bv_registry_;
+  IsolateMemoryMonitor isolate_memory_monitor_;
+  BinaryValueFactory bv_factory_;
+  BinaryValueRegistry bv_registry_;
   RememberValueAndCallback callback_;
-  std::shared_ptr<ContextHolder> context_holder_;
-  std::shared_ptr<JSCallbackMaker> js_callback_maker_;
-  std::shared_ptr<CodeEvaluator> code_evaluator_;
-  std::shared_ptr<HeapReporter> heap_reporter_;
-  std::shared_ptr<ObjectManipulator> object_manipulator_;
-  std::shared_ptr<CancelableTaskRunner> cancelable_task_runner_;
+  ContextHolder context_holder_;
+  JSCallbackMaker js_callback_maker_;
+  CodeEvaluator code_evaluator_;
+  HeapReporter heap_reporter_;
+  ObjectManipulator object_manipulator_;
+  CancelableTaskManager cancelable_task_manager_;
 };
 
 class ValueHandleConverter {
  public:
-  ValueHandleConverter(std::shared_ptr<BinaryValueFactory> bv_factory,
-                       const std::shared_ptr<BinaryValueRegistry>& bv_registry,
+  ValueHandleConverter(BinaryValueFactory* bv_factory,
+                       BinaryValueRegistry* bv_registry,
                        BinaryValueHandle* handle,
                        const char* err_msg);
 
@@ -97,36 +102,36 @@ class ValueHandleConverter {
   auto GetPtr() -> BinaryValue::Ptr;
 
  private:
-  std::shared_ptr<BinaryValueRegistry> bv_registry_;
+  BinaryValueRegistry* bv_registry_;
   BinaryValue::Ptr ptr_;
   BinaryValue::Ptr err_;
 };
 
 inline void Context::SetHardMemoryLimit(size_t limit) {
-  isolate_memory_monitor_->SetHardMemoryLimit(limit);
+  isolate_memory_monitor_.SetHardMemoryLimit(limit);
 }
 
 inline void Context::SetSoftMemoryLimit(size_t limit) {
-  isolate_memory_monitor_->SetSoftMemoryLimit(limit);
+  isolate_memory_monitor_.SetSoftMemoryLimit(limit);
 }
 
 inline auto Context::IsSoftMemoryLimitReached() const -> bool {
-  return isolate_memory_monitor_->IsSoftMemoryLimitReached();
+  return isolate_memory_monitor_.IsSoftMemoryLimitReached();
 }
 
 inline auto Context::IsHardMemoryLimitReached() const -> bool {
-  return isolate_memory_monitor_->IsHardMemoryLimitReached();
+  return isolate_memory_monitor_.IsHardMemoryLimitReached();
 }
 
 inline void Context::ApplyLowMemoryNotification() {
-  isolate_memory_monitor_->ApplyLowMemoryNotification();
+  isolate_memory_monitor_.ApplyLowMemoryNotification();
 }
 
 template <typename... Params>
 inline auto Context::AllocBinaryValue(Params&&... params)
     -> BinaryValueHandle* {
-  return bv_registry_->Remember(
-      bv_factory_->New(std::forward<Params>(params)...));
+  return bv_registry_.Remember(
+      bv_factory_.New(std::forward<Params>(params)...));
 }
 
 }  // namespace MiniRacer

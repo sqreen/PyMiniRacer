@@ -39,17 +39,23 @@ def test_sandbox():
 
 
 def test_del():
-    collect()
-    count_before = context_count()
+    # Collect any leftover contexts:
+    start = time()
+    while time() - start < 10 and context_count() != 0:
+        collect()
+        sleep(0.1)
+
+    assert context_count() == 0
+
     mr = MiniRacer()
     del mr
 
     start = time()
-    while time() - start < 2 and context_count() != count_before:
+    while time() - start < 10 and context_count() != 0:
         collect()
         sleep(0.1)
 
-    assert context_count() == count_before
+    assert context_count() == 0
 
 
 def test_interrupts_background_task_on_shutdown():

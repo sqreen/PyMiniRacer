@@ -7,6 +7,7 @@
 #include <mutex>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace MiniRacer {
 
@@ -31,6 +32,7 @@ class IdMaker {
   auto GetObject(uint64_t object_id) -> std::shared_ptr<T>;
   void EraseId(uint64_t object_id);
   auto CountIds() -> size_t;
+  auto GetObjects() -> std::vector<std::shared_ptr<T>>;
 
  private:
   std::mutex mutex_;
@@ -48,7 +50,7 @@ class IdHolder {
 
   IdHolder(const IdHolder&) = delete;
   auto operator=(const IdHolder&) -> IdHolder& = delete;
-  IdHolder(IdHolder&&) = delete;
+  IdHolder(IdHolder&& other) noexcept;
   auto operator=(IdHolder&& other) -> IdHolder& = delete;
 
   auto GetId() -> uint64_t;
@@ -102,14 +104,33 @@ inline auto IdMaker<T>::CountIds() -> size_t {
 }
 
 template <typename T>
+inline auto IdMaker<T>::GetObjects() -> std::vector<std::shared_ptr<T>> {
+  std::vector<std::shared_ptr<T>> ret;
+  const std::lock_guard<std::mutex> lock(mutex_);
+  for (const auto& pair : objects_) {
+    ret.push_back(pair.second);
+  }
+  return ret;
+}
+
+template <typename T>
 inline IdHolder<T>::IdHolder(std::shared_ptr<T> object,
                              std::shared_ptr<IdMaker<T>> id_maker)
     : id_maker_(std::move(id_maker)), object_id_(id_maker_->MakeId(object)) {}
 
 template <typename T>
 inline IdHolder<T>::~IdHolder() {
+  if (object_id_ == 0) {
+    return;
+  }
+
   id_maker_->EraseId(object_id_);
 }
+
+template <typename T>
+inline IdHolder<T>::IdHolder(IdHolder<T>&& other) noexcept
+    : id_maker_(std::move(other.id_maker_)),
+      object_id_(std::exchange(other.object_id_, 0)) {}
 
 template <typename T>
 inline auto IdHolder<T>::GetId() -> uint64_t {

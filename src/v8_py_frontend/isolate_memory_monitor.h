@@ -13,8 +13,7 @@ class IsolateMemoryMonitorState;
 
 class IsolateMemoryMonitor {
  public:
-  explicit IsolateMemoryMonitor(
-      const std::shared_ptr<IsolateManager>& isolate_manager);
+  explicit IsolateMemoryMonitor(IsolateManager* isolate_manager);
   ~IsolateMemoryMonitor();
 
   IsolateMemoryMonitor(const IsolateMemoryMonitor&) = delete;
@@ -36,14 +35,13 @@ class IsolateMemoryMonitor {
                                v8::GCCallbackFlags flags,
                                void* data);
 
-  std::shared_ptr<IsolateManager> isolate_manager_;
+  IsolateManager* isolate_manager_;
   std::shared_ptr<IsolateMemoryMonitorState> state_;
 };
 
 class IsolateMemoryMonitorState {
  public:
-  explicit IsolateMemoryMonitorState(
-      std::shared_ptr<IsolateManager> isolate_manager);
+  explicit IsolateMemoryMonitorState();
 
   [[nodiscard]] auto IsSoftMemoryLimitReached() const -> bool;
   [[nodiscard]] auto IsHardMemoryLimitReached() const -> bool;
@@ -53,7 +51,6 @@ class IsolateMemoryMonitorState {
   void GCCallback(v8::Isolate* isolate);
 
  private:
-  std::shared_ptr<IsolateManager> isolate_manager_;
   size_t soft_memory_limit_;
   bool soft_memory_limit_reached_;
   size_t hard_memory_limit_;

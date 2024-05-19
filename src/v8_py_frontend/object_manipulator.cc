@@ -9,18 +9,15 @@
 #include <v8-persistent-handle.h>
 #include <v8-primitive.h>
 #include <cstdint>
-#include <memory>
-#include <utility>
 #include <vector>
 #include "binary_value.h"
 #include "context_holder.h"
 
 namespace MiniRacer {
 
-ObjectManipulator::ObjectManipulator(
-    std::shared_ptr<ContextHolder> context,
-    std::shared_ptr<BinaryValueFactory> bv_factory)
-    : context_(std::move(context)), bv_factory_(std::move(bv_factory)) {}
+ObjectManipulator::ObjectManipulator(ContextHolder* context,
+                                     BinaryValueFactory* bv_factory)
+    : context_(context), bv_factory_(bv_factory) {}
 
 auto ObjectManipulator::GetIdentityHash(v8::Isolate* isolate,
                                         BinaryValue* obj_ptr)

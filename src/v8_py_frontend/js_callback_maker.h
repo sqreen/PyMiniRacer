@@ -23,7 +23,7 @@ namespace MiniRacer {
  */
 class JSCallbackCaller {
  public:
-  JSCallbackCaller(std::shared_ptr<BinaryValueFactory> bv_factory,
+  JSCallbackCaller(BinaryValueFactory* bv_factory,
                    RememberValueAndCallback callback);
 
   void DoCallback(v8::Local<v8::Context> context,
@@ -31,7 +31,7 @@ class JSCallbackCaller {
                   v8::Local<v8::Array> args);
 
  private:
-  std::shared_ptr<BinaryValueFactory> bv_factory_;
+  BinaryValueFactory* bv_factory_;
   RememberValueAndCallback callback_;
 };
 
@@ -39,8 +39,8 @@ class JSCallbackCaller {
  */
 class JSCallbackMaker {
  public:
-  JSCallbackMaker(std::shared_ptr<ContextHolder> context_holder,
-                  const std::shared_ptr<BinaryValueFactory>& bv_factory,
+  JSCallbackMaker(ContextHolder* context_holder,
+                  BinaryValueFactory* bv_factory,
                   RememberValueAndCallback callback);
 
   auto MakeJSCallback(v8::Isolate* isolate,
@@ -54,8 +54,8 @@ class JSCallbackMaker {
   static std::shared_ptr<IdMaker<JSCallbackCaller>> callback_callers_;
   static std::once_flag callback_callers_init_flag_;
 
-  std::shared_ptr<ContextHolder> context_holder_;
-  std::shared_ptr<BinaryValueFactory> bv_factory_;
+  ContextHolder* context_holder_;
+  BinaryValueFactory* bv_factory_;
   IdHolder<JSCallbackCaller> callback_caller_holder_;
 };
 

@@ -18,10 +18,9 @@
 
 namespace MiniRacer {
 
-JSCallbackCaller::JSCallbackCaller(
-    std::shared_ptr<BinaryValueFactory> bv_factory,
-    RememberValueAndCallback callback)
-    : bv_factory_(std::move(bv_factory)), callback_(std::move(callback)) {}
+JSCallbackCaller::JSCallbackCaller(BinaryValueFactory* bv_factory,
+                                   RememberValueAndCallback callback)
+    : bv_factory_(bv_factory), callback_(std::move(callback)) {}
 
 void JSCallbackCaller::DoCallback(v8::Local<v8::Context> context,
                                   uint64_t callback_id,
@@ -41,11 +40,10 @@ auto JSCallbackMaker::GetCallbackCallers()
   return callback_callers_;
 }
 
-JSCallbackMaker::JSCallbackMaker(
-    std::shared_ptr<ContextHolder> context_holder,
-    const std::shared_ptr<BinaryValueFactory>& bv_factory,
-    RememberValueAndCallback callback)
-    : context_holder_(std::move(context_holder)),
+JSCallbackMaker::JSCallbackMaker(ContextHolder* context_holder,
+                                 BinaryValueFactory* bv_factory,
+                                 RememberValueAndCallback callback)
+    : context_holder_(context_holder),
       bv_factory_(bv_factory),
       callback_caller_holder_(
           std::make_shared<JSCallbackCaller>(bv_factory, std::move(callback)),
@@ -65,10 +63,9 @@ auto JSCallbackMaker::MakeJSCallback(v8::Isolate* isolate,
   // we're called back.
   // We do this instead of embedding pointers to C++ objects in the objects
   // (using v8::External) so that we can control object teardown. In this model,
-  // we tear down C++ objects when the MiniRacer::Context is torn down using
-  // std::shared_ptr to track dependencies, and if a callback executes after
-  // the underlying callback caller is torn down, that callback is safely
-  // ignored.
+  // we tear down the C++ JSCallbackMaker and its dependencies when the
+  // MiniRacer::Context is torn down, and if a callback executes after the
+  // underlying callback caller is torn down, that callback is safely ignored.
   const v8::Local<v8::BigInt> callback_caller_id_bigint =
       v8::BigInt::NewFromUnsigned(isolate, callback_caller_holder_.GetId());
   const v8::Local<v8::BigInt> callback_id_bigint =

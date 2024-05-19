@@ -4,19 +4,19 @@
 #include <v8-statistics.h>
 #include <cstddef>
 #include <memory>
-#include <utility>
 #include "isolate_manager.h"
 
 namespace MiniRacer {
 
-IsolateMemoryMonitor::IsolateMemoryMonitor(
-    const std::shared_ptr<IsolateManager>& isolate_manager)
+IsolateMemoryMonitor::IsolateMemoryMonitor(IsolateManager* isolate_manager)
     : isolate_manager_(isolate_manager),
-      state_(std::make_shared<IsolateMemoryMonitorState>(isolate_manager)) {
-  isolate_manager_->RunAndAwait([state = state_](v8::Isolate* isolate) {
-    isolate->AddGCEpilogueCallback(&IsolateMemoryMonitor::StaticGCCallback,
-                                   state.get());
-  });
+      state_(std::make_shared<IsolateMemoryMonitorState>()) {
+  isolate_manager_
+      ->Run([state = state_](v8::Isolate* isolate) {
+        isolate->AddGCEpilogueCallback(&IsolateMemoryMonitor::StaticGCCallback,
+                                       state.get());
+      })
+      .get();
 }
 
 void IsolateMemoryMonitor::SetHardMemoryLimit(size_t limit) {
@@ -35,15 +35,18 @@ auto IsolateMemoryMonitor::IsHardMemoryLimitReached() const -> bool {
 }
 
 void IsolateMemoryMonitor::ApplyLowMemoryNotification() {
-  isolate_manager_->RunAndAwait(
-      [](v8::Isolate* isolate) { isolate->LowMemoryNotification(); });
+  isolate_manager_
+      ->Run([](v8::Isolate* isolate) { isolate->LowMemoryNotification(); })
+      .get();
 }
 
 IsolateMemoryMonitor::~IsolateMemoryMonitor() {
-  isolate_manager_->Run([state = state_](v8::Isolate* isolate) {
-    isolate->RemoveGCEpilogueCallback(&IsolateMemoryMonitor::StaticGCCallback,
-                                      state.get());
-  });
+  isolate_manager_
+      ->Run([state = state_](v8::Isolate* isolate) {
+        isolate->RemoveGCEpilogueCallback(
+            &IsolateMemoryMonitor::StaticGCCallback, state.get());
+      })
+      .get();
 }
 
 void IsolateMemoryMonitor::StaticGCCallback(v8::Isolate* isolate,
@@ -53,10 +56,8 @@ void IsolateMemoryMonitor::StaticGCCallback(v8::Isolate* isolate,
   static_cast<IsolateMemoryMonitorState*>(data)->GCCallback(isolate);
 }
 
-IsolateMemoryMonitorState::IsolateMemoryMonitorState(
-    std::shared_ptr<IsolateManager> isolate_manager)
-    : isolate_manager_(std::move(isolate_manager)),
-      soft_memory_limit_(0),
+IsolateMemoryMonitorState::IsolateMemoryMonitorState()
+    : soft_memory_limit_(0),
       soft_memory_limit_reached_(false),
       hard_memory_limit_(0),
       hard_memory_limit_reached_(false) {}

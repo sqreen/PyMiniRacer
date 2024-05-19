@@ -1,7 +1,7 @@
 #ifndef INCLUDE_MINI_RACER_ISOLATE_OBJECT_COLLECTOR_H
 #define INCLUDE_MINI_RACER_ISOLATE_OBJECT_COLLECTOR_H
 
-#include <v8-isolate.h>
+#include <condition_variable>
 #include <functional>
 #include <mutex>
 #include <vector>
@@ -25,16 +25,27 @@ namespace MiniRacer {
 class IsolateObjectCollector {
  public:
   explicit IsolateObjectCollector(IsolateManager* isolate_manager);
+  ~IsolateObjectCollector();
+
+  IsolateObjectCollector(const IsolateObjectCollector&) = delete;
+  auto operator=(const IsolateObjectCollector&) -> IsolateObjectCollector& =
+                                                       delete;
+  IsolateObjectCollector(IsolateObjectCollector&&) = delete;
+  auto operator=(IsolateObjectCollector&& other) -> IsolateObjectCollector& =
+                                                        delete;
 
   template <typename T>
   void Collect(T* obj);
 
-  void Dispose();
-
  private:
+  void StartCollectingLocked();
+  void DoCollection();
+
   IsolateManager* isolate_manager_;
   std::mutex mutex_;
   std::vector<std::function<void()>> garbage_;
+  std::condition_variable collection_done_cv_;
+  bool is_collecting_;
 };
 
 /** A deleter for use with std::shared_ptr and std::unique_ptr. */
@@ -53,17 +64,16 @@ class IsolateObjectDeleter {
 
 template <typename T>
 inline void IsolateObjectCollector::Collect(gsl::owner<T*> obj) {
-  {
-    const std::lock_guard<std::mutex> lock(mutex_);
-    garbage_.push_back([obj]() { delete obj; });
+  const std::lock_guard<std::mutex> lock(mutex_);
+
+  garbage_.push_back([obj]() { delete obj; });
+
+  if (is_collecting_) {
+    // There is already a collection in progress.
+    return;
   }
 
-  // Note that we don't wait on the deletion of objects. Code needing to delete
-  // objects may be called by Python, as a result of callbacks from the C++
-  // side of MiniRacer. Those callbacks originate from the IsolateManager
-  // message loop itself. If we were to wait on this *new* task we're adding to
-  // the message loop, we would deadlock.
-  isolate_manager_->Run([this](v8::Isolate*) { Dispose(); });
+  StartCollectingLocked();
 }
 
 template <typename T>

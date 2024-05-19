@@ -11,7 +11,7 @@ namespace MiniRacer {
 /** Create and manage a v8::Context */
 class ContextHolder {
  public:
-  explicit ContextHolder(std::shared_ptr<IsolateManager> isolate_manager);
+  explicit ContextHolder(IsolateManager* isolate_manager);
   ~ContextHolder();
 
   ContextHolder(const ContextHolder&) = delete;
@@ -22,7 +22,7 @@ class ContextHolder {
   auto Get() -> v8::Persistent<v8::Context>*;
 
  private:
-  std::shared_ptr<IsolateManager> isolate_manager_;
+  IsolateManager* isolate_manager_;
   std::unique_ptr<v8::Persistent<v8::Context>> context_;
 };
 
