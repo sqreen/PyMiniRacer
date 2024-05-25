@@ -1,5 +1,10 @@
 # History
 
+## 0.12.3 (2024-05-25)
+
+- Fix potential hang if JavaScript calls a function produced by `wrap_py_function` while
+    we're tearing it down.
+
 ## 0.12.2 (2024-05-20)
 
 - Add optional context manager and `.close()` semantics to Python `MiniRacer` class.

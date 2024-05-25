@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from asyncio import Future
+from asyncio import get_running_loop
 from contextlib import ExitStack
 from operator import index as op_index
 from typing import (
@@ -27,6 +27,8 @@ from py_mini_racer._types import (
 )
 
 if TYPE_CHECKING:
+    from asyncio import Future
+
     from py_mini_racer._abstract_context import AbstractContext, AbstractValueHandle
     from py_mini_racer._numeric import Numeric
 
@@ -212,8 +214,8 @@ class JSPromise(JSObjectImpl):
         return self._do_await().__await__()
 
     async def _do_await(self) -> PythonJSConvertedTypes:
-        future: Future[PythonJSConvertedTypes] = Future()
-        loop = future.get_loop()
+        loop = get_running_loop()
+        future: Future[PythonJSConvertedTypes] = loop.create_future()
 
         def future_caller(value: Any) -> None:
             loop.call_soon_threadsafe(future.set_result, value)

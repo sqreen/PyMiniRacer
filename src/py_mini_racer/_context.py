@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from asyncio import (
     FIRST_COMPLETED,
-    Queue,
     Task,
     create_task,
     get_running_loop,
@@ -46,6 +45,7 @@ from py_mini_racer._value_handle import (
 
 if TYPE_CHECKING:
     import ctypes
+    from asyncio import Future
 
     from py_mini_racer._abstract_context import AbstractValueHandle
     from py_mini_racer._numeric import Numeric
@@ -395,45 +395,6 @@ class Context(AbstractContext):
     async def wrap_py_function(
         self, func: PyJsFunctionType
     ) -> AsyncIterator[JSFunction]:
-        queue: Queue[PythonJSConvertedTypes | JSEvalException] = Queue()
-
-        loop = get_running_loop()
-
-        def on_called(value: PythonJSConvertedTypes | JSEvalException) -> None:
-            loop.call_soon_threadsafe(queue.put_nowait, value)
-
-        with self.js_callback(on_called) as callback:
-            wrapper = self.evaluate(
-                """
-callback => {
-    return (...arguments) => {
-        let p = Promise.withResolvers();
-
-        callback(arguments, p.resolve, p.reject);
-
-        return p.promise;
-    }
-}
-"""
-            )
-            wrapped = cast(JSFunction, cast(JSFunction, wrapper)(callback))
-
-            queue_processor = create_task(self._process_callback_queue(queue, func))
-
-            yield wrapped
-
-            # This should tell the queue processor to shut down
-            # (after any pending calls are processed):
-            await queue.put(None)
-
-            await queue_processor
-            await queue.join()
-
-    async def _process_callback_queue(
-        self,
-        queue: Queue[PythonJSConvertedTypes | JSEvalException],
-        func: PyJsFunctionType,
-    ) -> None:
         async def run_one(params: JSArray) -> None:
             arguments, resolve, reject = params
             arguments = cast(JSArray, arguments)
@@ -451,42 +412,57 @@ callback => {
                 err = err_maker(s)
                 reject(err)
 
-            queue.task_done()
+        pending: set[Task[PythonJSConvertedTypes | JSEvalException] | Future[bool]] = (
+            set()
+        )
 
-        pending: set[Task[PythonJSConvertedTypes | JSEvalException]] = set()
+        def process(params: PythonJSConvertedTypes | JSEvalException) -> None:
+            params = cast(JSArray, params)
 
-        queue_get = None
+            # Start a new task to run the new task:
+            task = create_task(run_one(params))
+            pending.add(task)
 
-        def start_read() -> None:
-            nonlocal queue_get
-            queue_get = create_task(queue.get())
-            pending.add(queue_get)
+        loop = get_running_loop()
 
-        start_read()
-        while pending:
-            done, pending = await wait(pending, return_when=FIRST_COMPLETED)
-            for coro in done:
-                if coro is not queue_get:
-                    # One of our tasks finished. Nothing to do but join it:
+        def on_called(value: PythonJSConvertedTypes | JSEvalException) -> None:
+            loop.call_soon_threadsafe(process, value)
+
+        async def await_pending() -> None:
+            nonlocal pending
+            while pending:
+                done, pending = await wait(pending, return_when=FIRST_COMPLETED)
+                for coro in done:
                     await coro
-                    continue
 
-                # Got a new call off the queue!
-                params = await coro
-                if params is None:
-                    # params of None is our shutdown sentinel. Continue without
-                    # starting a new queue read.
-                    continue
+        shutdown: Future[bool] = loop.create_future()
+        pending.add(shutdown)
+        pending_awaiter = create_task(await_pending())
+        try:
+            with self.js_callback(on_called) as callback:
+                wrapper = self.evaluate(
+                    """
+callback => {
+    return (...arguments) => {
+        let p = Promise.withResolvers();
 
-                # Start a new task to run the new task:
-                task = create_task(run_one(cast(JSArray, params)))
-                pending.add(task)
+        callback(arguments, p.resolve, p.reject);
 
-                # ... And in parallel, start waiting for the next task:
-                start_read()
+        return p.promise;
+    }
+}
+"""
+                )
+                wrapper = cast(JSFunction, wrapper)
 
-        # Mark that we "finished" the terminating None queue entry:
-        queue.task_done()
+                wrapped = wrapper(callback)
+                wrapped = cast(JSFunction, wrapped)
+
+                yield wrapped
+        finally:
+            # Stop accepting calls:
+            shutdown.set_result(True)
+            await pending_awaiter
 
     def close(self) -> None:
         dll, self._dll = self._dll, None
