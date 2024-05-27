@@ -319,7 +319,7 @@ references we give it, until the `v8::Isolate` is torn down. So clearly the only
 we *can* do is ensure any raw pointers or references we hand to V8 are valid until after
 the `v8::Isolate` is torn down.
 
-### Give JavaScript integer IDs to track any allocated objects on the C++ side
+### Use JavaScript integer IDs to track any allocated objects on the C++ side
 
 The above said, we still have cases where we want objects to live shorter lifecycles
 than the `v8::Isolate` itself. E.g., a function callback from JavaScript to C++ (and
@@ -349,8 +349,8 @@ etc. Extension modules should uphold this principle.
 
 This applies only to **un**intentionally bad (i.e., buggy) Python code. PyMiniRacer does
 not and cannot protect itself from intentionally bad (i.e., adversarial) Python code. A
-determined Python programmer can always crash Python with ease. Try it!:
-`import ctypes; ctypes.cast(0x1, ctypes.c_char_p).value`
+determined Python programmer can always crash Python with ease without any help from
+PyMiniRacer. Try it!: `import ctypes; ctypes.cast(0x1, ctypes.c_char_p).value`
 
 ### Minimize trust of Python in *automatic* memory management of C++ objects
 
@@ -383,7 +383,7 @@ to an object to Python, Python stores that pointer, the C++ frees the object, an
 Python tries to use the pointer. This will work *sometimes* and crash—or worse, read
 incorrect data—at other times.
 
-### Give Python integer IDs to track any allocated objects on the C++ side
+### Use Python integer IDs to track any allocated objects on the C++ side
 
 Thus, combining all the above rules, we wind up with a similar rule for Python as we
 have for JavaScript. Wherever possible, we avoid interchanging raw pointers between C++
@@ -484,7 +484,7 @@ V8 value, we enqueue a pretty trivial task for the message loop:
 See [here](https://groups.google.com/g/v8-users/c/glG3-3pufCo) for some discussion of
 this design on the v8-users mailing list.
 
-### If any C++ creates an Isolate task, it's responsible for awaiting its completion before teardown
+### If any C++ code creates an Isolate task, it's responsible for awaiting its completion before teardown
 
 The pattern, described above—of enqueuing all kinds of tasks for the v8 message pump,
 including object destruction work—creates an interesting memory management problem for
