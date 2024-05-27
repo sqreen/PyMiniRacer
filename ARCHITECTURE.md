@@ -321,11 +321,12 @@ the `v8::Isolate` is torn down.
 
 ### Use JavaScript integer IDs to track any allocated objects on the C++ side
 
-The above said, we still have cases where we want objects to live shorter lifecycles
-than the `v8::Isolate` itself. E.g., a function callback from JavaScript to C++ (and
-thus to Python) might only be used as a single `Promise.then` callback. If a
-long-running program were to create tons of `Promise`s, we'd want to garbage collect the
-callbacks as we go, without waiting for the whole `v8::Isolate` to exit.
+The above said, we still have cases where we want to tell JavaScript about objects which
+have shorter lifecycles than the `v8::Isolate` itself. E.g., a function callback from
+JavaScript to C++ (and thus to Python) might only be used as a single `Promise.then`
+callback. If a long-running program were to create tons of `Promise`s, we'd want to
+garbage collect the callbacks as we go, without waiting for the whole `v8::Isolate` to
+exit.
 
 We can treat that case by "laundering" our raw C++ pointers and references through C++
 maps (i.e., `std::unordered_map<uint64_t, std::shared_ptr<T>>`), giving V8 JavaScript
@@ -423,7 +424,7 @@ We still don't fully trust Python with the lifecyce of `BinaryValueHandle` point
 when Python passes these pointers back to C++, we still check validity by looking up the
 pointer as a key into a map (which then lets the C++ side of PyMiniRacer find the *rest*
 of the `BinaryValue` object). The C++ `MiniRacer::BinaryValueFactory` can
-authoritatively destruct any dangling `BinaryValue` objects when it exists.
+authoritatively destruct any dangling `BinaryValue` objects when it exits.
 
 This last especially helps with an odd scenario introduced by Python `__del__`: the
 order in which Python calls `__del__` on a collection of objects is neither guaranteed
