@@ -18,7 +18,7 @@ basicConfig()
 LOGGER = getLogger(__name__)
 LOGGER.setLevel(DEBUG)
 ROOT_DIR = dirname(abspath(__file__))
-V8_VERSION = "branch-heads/12.4"
+V8_VERSION = "branch-heads/12.6"
 
 
 def local_path(path="."):

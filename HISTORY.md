@@ -1,5 +1,9 @@
 # History
 
+## 0.12.4 (2024-06-16)
+
+- Upgrade to V8 12.6 from 12.4.
+
 ## 0.12.3 (2024-05-25)
 
 - Fix potential hang if JavaScript calls a function produced by `wrap_py_function` while
